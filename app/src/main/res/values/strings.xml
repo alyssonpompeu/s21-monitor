@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">CPU GPU Monitor S21</string>
+    <string name="widget_description">Monitor de CPU, GPU, RAM e temperatura</string>
+</resources>
