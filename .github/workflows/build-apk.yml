@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - 'last-successful-build.txt'
 
 permissions:
   contents: write
@@ -43,3 +45,12 @@ jobs:
           files: S21-CPU-GPU-Monitor.apk
           make_latest: true
           overwrite_files: true
+
+      - name: Record successful workflow run
+        run: |
+          printf '%s\n' "${GITHUB_RUN_ID}" > last-successful-build.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add last-successful-build.txt
+          git commit -m "Record successful APK build [skip ci]" || exit 0
+          git push
