@@ -27,18 +27,28 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build flashlight APK
-        run: gradle :flashlight:assembleDebug --stacktrace
+      - name: Build flashlight APK and capture log
+        id: flashlight_build
+        shell: bash
+        run: |
+          set +e
+          gradle :flashlight:assembleDebug --stacktrace 2>&1 | tee flashlight-build.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=${code}" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Rename APK
+        if: steps.flashlight_build.outputs.exit_code == '0'
         run: cp flashlight/build/outputs/apk/debug/flashlight-debug.apk Lanterna-Atalho.apk
 
       - uses: actions/upload-artifact@v4
+        if: steps.flashlight_build.outputs.exit_code == '0'
         with:
           name: Lanterna-Atalho-APK
           path: Lanterna-Atalho.apk
 
       - name: Publish flashlight APK release
+        if: steps.flashlight_build.outputs.exit_code == '0'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: flashlight-latest
@@ -48,11 +58,17 @@ jobs:
           make_latest: false
           overwrite_files: true
 
-      - name: Record successful flashlight build
+      - name: Record flashlight build result
+        shell: bash
         run: |
-          printf '%s\n' "${GITHUB_RUN_ID}" > flashlight-last-successful-build.txt
+          printf 'run_id=%s\nexit_code=%s\n' "${GITHUB_RUN_ID}" "${{ steps.flashlight_build.outputs.exit_code }}" > flashlight-last-build.txt
+          tail -n 160 flashlight-build.log > flashlight-last-build.log
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add flashlight-last-successful-build.txt
-          git commit -m "Record successful flashlight APK build [skip ci]" || exit 0
+          git add flashlight-last-build.txt flashlight-last-build.log
+          git commit -m "Record flashlight APK build result [skip ci]" || exit 0
           git push
+
+      - name: Fail workflow if APK build failed
+        if: steps.flashlight_build.outputs.exit_code != '0'
+        run: exit 1
