@@ -1,0 +1,53 @@
+run_id=31343109346
+exit_code=0
+--- build log tail ---
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :chat:preBuild UP-TO-DATE
+> Task :chat:preDebugBuild UP-TO-DATE
+> Task :chat:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :chat:javaPreCompileDebug
+> Task :chat:checkDebugAarMetadata
+> Task :chat:generateDebugResValues
+> Task :chat:mapDebugSourceSetPaths
+> Task :chat:generateDebugResources
+> Task :chat:mergeDebugResources
+> Task :chat:packageDebugResources
+> Task :chat:createDebugCompatibleScreenManifests
+> Task :chat:extractDeepLinksDebug
+> Task :chat:parseDebugLocalResources
+> Task :chat:processDebugMainManifest
+> Task :chat:processDebugManifest
+> Task :chat:mergeDebugShaders
+> Task :chat:compileDebugShaders NO-SOURCE
+> Task :chat:processDebugManifestForPackage
+> Task :chat:generateDebugAssets UP-TO-DATE
+> Task :chat:mergeDebugAssets
+> Task :chat:desugarDebugFileDependencies
+> Task :chat:compressDebugAssets
+> Task :chat:processDebugJavaRes NO-SOURCE
+> Task :chat:checkDebugDuplicateClasses
+> Task :chat:mergeDebugJniLibFolders
+> Task :chat:mergeExtDexDebug
+> Task :chat:mergeLibDexDebug
+> Task :chat:mergeDebugNativeLibs NO-SOURCE
+> Task :chat:stripDebugDebugSymbols NO-SOURCE
+> Task :chat:processDebugResources
+> Task :chat:mergeDebugJavaResource
+> Task :chat:validateSigningDebug
+
+> Task :chat:compileDebugJavaWithJavac
+Note: /home/runner/work/s21-monitor/s21-monitor/chat/src/main/java/com/alysson/internetchat/MainActivity.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :chat:dexBuilderDebug
+> Task :chat:mergeDebugGlobalSynthetics
+> Task :chat:writeDebugAppMetadata
+> Task :chat:writeDebugSigningConfigVersions
+> Task :chat:mergeProjectDexDebug
+> Task :chat:packageDebug
+> Task :chat:createDebugApkListingFileRedirect
+> Task :chat:assembleDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1786319786452.json
+
+BUILD SUCCESSFUL in 17s
+32 actionable tasks: 32 executed
