@@ -1,0 +1,46 @@
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :flashlight:preBuild UP-TO-DATE
+> Task :flashlight:preDebugBuild UP-TO-DATE
+> Task :flashlight:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :flashlight:checkDebugAarMetadata
+> Task :flashlight:javaPreCompileDebug
+> Task :flashlight:generateDebugResValues
+> Task :flashlight:mapDebugSourceSetPaths
+> Task :flashlight:generateDebugResources
+> Task :flashlight:packageDebugResources
+> Task :flashlight:mergeDebugResources
+> Task :flashlight:createDebugCompatibleScreenManifests
+> Task :flashlight:extractDeepLinksDebug
+> Task :flashlight:parseDebugLocalResources
+> Task :flashlight:processDebugMainManifest
+> Task :flashlight:processDebugManifest
+> Task :flashlight:mergeDebugShaders
+> Task :flashlight:compileDebugShaders NO-SOURCE
+> Task :flashlight:generateDebugAssets UP-TO-DATE
+> Task :flashlight:mergeDebugAssets
+> Task :flashlight:compressDebugAssets
+> Task :flashlight:desugarDebugFileDependencies
+> Task :flashlight:processDebugJavaRes NO-SOURCE
+> Task :flashlight:processDebugManifestForPackage
+> Task :flashlight:checkDebugDuplicateClasses
+> Task :flashlight:mergeDebugJavaResource
+> Task :flashlight:mergeDebugJniLibFolders
+> Task :flashlight:mergeDebugNativeLibs NO-SOURCE
+> Task :flashlight:stripDebugDebugSymbols NO-SOURCE
+> Task :flashlight:mergeExtDexDebug
+> Task :flashlight:mergeLibDexDebug
+> Task :flashlight:processDebugResources
+> Task :flashlight:validateSigningDebug
+> Task :flashlight:compileDebugJavaWithJavac
+> Task :flashlight:dexBuilderDebug
+> Task :flashlight:mergeDebugGlobalSynthetics
+> Task :flashlight:writeDebugAppMetadata
+> Task :flashlight:writeDebugSigningConfigVersions
+> Task :flashlight:mergeProjectDexDebug
+> Task :flashlight:packageDebug
+> Task :flashlight:createDebugApkListingFileRedirect
+> Task :flashlight:assembleDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/flashlight_build-1786318843511.json
+
+BUILD SUCCESSFUL in 17s
+32 actionable tasks: 32 executed
