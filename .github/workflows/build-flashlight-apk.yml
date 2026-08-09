@@ -1,0 +1,49 @@
+name: Build Flashlight Shortcut APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'flashlight/**'
+      - 'settings.gradle'
+      - '.github/workflows/build-flashlight-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build flashlight APK
+        run: gradle :flashlight:assembleDebug --stacktrace
+
+      - name: Rename APK
+        run: cp flashlight/build/outputs/apk/debug/flashlight-debug.apk Lanterna-Atalho.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lanterna-Atalho-APK
+          path: Lanterna-Atalho.apk
+
+      - name: Publish flashlight APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: flashlight-latest
+          name: Lanterna - Atalho APK
+          body: APK Android que alterna a lanterna com um toque no ícone. Toque novamente para desligar.
+          files: Lanterna-Atalho.apk
+          make_latest: false
+          overwrite_files: true
