@@ -3,22 +3,24 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>Conversa</title>
+<title>Conversa 5G</title>
 <style>
 :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color-scheme:light;--bg:#f4f6f8;--card:#fff;--text:#111827;--muted:#6b7280;--line:#e5e7eb;--primary:#111827;--mine:#dbeafe;--theirs:#fff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);min-height:100vh}.hidden{display:none!important}.screen{min-height:100vh}.center{display:flex;align-items:center;justify-content:center;padding:24px}.card{width:min(100%,430px);background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,.06)}h1{font-size:28px;margin:0 0 6px}h2{font-size:20px;margin:0}p{color:var(--muted)}label{display:block;font-size:13px;font-weight:650;margin:14px 0 6px}input{width:100%;border:1px solid #d1d5db;border-radius:12px;padding:13px 14px;font-size:16px;background:#fff}button{border:0;border-radius:12px;padding:12px 14px;font-size:15px;font-weight:700;cursor:pointer}.primary{width:100%;margin-top:16px;background:var(--primary);color:#fff}.ghost{background:transparent;color:var(--text)}.tabs{display:flex;gap:8px;margin:18px 0}.tab{flex:1;background:#eef0f3}.tab.active{background:var(--primary);color:#fff}.error{min-height:20px;color:#b91c1c;font-size:13px;margin-top:10px}.top{position:sticky;top:0;z-index:2;height:64px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 14px}.title{flex:1;min-width:0}.title strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.title span{font-size:12px;color:var(--muted)}.content{padding:12px}.contact{width:100%;text-align:left;background:#fff;border:1px solid var(--line);padding:14px;margin-bottom:10px;display:flex;gap:12px;align-items:center}.avatar{width:42px;height:42px;border-radius:50%;background:#111827;color:#fff;display:grid;place-items:center;font-weight:800}.empty{text-align:center;color:var(--muted);padding:42px 18px}.messages{height:calc(100vh - 128px);overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}.bubble{max-width:80%;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:var(--theirs);word-break:break-word}.bubble.mine{align-self:flex-end;background:var(--mine)}.bubble.theirs{align-self:flex-start}.time{font-size:10px;color:var(--muted);margin-top:5px;text-align:right}.composer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);padding:9px;display:flex;gap:8px}.composer input{flex:1}.composer button{background:var(--primary);color:#fff;min-width:74px}.status{font-size:12px;color:var(--muted);padding:0 14px 8px}.spinner{padding:30px;text-align:center;color:var(--muted)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);min-height:100vh}.hidden{display:none!important}.screen{min-height:100vh}.center{display:flex;align-items:center;justify-content:center;padding:24px}.card{width:min(100%,430px);background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 10px 30px rgba(0,0,0,.06)}h1{font-size:28px;margin:0 0 6px}h2{font-size:20px;margin:0}p{color:var(--muted)}label{display:block;font-size:13px;font-weight:650;margin:14px 0 6px}input{width:100%;border:1px solid #d1d5db;border-radius:12px;padding:13px 14px;font-size:16px;background:#fff}button{border:0;border-radius:12px;padding:12px 14px;font-size:15px;font-weight:700;cursor:pointer}.primary{width:100%;margin-top:16px;background:var(--primary);color:#fff}.ghost{background:transparent;color:var(--text)}.tabs{display:flex;gap:8px;margin:18px 0}.tab{flex:1;background:#eef0f3}.tab.active{background:var(--primary);color:#fff}.error{min-height:20px;color:#b91c1c;font-size:13px;margin-top:10px}.hint{font-size:12px;color:var(--muted);margin-top:10px}.top{position:sticky;top:0;z-index:2;height:64px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 14px}.title{flex:1;min-width:0}.title strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.title span{font-size:12px;color:var(--muted)}.content{padding:12px}.contact{width:100%;text-align:left;background:#fff;border:1px solid var(--line);padding:14px;margin-bottom:10px;display:flex;gap:12px;align-items:center}.avatar{width:42px;height:42px;border-radius:50%;background:#111827;color:#fff;display:grid;place-items:center;font-weight:800}.empty{text-align:center;color:var(--muted);padding:42px 18px}.messages{height:calc(100vh - 128px);overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}.bubble{max-width:80%;border:1px solid var(--line);border-radius:16px;padding:10px 12px;background:var(--theirs);word-break:break-word}.bubble.mine{align-self:flex-end;background:var(--mine)}.bubble.theirs{align-self:flex-start}.time{font-size:10px;color:var(--muted);margin-top:5px;text-align:right}.composer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);padding:9px;display:flex;gap:8px}.composer input{flex:1}.composer button{background:var(--primary);color:#fff;min-width:74px}.status{font-size:12px;color:var(--muted);padding:0 14px 8px}.spinner{padding:30px;text-align:center;color:var(--muted)}.badge{display:inline-block;background:#e5f7ea;color:#166534;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800;margin-top:6px}
 </style>
 </head>
 <body>
 <section id="auth" class="screen center">
   <div class="card">
-    <h1>Conversa</h1><p>Mensagens de texto pela internet.</p>
+    <h1>Conversa 5G</h1>
+    <p>Mensagens de texto privadas pela internet.</p>
+    <span class="badge">REDE 5G OBRIGATÓRIA</span>
     <div class="tabs"><button id="loginTab" class="tab active">Entrar</button><button id="registerTab" class="tab">Cadastrar</button></div>
-    <div id="nameWrap" class="hidden"><label>Nome de usuário</label><input id="name" maxlength="40" autocomplete="nickname" /></div>
-    <label>E-mail</label><input id="email" type="email" autocomplete="email" />
-    <label>Senha</label><input id="password" type="password" minlength="6" autocomplete="current-password" />
+    <label>Nome</label><input id="username" maxlength="32" autocomplete="username" autocapitalize="none" />
+    <label>Senha</label><input id="password" type="password" minlength="8" autocomplete="current-password" />
     <button id="authButton" class="primary">Entrar</button>
     <div id="authError" class="error"></div>
+    <div class="hint">Sem e-mail e sem código de verificação. Use uma senha forte: não existe recuperação de senha.</div>
   </div>
 </section>
 
@@ -28,7 +30,7 @@
 </section>
 
 <section id="chat" class="screen hidden">
-  <div class="top"><button id="back" class="ghost">‹</button><div class="title"><strong id="peerName">Contato</strong><span>mensagens de texto</span></div></div>
+  <div class="top"><button id="back" class="ghost">‹</button><div class="title"><strong id="peerName">Contato</strong><span>texto cifrado • 5G</span></div></div>
   <div id="messages" class="messages"></div>
   <div id="chatStatus" class="status"></div>
   <form id="composer" class="composer"><input id="messageInput" maxlength="2000" placeholder="Mensagem" autocomplete="off" /><button type="submit">Enviar</button></form>
@@ -40,92 +42,168 @@ import { createClient } from 'https://esm.sh/@base44/sdk@0.8.40';
 const APP_ID='6a7912a60b626aa52d416931';
 const base44=createClient({appId:APP_ID});
 const $=id=>document.getElementById(id);
-let mode='login', me=null, myProfile=null, peer=null, pollTimer=null, busy=false;
+const encoder=new TextEncoder(), decoder=new TextDecoder();
+let mode='login', me=null, privateKey=null, peer=null, pollTimer=null, busy=false, sharedKeyCache=new Map();
 
 function show(id){['auth','home','chat'].forEach(x=>$(x).classList.toggle('hidden',x!==id));}
 function errText(e){return e?.message || e?.error || 'Não foi possível concluir a operação.';}
 function initial(s){return (s||'?').trim().charAt(0).toUpperCase();}
-function setMode(next){mode=next; $('loginTab').classList.toggle('active',next==='login'); $('registerTab').classList.toggle('active',next==='register'); $('nameWrap').classList.toggle('hidden',next==='login'); $('authButton').textContent=next==='login'?'Entrar':'Criar conta'; $('password').autocomplete=next==='login'?'current-password':'new-password'; $('authError').textContent='';}
-$('loginTab').onclick=()=>setMode('login'); $('registerTab').onclick=()=>setMode('register');
+function normalizeName(s){return s.trim().toLowerCase().replace(/\s+/g,'_');}
+function validName(s){return /^[a-z0-9._-]{2,32}$/.test(s);}
+function bytesToB64(bytes){let bin='';const a=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);for(const b of a)bin+=String.fromCharCode(b);return btoa(bin);}
+function b64ToBytes(s){const bin=atob(s),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a;}
+function randomBytes(n){const a=new Uint8Array(n);crypto.getRandomValues(a);return a;}
 
-async function ensureProfile(preferredName){
-  const profiles=await base44.entities.Profile.filter({user_id:me.id});
-  if(profiles.length){myProfile=profiles[0];return;}
-  const fallback=(me.email||'usuario').split('@')[0].slice(0,40);
-  myProfile=await base44.entities.Profile.create({user_id:me.id,display_name:(preferredName||fallback).trim().slice(0,40)});
+function setMode(next){
+  mode=next;
+  $('loginTab').classList.toggle('active',next==='login');
+  $('registerTab').classList.toggle('active',next==='register');
+  $('authButton').textContent=next==='login'?'Entrar':'Criar conta';
+  $('password').autocomplete=next==='login'?'current-password':'new-password';
+  $('authError').textContent='';
+}
+$('loginTab').onclick=()=>setMode('login');
+$('registerTab').onclick=()=>setMode('register');
+
+async function derivePasswordKey(password,salt){
+  const material=await crypto.subtle.importKey('raw',encoder.encode(password),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }
 
-async function enterApp(preferredName){
-  me=await base44.auth.me();
-  await ensureProfile(preferredName);
-  $('meLabel').textContent=myProfile.display_name;
+async function createAccount(displayName,password){
+  const username=normalizeName(displayName);
+  if(!validName(username))throw new Error('Use de 2 a 32 caracteres: letras, números, ponto, _ ou -.');
+  if(password.length<8)throw new Error('A senha precisa ter pelo menos 8 caracteres.');
+  const existing=await base44.entities.SecureAccount.filter({username});
+  if(existing.length)throw new Error('Esse nome já está em uso.');
+
+  const pair=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveKey']);
+  const publicJwk=await crypto.subtle.exportKey('jwk',pair.publicKey);
+  const privateJwk=await crypto.subtle.exportKey('jwk',pair.privateKey);
+  const salt=randomBytes(16), iv=randomBytes(12);
+  const passwordKey=await derivePasswordKey(password,salt);
+  const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:encoder.encode(username)},passwordKey,encoder.encode(JSON.stringify(privateJwk)));
+
+  const account=await base44.entities.SecureAccount.create({
+    username,
+    display_name:displayName.trim().slice(0,32),
+    public_jwk:JSON.stringify(publicJwk),
+    encrypted_private:bytesToB64(encrypted),
+    salt:bytesToB64(salt),
+    iv:bytesToB64(iv)
+  });
+  return {account,key:pair.privateKey};
+}
+
+async function unlockAccount(name,password){
+  const username=normalizeName(name);
+  if(!validName(username))throw new Error('Nome inválido.');
+  const rows=await base44.entities.SecureAccount.filter({username});
+  if(!rows.length)throw new Error('Conta não encontrada.');
+  rows.sort((a,b)=>new Date(a.created_date)-new Date(b.created_date));
+  const account=rows[0];
+  try{
+    const passwordKey=await derivePasswordKey(password,b64ToBytes(account.salt));
+    const raw=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64ToBytes(account.iv),additionalData:encoder.encode(account.username)},passwordKey,b64ToBytes(account.encrypted_private));
+    const jwk=JSON.parse(decoder.decode(raw));
+    const key=await crypto.subtle.importKey('jwk',jwk,{name:'ECDH',namedCurve:'P-256'},false,['deriveKey']);
+    return {account,key};
+  }catch{
+    throw new Error('Senha incorreta.');
+  }
+}
+
+async function enterApp(account,key){
+  me=account; privateKey=key; sharedKeyCache.clear();
+  $('meLabel').textContent='@'+me.username;
   show('home');
   await loadContacts();
 }
 
 $('authButton').onclick=async()=>{
-  if(busy)return; busy=true; $('authButton').disabled=true; $('authError').textContent='';
-  const email=$('email').value.trim().toLowerCase(), password=$('password').value, name=$('name').value.trim();
+  if(busy)return;busy=true;$('authButton').disabled=true;$('authError').textContent='';
+  const name=$('username').value.trim(),password=$('password').value;
   try{
-    if(!email||!password) throw new Error('Informe e-mail e senha.');
-    if(mode==='register'){
-      if(name.length<2) throw new Error('Escolha um nome de usuário com pelo menos 2 caracteres.');
-      await base44.auth.register({email,password});
-      try{await base44.auth.loginViaEmailPassword(email,password);}catch(e){throw new Error('Conta criada. Se recebeu um código ou link por e-mail, confirme-o e depois toque em Entrar.');}
-      await enterApp(name);
-    }else{
-      await base44.auth.loginViaEmailPassword(email,password);
-      await enterApp();
-    }
+    if(!name||!password)throw new Error('Informe nome e senha.');
+    const result=mode==='register'?await createAccount(name,password):await unlockAccount(name,password);
+    await enterApp(result.account,result.key);
   }catch(e){$('authError').textContent=errText(e);}finally{busy=false;$('authButton').disabled=false;}
 };
 
 async function loadContacts(){
   const box=$('contacts');
   try{
-    const profiles=await base44.entities.Profile.list('display_name',500);
-    const others=profiles.filter(p=>p.user_id!==me.id);
+    const accounts=await base44.entities.SecureAccount.list('username',500);
+    const seen=new Set(),others=[];
+    for(const a of accounts){if(!a?.username||seen.has(a.username))continue;seen.add(a.username);if(a.id!==me.id)others.push(a);}
     box.replaceChildren();
     if(!others.length){const d=document.createElement('div');d.className='empty';d.textContent='Ainda não há outros usuários cadastrados.';box.appendChild(d);return;}
     for(const p of others){
-      const b=document.createElement('button'); b.className='contact';
-      const a=document.createElement('div'); a.className='avatar'; a.textContent=initial(p.display_name);
-      const t=document.createElement('div'); const strong=document.createElement('strong'); strong.textContent=p.display_name; const sub=document.createElement('div'); sub.style.cssText='font-size:12px;color:#6b7280;margin-top:3px'; sub.textContent='Toque para conversar';
-      t.append(strong,sub); b.append(a,t); b.onclick=()=>openChat(p); box.appendChild(b);
+      const b=document.createElement('button');b.className='contact';
+      const a=document.createElement('div');a.className='avatar';a.textContent=initial(p.display_name||p.username);
+      const t=document.createElement('div');const strong=document.createElement('strong');strong.textContent=p.display_name||p.username;const sub=document.createElement('div');sub.style.cssText='font-size:12px;color:#6b7280;margin-top:3px';sub.textContent='@'+p.username;
+      t.append(strong,sub);b.append(a,t);b.onclick=()=>openChat(p);box.appendChild(b);
     }
-  }catch(e){box.innerHTML='';const d=document.createElement('div');d.className='empty';d.textContent='Erro ao carregar usuários: '+errText(e);box.appendChild(d);}
+  }catch(e){box.replaceChildren();const d=document.createElement('div');d.className='empty';d.textContent='Erro ao carregar usuários: '+errText(e);box.appendChild(d);}
+}
+
+async function sharedKeyFor(account){
+  if(sharedKeyCache.has(account.id))return sharedKeyCache.get(account.id);
+  const pub=await crypto.subtle.importKey('jwk',JSON.parse(account.public_jwk),{name:'ECDH',namedCurve:'P-256'},false,[]);
+  const key=await crypto.subtle.deriveKey({name:'ECDH',public:pub},privateKey,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  sharedKeyCache.set(account.id,key);return key;
+}
+
+async function encryptFor(account,text,senderId,recipientId){
+  const key=await sharedKeyFor(account),iv=randomBytes(12);
+  const aad=encoder.encode(senderId+'|'+recipientId);
+  const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:aad},key,encoder.encode(text));
+  return {ciphertext:bytesToB64(ciphertext),iv:bytesToB64(iv)};
+}
+
+async function decryptFrom(account,m){
+  const key=await sharedKeyFor(account),aad=encoder.encode(m.sender_id+'|'+m.recipient_id);
+  const raw=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64ToBytes(m.iv),additionalData:aad},key,b64ToBytes(m.ciphertext));
+  return decoder.decode(raw);
 }
 
 function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
-async function openChat(p){peer=p;$('peerName').textContent=p.display_name;$('messages').replaceChildren();show('chat');await loadMessages(true);stopPolling();pollTimer=setInterval(()=>loadMessages(false),2500);}
+async function openChat(p){peer=p;$('peerName').textContent=p.display_name||p.username;$('messages').replaceChildren();show('chat');await loadMessages(true);stopPolling();pollTimer=setInterval(()=>loadMessages(false),2500);}
 
 async function loadMessages(scroll){
   if(!peer||!me)return;
   try{
-    const all=await base44.entities.Message.list('-created_date',500);
-    const rows=all.filter(m=>(m.created_by_id===me.id&&m.recipient_id===peer.user_id)||(m.created_by_id===peer.user_id&&m.recipient_id===me.id)).sort((a,b)=>new Date(a.created_date)-new Date(b.created_date));
-    const box=$('messages'); const oldLast=box.dataset.last||''; const newLast=rows.length?rows[rows.length-1].id:'';
+    const all=await base44.entities.SecureMessage.list('-created_date',500);
+    const rows=all.filter(m=>(m.sender_id===me.id&&m.recipient_id===peer.id)||(m.sender_id===peer.id&&m.recipient_id===me.id)).sort((a,b)=>new Date(a.created_date)-new Date(b.created_date));
+    const box=$('messages'),oldLast=box.dataset.last||'',newLast=rows.length?rows[rows.length-1].id:'';
     if(oldLast===newLast&&!scroll)return;
-    box.dataset.last=newLast; box.replaceChildren();
+    box.dataset.last=newLast;box.replaceChildren();
     if(!rows.length){const d=document.createElement('div');d.className='empty';d.textContent='Nenhuma mensagem ainda.';box.appendChild(d);}else{
-      for(const m of rows){const mine=m.created_by_id===me.id; const bubble=document.createElement('div');bubble.className='bubble '+(mine?'mine':'theirs');const text=document.createElement('div');text.textContent=m.text;const time=document.createElement('div');time.className='time';try{time.textContent=new Date(m.created_date).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}catch{}bubble.append(text,time);box.appendChild(bubble);}
+      for(const m of rows){
+        let plain;try{plain=await decryptFrom(peer,m);}catch{continue;}
+        const mine=m.sender_id===me.id,bubble=document.createElement('div');bubble.className='bubble '+(mine?'mine':'theirs');
+        const text=document.createElement('div');text.textContent=plain;const time=document.createElement('div');time.className='time';
+        try{time.textContent=new Date(m.created_date).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}catch{}
+        bubble.append(text,time);box.appendChild(bubble);
+      }
     }
-    $('chatStatus').textContent=''; if(scroll||newLast!==oldLast)box.scrollTop=box.scrollHeight;
-  }catch(e){$('chatStatus').textContent='Sem conexão ou erro ao atualizar: '+errText(e);}
+    $('chatStatus').textContent='';if(scroll||newLast!==oldLast)box.scrollTop=box.scrollHeight;
+  }catch(e){$('chatStatus').textContent='Erro ao atualizar: '+errText(e);}
 }
 
 $('composer').onsubmit=async e=>{
-  e.preventDefault(); const input=$('messageInput'), text=input.value.trim(); if(!text||!peer)return;
+  e.preventDefault();const input=$('messageInput'),text=input.value.trim();if(!text||!peer||!me)return;
   input.disabled=true;
-  try{await base44.entities.Message.create({recipient_id:peer.user_id,text});input.value='';await loadMessages(true);}catch(err){$('chatStatus').textContent='Não foi possível enviar: '+errText(err);}finally{input.disabled=false;input.focus();}
+  try{
+    const encrypted=await encryptFor(peer,text,me.id,peer.id);
+    await base44.entities.SecureMessage.create({sender_id:me.id,recipient_id:peer.id,ciphertext:encrypted.ciphertext,iv:encrypted.iv});
+    input.value='';await loadMessages(true);
+  }catch(err){$('chatStatus').textContent='Não foi possível enviar: '+errText(err);}finally{input.disabled=false;input.focus();}
 };
 
 $('back').onclick=()=>{stopPolling();peer=null;show('home');loadContacts();};
-$('logout').onclick=async()=>{stopPolling();try{await base44.auth.logout();}catch{}me=null;myProfile=null;peer=null;$('password').value='';show('auth');};
-
+$('logout').onclick=()=>{stopPolling();me=null;privateKey=null;peer=null;sharedKeyCache.clear();$('password').value='';show('auth');};
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPolling();else if(peer){loadMessages(true);pollTimer=setInterval(()=>loadMessages(false),2500);}});
-
-(async()=>{try{if(await base44.auth.isAuthenticated())await enterApp();}catch{show('auth');}})();
 </script>
 </body>
 </html>
