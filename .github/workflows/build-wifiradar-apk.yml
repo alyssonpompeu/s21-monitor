@@ -1,0 +1,58 @@
+name: Build Wi-Fi Radar APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'wifiradar/**'
+      - 'settings.gradle'
+      - '.github/workflows/build-wifiradar-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build Wi-Fi Radar APK
+        id: build
+        shell: bash
+        run: |
+          set +e
+          gradle :wifiradar:assembleDebug --stacktrace 2>&1 | tee wifiradar-build.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Prepare APK
+        if: steps.build.outputs.exit_code == '0'
+        run: cp wifiradar/build/outputs/apk/debug/wifiradar-debug.apk WiFi-Hunter-Radar.apk
+      - uses: actions/upload-artifact@v4
+        if: steps.build.outputs.exit_code == '0'
+        with:
+          name: WiFi-Hunter-Radar-APK
+          path: WiFi-Hunter-Radar.apk
+      - name: Record build result
+        if: always()
+        shell: bash
+        run: |
+          printf 'run_id=%s\nhead_sha=%s\nexit_code=%s\n--- build log tail ---\n' "${{ github.run_id }}" "${{ github.sha }}" "${{ steps.build.outputs.exit_code }}" > wifiradar-last-build.txt
+          tail -n 180 wifiradar-build.log >> wifiradar-last-build.txt 2>/dev/null || true
+          git pull --rebase origin main || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wifiradar-last-build.txt
+          git commit -m "Record Wi-Fi Radar APK build [skip ci]" || true
+          git push || true
+      - name: Fail if build failed
+        if: steps.build.outputs.exit_code != '0'
+        run: exit 1
