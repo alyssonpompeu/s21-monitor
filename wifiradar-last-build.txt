@@ -1,5 +1,5 @@
-run_id=31387308328
-head_sha=03526d129c8612c4f83f22b8956adff0cc28532d
+run_id=31427666980
+head_sha=827bd71231befa1e53c6ae97489710c10646422f
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
@@ -7,8 +7,8 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :wifiradar:preDebugBuild UP-TO-DATE
 > Task :wifiradar:mergeDebugNativeDebugMetadata NO-SOURCE
 > Task :wifiradar:javaPreCompileDebug
-> Task :wifiradar:checkDebugAarMetadata
 > Task :wifiradar:generateDebugResValues
+> Task :wifiradar:checkDebugAarMetadata
 > Task :wifiradar:mapDebugSourceSetPaths
 > Task :wifiradar:generateDebugResources
 > Task :wifiradar:mergeDebugResources
@@ -19,19 +19,19 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :wifiradar:processDebugMainManifest
 > Task :wifiradar:processDebugManifest
 > Task :wifiradar:mergeDebugShaders
-> Task :wifiradar:processDebugManifestForPackage
 > Task :wifiradar:compileDebugShaders NO-SOURCE
 > Task :wifiradar:generateDebugAssets UP-TO-DATE
 > Task :wifiradar:mergeDebugAssets
 > Task :wifiradar:compressDebugAssets
 > Task :wifiradar:desugarDebugFileDependencies
 > Task :wifiradar:processDebugJavaRes NO-SOURCE
-> Task :wifiradar:checkDebugDuplicateClasses
+> Task :wifiradar:processDebugManifestForPackage
 > Task :wifiradar:mergeDebugJniLibFolders
-> Task :wifiradar:mergeExtDexDebug
-> Task :wifiradar:mergeLibDexDebug
+> Task :wifiradar:checkDebugDuplicateClasses
 > Task :wifiradar:mergeDebugNativeLibs NO-SOURCE
+> Task :wifiradar:mergeExtDexDebug
 > Task :wifiradar:stripDebugDebugSymbols NO-SOURCE
+> Task :wifiradar:mergeLibDexDebug
 > Task :wifiradar:mergeDebugJavaResource
 > Task :wifiradar:processDebugResources
 > Task :wifiradar:validateSigningDebug
@@ -48,7 +48,15 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :wifiradar:packageDebug
 > Task :wifiradar:createDebugApkListingFileRedirect
 > Task :wifiradar:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786364254407.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/radarbuild-1786392611378.json
 
-BUILD SUCCESSFUL in 10s
+[Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 17s
 32 actionable tasks: 32 executed
