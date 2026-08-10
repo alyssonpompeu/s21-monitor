@@ -1,0 +1,39 @@
+TÍTULO
+Wi‑Fi Spectrogram Pro
+
+DESCRIÇÃO CURTA
+Visualize redes Wi‑Fi próximas em espectro e waterfall por frequência e sinal.
+
+DESCRIÇÃO COMPLETA
+Wi‑Fi Spectrogram Pro transforma as informações de redes Wi‑Fi disponibilizadas pelo Android em uma visualização técnica de espectro e waterfall temporal.
+
+Recursos principais:
+• espectrograma/waterfall com tempo e frequência;
+• bandas de 2,4 GHz, 5 GHz e 6 GHz;
+• intensidade do sinal em dBm;
+• leitura rápida do RSSI da rede conectada;
+• varreduras periódicas das redes próximas quando o Android permite;
+• indicação de frequência e largura de canal;
+• lista de pontos de acesso visíveis;
+• funcionamento local, sem conta e sem envio de dados para servidores.
+
+O aplicativo usa as APIs Wi‑Fi do Android. Em determinadas versões do sistema, o Android exige permissão de Localização precisa para retornar os resultados de varredura Wi‑Fi. O aplicativo utiliza essa permissão somente para possibilitar a leitura das redes próximas e não lê coordenadas GPS para rastrear o usuário.
+
+Importante: o aplicativo não é um analisador RF/SDR e não recebe amostras I/Q brutas do chipset Wi‑Fi. O espectrograma é construído a partir de informações como frequência, largura de canal e RSSI fornecidas pelo Android. A frequência de novas varreduras de redes próximas também está sujeita aos limites do próprio Android.
+
+Sem anúncios. Sem login. Sem assinatura.
+
+CATEGORIA SUGERIDA
+Ferramentas
+
+PREÇO BRASIL
+R$ 0,99
+
+APPS ACCESS
+Todas as funções são acessíveis sem login.
+
+ANÚNCIOS
+Não contém anúncios.
+
+PÚBLICO-ALVO SUGERIDO
+13 anos ou mais; não destinado especificamente a crianças.
