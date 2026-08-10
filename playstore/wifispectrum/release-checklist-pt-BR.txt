@@ -1,0 +1,24 @@
+CHECKLIST DE PUBLICAÇÃO
+
+[ ] Criar/confirmar conta Google Play Console
+[ ] Confirmar nome público do desenvolvedor e e-mail de suporte
+[ ] Configurar perfil de pagamentos
+[ ] Criar novo app pago no Play Console
+[ ] Definir preço Brasil: R$ 0,99
+[ ] Fazer upload do AAB assinado
+[ ] Ativar Play App Signing
+[ ] Inserir política de privacidade pública
+[ ] Preencher Segurança dos dados
+[ ] Preencher Classificação indicativa (IARC)
+[ ] Declarar que não contém anúncios
+[ ] Definir categoria Ferramentas
+[ ] Adicionar ícone da loja 512x512
+[ ] Adicionar feature graphic 1024x500
+[ ] Adicionar pelo menos 2 screenshots de telefone
+[ ] Definir países/regiões de distribuição
+[ ] Se a conta pessoal for nova (após 13/11/2023): executar teste fechado com 12 testadores por 14 dias contínuos e solicitar acesso à produção
+[ ] Revisar preço local e impostos no Play Console
+[ ] Enviar para revisão/produção
+
+IMPORTANTE
+Nunca publique a upload key/keystore, senhas ou chaves privadas no repositório GitHub.
