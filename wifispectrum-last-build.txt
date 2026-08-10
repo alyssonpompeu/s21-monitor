@@ -1,14 +1,14 @@
-run_id=31387422832
-head_sha=8a2b26165a25a3e0eeb2c3910252ca05681e51ef
+run_id=31395708612
+head_sha=93e07df802a7e75834e9b62d1b0004620ae82f0d
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :wifispectrum:preBuild UP-TO-DATE
 > Task :wifispectrum:preDebugBuild UP-TO-DATE
 > Task :wifispectrum:mergeDebugNativeDebugMetadata NO-SOURCE
-> Task :wifispectrum:generateDebugResValues
-> Task :wifispectrum:javaPreCompileDebug
 > Task :wifispectrum:checkDebugAarMetadata
+> Task :wifispectrum:javaPreCompileDebug
+> Task :wifispectrum:generateDebugResValues
 > Task :wifispectrum:mapDebugSourceSetPaths
 > Task :wifispectrum:generateDebugResources
 > Task :wifispectrum:mergeDebugResources
@@ -28,11 +28,11 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :wifispectrum:checkDebugDuplicateClasses
 > Task :wifispectrum:mergeDebugJniLibFolders
 > Task :wifispectrum:processDebugManifestForPackage
-> Task :wifispectrum:mergeExtDexDebug
-> Task :wifispectrum:mergeLibDexDebug
 > Task :wifispectrum:mergeDebugJavaResource
 > Task :wifispectrum:mergeDebugNativeLibs NO-SOURCE
 > Task :wifispectrum:stripDebugDebugSymbols NO-SOURCE
+> Task :wifispectrum:mergeExtDexDebug
+> Task :wifispectrum:mergeLibDexDebug
 > Task :wifispectrum:processDebugResources
 > Task :wifispectrum:validateSigningDebug
 
@@ -48,7 +48,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :wifispectrum:packageDebug
 > Task :wifispectrum:createDebugApkListingFileRedirect
 > Task :wifispectrum:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786364362447.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786370377885.json
 
-BUILD SUCCESSFUL in 20s
+BUILD SUCCESSFUL in 16s
 32 actionable tasks: 32 executed
