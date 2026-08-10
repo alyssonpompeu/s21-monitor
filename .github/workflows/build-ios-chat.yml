@@ -1,0 +1,78 @@
+name: Build iOS 5G Chat
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/build-ios-chat.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          cd ios
+          xcodegen generate
+
+      - name: Build and record result
+        run: |
+          set +e
+          {
+            echo '=== Simulator build ==='
+            xcodebuild -project ios/Conversa5G.xcodeproj -scheme Conversa5G -configuration Release -sdk iphonesimulator -derivedDataPath ios/build-sim CODE_SIGNING_ALLOWED=NO build
+            sim_code=$?
+            echo "simulator_exit=${sim_code}"
+
+            echo '=== Unsigned device build ==='
+            xcodebuild -project ios/Conversa5G.xcodeproj -scheme Conversa5G -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath ios/build-device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+            dev_code=$?
+            echo "device_exit=${dev_code}"
+          } > ios-build.log 2>&1
+
+          code=0
+          if [ "$sim_code" -ne 0 ] || [ "$dev_code" -ne 0 ]; then code=1; fi
+
+          git pull --rebase origin main || true
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "exit_code=${code}"
+            echo "--- build log tail ---"
+            tail -n 100 ios-build.log
+          } > ios-last-build.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ios-last-build.txt
+          git commit -m "Record iOS 5G chat build [skip ci]" || true
+          git push || true
+          exit $code
+
+      - name: Package unsigned IPA
+        run: |
+          rm -rf ios/Payload
+          mkdir -p ios/Payload
+          cp -R ios/build-device/Build/Products/Release-iphoneos/Conversa5G.app ios/Payload/
+          cd ios
+          zip -qry Conversa5G-unsigned.ipa Payload
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Conversa5G-iPhone-Unsigned
+          path: ios/Conversa5G-unsigned.ipa
+
+      - name: Upload simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Conversa5G-iOS-Simulator
+          path: ios/build-sim/Build/Products/Release-iphonesimulator/Conversa5G.app
