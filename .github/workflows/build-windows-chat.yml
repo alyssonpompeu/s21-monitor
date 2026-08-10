@@ -44,31 +44,17 @@ jobs:
           git commit -m "Record Windows chat EXE build [skip ci]" 2>$null
           git push 2>$null
 
-      - name: Prepare portable package
+      - name: Prepare single EXE
         if: steps.build.outputs.exit_code == '0'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item windows/ConversaDesktop/bin/Release/net8.0-windows10.0.19041.0/win-x64/publish/ConversaDesktop.exe dist/Conversa-Desktop.exe
-          Copy-Item windows/ConversaDesktop/bin/Release/net8.0-windows10.0.19041.0/win-x64/publish/Assets dist/Assets -Recurse
-          @"
-          Conversa Desktop
-          ================
-          Execute Conversa-Desktop.exe.
-          Requer Windows 10/11 x64 e Microsoft Edge WebView2 Runtime.
-          A pasta Assets deve permanecer ao lado do EXE.
-          "@ | Out-File dist/LEIA-ME.txt -Encoding utf8
+          Copy-Item windows/ConversaDesktop/bin/Release/net8.0-windows10.0.19041.0/win-x64/publish/ConversaDesktop.exe Conversa-Desktop.exe
 
       - uses: actions/upload-artifact@v4
         if: steps.build.outputs.exit_code == '0'
         with:
           name: Conversa-Desktop-Windows
-          path: dist/**
-
-      - name: Publish Windows release
-        if: steps.build.outputs.exit_code == '0'
-        shell: pwsh
-        run: Compress-Archive -Path dist/* -DestinationPath Conversa-Desktop-Windows.zip -Force
+          path: Conversa-Desktop.exe
 
       - uses: softprops/action-gh-release@v2
         if: steps.build.outputs.exit_code == '0'
@@ -76,7 +62,7 @@ jobs:
           tag_name: desktop-chat-latest
           name: Conversa Desktop - Windows
           body: Cliente Windows de mensagens privadas com interface inspirada em TeamSpeak.
-          files: Conversa-Desktop-Windows.zip
+          files: Conversa-Desktop.exe
           make_latest: false
           overwrite_files: true
 
