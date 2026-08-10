@@ -1,4 +1,4 @@
-run_id=31343109346
+run_id=31343838722
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
@@ -19,20 +19,20 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :chat:processDebugManifest
 > Task :chat:mergeDebugShaders
 > Task :chat:compileDebugShaders NO-SOURCE
-> Task :chat:processDebugManifestForPackage
 > Task :chat:generateDebugAssets UP-TO-DATE
 > Task :chat:mergeDebugAssets
 > Task :chat:desugarDebugFileDependencies
+> Task :chat:processDebugManifestForPackage
 > Task :chat:compressDebugAssets
 > Task :chat:processDebugJavaRes NO-SOURCE
 > Task :chat:checkDebugDuplicateClasses
 > Task :chat:mergeDebugJniLibFolders
 > Task :chat:mergeExtDexDebug
-> Task :chat:mergeLibDexDebug
 > Task :chat:mergeDebugNativeLibs NO-SOURCE
 > Task :chat:stripDebugDebugSymbols NO-SOURCE
-> Task :chat:processDebugResources
+> Task :chat:mergeLibDexDebug
 > Task :chat:mergeDebugJavaResource
+> Task :chat:processDebugResources
 > Task :chat:validateSigningDebug
 
 > Task :chat:compileDebugJavaWithJavac
@@ -47,7 +47,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :chat:packageDebug
 > Task :chat:createDebugApkListingFileRedirect
 > Task :chat:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1786319786452.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1786320800738.json
 
-BUILD SUCCESSFUL in 17s
+BUILD SUCCESSFUL in 16s
 32 actionable tasks: 32 executed
