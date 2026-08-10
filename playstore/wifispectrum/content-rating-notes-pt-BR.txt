@@ -1,0 +1,19 @@
+CLASSIFICAÇÃO INDICATIVA — ORIENTAÇÃO DE PREENCHIMENTO
+
+O app é uma ferramenta técnica de análise visual de sinais Wi‑Fi.
+
+Conteúdo sugerido para o questionário:
+- Violência: não
+- Conteúdo sexual/nudez: não
+- Linguagem imprópria: não
+- Drogas/álcool/tabaco: não
+- Jogos de azar: não
+- Compras aleatórias/loot boxes: não
+- Interação entre usuários: não
+- Compartilhamento de localização entre usuários: não
+- Conteúdo gerado pelo usuário: não
+- Navegador/web irrestrito: não
+
+Público-alvo sugerido: 13 anos ou mais; o app não é projetado especificamente para crianças.
+
+A classificação final é determinada pelo próprio questionário IARC no Play Console.
