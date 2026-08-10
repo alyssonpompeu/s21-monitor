@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId 'com.alyssonpompeu.wifispectrogrampro'
-        minSdk 26
+        minSdk 28
         targetSdk 36
         versionCode 20000
         versionName '2.0.0'
