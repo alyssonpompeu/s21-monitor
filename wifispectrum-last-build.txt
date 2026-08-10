@@ -1,14 +1,14 @@
-run_id=31395708612
-head_sha=93e07df802a7e75834e9b62d1b0004620ae82f0d
+run_id=31395807158
+head_sha=db8ed8cb42a7a5c5fa97a369926b46479f74f410
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :wifispectrum:preBuild UP-TO-DATE
 > Task :wifispectrum:preDebugBuild UP-TO-DATE
 > Task :wifispectrum:mergeDebugNativeDebugMetadata NO-SOURCE
-> Task :wifispectrum:checkDebugAarMetadata
 > Task :wifispectrum:javaPreCompileDebug
 > Task :wifispectrum:generateDebugResValues
+> Task :wifispectrum:checkDebugAarMetadata
 > Task :wifispectrum:mapDebugSourceSetPaths
 > Task :wifispectrum:generateDebugResources
 > Task :wifispectrum:mergeDebugResources
@@ -19,6 +19,7 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :wifispectrum:processDebugMainManifest
 > Task :wifispectrum:processDebugManifest
 > Task :wifispectrum:mergeDebugShaders
+> Task :wifispectrum:processDebugManifestForPackage
 > Task :wifispectrum:compileDebugShaders NO-SOURCE
 > Task :wifispectrum:generateDebugAssets UP-TO-DATE
 > Task :wifispectrum:mergeDebugAssets
@@ -27,12 +28,11 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :wifispectrum:processDebugJavaRes NO-SOURCE
 > Task :wifispectrum:checkDebugDuplicateClasses
 > Task :wifispectrum:mergeDebugJniLibFolders
-> Task :wifispectrum:processDebugManifestForPackage
-> Task :wifispectrum:mergeDebugJavaResource
+> Task :wifispectrum:mergeLibDexDebug
+> Task :wifispectrum:mergeExtDexDebug
 > Task :wifispectrum:mergeDebugNativeLibs NO-SOURCE
 > Task :wifispectrum:stripDebugDebugSymbols NO-SOURCE
-> Task :wifispectrum:mergeExtDexDebug
-> Task :wifispectrum:mergeLibDexDebug
+> Task :wifispectrum:mergeDebugJavaResource
 > Task :wifispectrum:processDebugResources
 > Task :wifispectrum:validateSigningDebug
 
@@ -48,7 +48,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :wifispectrum:packageDebug
 > Task :wifispectrum:createDebugApkListingFileRedirect
 > Task :wifispectrum:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786370377885.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786370454635.json
 
-BUILD SUCCESSFUL in 16s
+BUILD SUCCESSFUL in 18s
 32 actionable tasks: 32 executed
