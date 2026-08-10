@@ -1,5 +1,5 @@
-run_id=31349517624
-head_sha=8de84c9c3ebdf0ccdf876530e0368b41357023d7
+run_id=31385079875
+head_sha=318b7e0c8c2b52ca826662dfc94822f030a3b5cb
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
@@ -15,8 +15,8 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :gpuclock:mergeDebugResources
 > Task :gpuclock:createDebugCompatibleScreenManifests
 > Task :gpuclock:extractDeepLinksDebug
-> Task :gpuclock:parseDebugLocalResources
 > Task :gpuclock:processDebugMainManifest
+> Task :gpuclock:parseDebugLocalResources
 > Task :gpuclock:processDebugManifest
 > Task :gpuclock:mergeDebugShaders
 > Task :gpuclock:compileDebugShaders NO-SOURCE
@@ -33,9 +33,9 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :gpuclock:checkDebugDuplicateClasses
 > Task :gpuclock:mergeDebugJniLibFolders
 > Task :gpuclock:mergeExtDexDebug
-> Task :gpuclock:mergeLibDexDebug
 > Task :gpuclock:mergeDebugNativeLibs NO-SOURCE
 > Task :gpuclock:stripDebugDebugSymbols NO-SOURCE
+> Task :gpuclock:mergeLibDexDebug
 > Task :gpuclock:mergeDebugJavaResource
 > Task :gpuclock:mergeProjectDexDebug
 > Task :gpuclock:validateSigningDebug
@@ -44,7 +44,7 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :gpuclock:packageDebug
 > Task :gpuclock:createDebugApkListingFileRedirect
 > Task :gpuclock:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786328438273.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786362485546.json
 
-BUILD SUCCESSFUL in 11s
+BUILD SUCCESSFUL in 17s
 32 actionable tasks: 32 executed
