@@ -1,12 +1,12 @@
-run_id=31349433238
+run_id=31387308245
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :chat:preBuild UP-TO-DATE
 > Task :chat:preDebugBuild UP-TO-DATE
 > Task :chat:mergeDebugNativeDebugMetadata NO-SOURCE
-> Task :chat:javaPreCompileDebug
 > Task :chat:checkDebugAarMetadata
+> Task :chat:javaPreCompileDebug
 > Task :chat:generateDebugResValues
 > Task :chat:mapDebugSourceSetPaths
 > Task :chat:generateDebugResources
@@ -21,17 +21,17 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :chat:compileDebugShaders NO-SOURCE
 > Task :chat:generateDebugAssets UP-TO-DATE
 > Task :chat:mergeDebugAssets
+> Task :chat:processDebugManifestForPackage
 > Task :chat:compressDebugAssets
 > Task :chat:desugarDebugFileDependencies
 > Task :chat:processDebugJavaRes NO-SOURCE
-> Task :chat:processDebugManifestForPackage
 > Task :chat:checkDebugDuplicateClasses
+> Task :chat:mergeDebugJniLibFolders
 > Task :chat:mergeExtDexDebug
 > Task :chat:mergeLibDexDebug
-> Task :chat:mergeDebugJavaResource
-> Task :chat:mergeDebugJniLibFolders
 > Task :chat:mergeDebugNativeLibs NO-SOURCE
 > Task :chat:stripDebugDebugSymbols NO-SOURCE
+> Task :chat:mergeDebugJavaResource
 > Task :chat:processDebugResources
 > Task :chat:validateSigningDebug
 
@@ -47,7 +47,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :chat:packageDebug
 > Task :chat:createDebugApkListingFileRedirect
 > Task :chat:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1786328332247.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1786364254571.json
 
-BUILD SUCCESSFUL in 17s
+BUILD SUCCESSFUL in 15s
 32 actionable tasks: 32 executed
