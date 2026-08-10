@@ -1,13 +1,13 @@
-run_id=31348115730
-head_sha=b55afd49fee251dc46ecd543885f3798be447977
+run_id=31348780056
+head_sha=368e4432ef2190a9bde6da857462562fed971c69
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :gpuclock:preBuild UP-TO-DATE
 > Task :gpuclock:preDebugBuild UP-TO-DATE
 > Task :gpuclock:mergeDebugNativeDebugMetadata NO-SOURCE
-> Task :gpuclock:javaPreCompileDebug
 > Task :gpuclock:checkDebugAarMetadata
+> Task :gpuclock:javaPreCompileDebug
 > Task :gpuclock:generateDebugResValues
 > Task :gpuclock:mapDebugSourceSetPaths
 > Task :gpuclock:generateDebugResources
@@ -19,32 +19,32 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :gpuclock:processDebugMainManifest
 > Task :gpuclock:processDebugManifest
 > Task :gpuclock:mergeDebugShaders
-> Task :gpuclock:processDebugManifestForPackage
 > Task :gpuclock:compileDebugShaders NO-SOURCE
 > Task :gpuclock:generateDebugAssets UP-TO-DATE
 > Task :gpuclock:mergeDebugAssets
 > Task :gpuclock:compressDebugAssets
-> Task :gpuclock:processDebugResources
 > Task :gpuclock:desugarDebugFileDependencies
-> Task :gpuclock:compileDebugJavaWithJavac
-> Task :gpuclock:dexBuilderDebug
 > Task :gpuclock:processDebugJavaRes NO-SOURCE
-> Task :gpuclock:mergeDebugGlobalSynthetics
+> Task :gpuclock:processDebugManifestForPackage
 > Task :gpuclock:checkDebugDuplicateClasses
-> Task :gpuclock:mergeDebugJniLibFolders
+> Task :gpuclock:mergeDebugJavaResource
 > Task :gpuclock:mergeExtDexDebug
+> Task :gpuclock:mergeLibDexDebug
+> Task :gpuclock:mergeDebugJniLibFolders
 > Task :gpuclock:mergeDebugNativeLibs NO-SOURCE
 > Task :gpuclock:stripDebugDebugSymbols NO-SOURCE
-> Task :gpuclock:mergeLibDexDebug
-> Task :gpuclock:mergeDebugJavaResource
-> Task :gpuclock:mergeProjectDexDebug
+> Task :gpuclock:processDebugResources
 > Task :gpuclock:validateSigningDebug
+> Task :gpuclock:compileDebugJavaWithJavac
+> Task :gpuclock:dexBuilderDebug
+> Task :gpuclock:mergeDebugGlobalSynthetics
 > Task :gpuclock:writeDebugAppMetadata
 > Task :gpuclock:writeDebugSigningConfigVersions
+> Task :gpuclock:mergeProjectDexDebug
 > Task :gpuclock:packageDebug
 > Task :gpuclock:createDebugApkListingFileRedirect
 > Task :gpuclock:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786326594451.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786327484937.json
 
-BUILD SUCCESSFUL in 16s
+BUILD SUCCESSFUL in 18s
 32 actionable tasks: 32 executed
