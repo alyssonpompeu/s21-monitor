@@ -2,8 +2,8 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :flashlight:preBuild UP-TO-DATE
 > Task :flashlight:preDebugBuild UP-TO-DATE
 > Task :flashlight:mergeDebugNativeDebugMetadata NO-SOURCE
-> Task :flashlight:checkDebugAarMetadata
 > Task :flashlight:javaPreCompileDebug
+> Task :flashlight:checkDebugAarMetadata
 > Task :flashlight:generateDebugResValues
 > Task :flashlight:mapDebugSourceSetPaths
 > Task :flashlight:generateDebugResources
@@ -25,10 +25,10 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :flashlight:checkDebugDuplicateClasses
 > Task :flashlight:mergeDebugJavaResource
 > Task :flashlight:mergeDebugJniLibFolders
-> Task :flashlight:mergeDebugNativeLibs NO-SOURCE
-> Task :flashlight:stripDebugDebugSymbols NO-SOURCE
 > Task :flashlight:mergeExtDexDebug
 > Task :flashlight:mergeLibDexDebug
+> Task :flashlight:mergeDebugNativeLibs NO-SOURCE
+> Task :flashlight:stripDebugDebugSymbols NO-SOURCE
 > Task :flashlight:processDebugResources
 > Task :flashlight:validateSigningDebug
 > Task :flashlight:compileDebugJavaWithJavac
@@ -40,7 +40,7 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :flashlight:packageDebug
 > Task :flashlight:createDebugApkListingFileRedirect
 > Task :flashlight:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/flashlight_build-1786318843511.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/flashlight_build-1786325744701.json
 
-BUILD SUCCESSFUL in 17s
+BUILD SUCCESSFUL in 18s
 32 actionable tasks: 32 executed
