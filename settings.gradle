@@ -16,3 +16,4 @@ rootProject.name = "S21CpuGpuMonitor"
 include ':app'
 include ':flashlight'
 include ':chat'
+include ':gpuclock'
