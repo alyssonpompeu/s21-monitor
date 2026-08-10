@@ -1,0 +1,54 @@
+run_id=31348780056
+head_sha=368e4432ef2190a9bde6da857462562fed971c69
+exit_code=0
+--- build log tail ---
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :hdrboost:preBuild UP-TO-DATE
+> Task :hdrboost:preDebugBuild UP-TO-DATE
+> Task :hdrboost:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :hdrboost:javaPreCompileDebug
+> Task :hdrboost:checkDebugAarMetadata
+> Task :hdrboost:generateDebugResValues
+> Task :hdrboost:mapDebugSourceSetPaths
+> Task :hdrboost:generateDebugResources
+> Task :hdrboost:packageDebugResources
+> Task :hdrboost:mergeDebugResources
+> Task :hdrboost:createDebugCompatibleScreenManifests
+> Task :hdrboost:extractDeepLinksDebug
+> Task :hdrboost:parseDebugLocalResources
+> Task :hdrboost:processDebugMainManifest
+> Task :hdrboost:processDebugManifest
+> Task :hdrboost:mergeDebugShaders
+> Task :hdrboost:compileDebugShaders NO-SOURCE
+> Task :hdrboost:generateDebugAssets UP-TO-DATE
+> Task :hdrboost:mergeDebugAssets
+> Task :hdrboost:processDebugManifestForPackage
+> Task :hdrboost:compressDebugAssets
+> Task :hdrboost:desugarDebugFileDependencies
+> Task :hdrboost:processDebugJavaRes NO-SOURCE
+> Task :hdrboost:checkDebugDuplicateClasses
+> Task :hdrboost:mergeDebugJniLibFolders
+> Task :hdrboost:mergeExtDexDebug
+> Task :hdrboost:mergeDebugNativeLibs NO-SOURCE
+> Task :hdrboost:mergeLibDexDebug
+> Task :hdrboost:stripDebugDebugSymbols NO-SOURCE
+> Task :hdrboost:mergeDebugJavaResource
+> Task :hdrboost:processDebugResources
+> Task :hdrboost:validateSigningDebug
+
+> Task :hdrboost:compileDebugJavaWithJavac
+Note: /home/runner/work/s21-monitor/s21-monitor/hdrboost/src/main/java/com/alysson/hdrboost/HdrTileService.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :hdrboost:dexBuilderDebug
+> Task :hdrboost:mergeDebugGlobalSynthetics
+> Task :hdrboost:writeDebugAppMetadata
+> Task :hdrboost:writeDebugSigningConfigVersions
+> Task :hdrboost:mergeProjectDexDebug
+> Task :hdrboost:packageDebug
+> Task :hdrboost:createDebugApkListingFileRedirect
+> Task :hdrboost:assembleDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/hdrbuild-1786327488361.json
+
+BUILD SUCCESSFUL in 11s
+32 actionable tasks: 32 executed
