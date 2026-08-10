@@ -57,11 +57,14 @@ public class MainActivity extends Activity implements SensorEventListener {
     private Spinner targetSpinner;
     private RadarView radar;
     private SpectrumView spectrum;
+    private DistanceMeterView distanceMeter;
     private Button huntButton;
 
     private final List<Target> targets = new ArrayList<>();
     private List<ScanResult> lastResults = new ArrayList<>();
     private String selectedBssid;
+    private String distanceBssid;
+    private double smoothedDistanceMeters = Double.NaN;
     private boolean hunting = false;
     private boolean receiverRegistered = false;
     private float heading = 0f;
@@ -135,7 +138,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         TextView title = text("Wi‑Fi Hunter Radar", 27, Color.WHITE);
         title.setGravity(Gravity.CENTER_HORIZONTAL);
         root.addView(title, match());
-        TextView sub = text("Radar por RSSI + bússola • espectro 2,4 / 5 / 6 GHz", 12, Color.rgb(101, 206, 255));
+        TextView sub = text("Radar por RSSI + bússola • distância aproximada • espectro 2,4 / 5 / 6 GHz", 12, Color.rgb(101, 206, 255));
         sub.setGravity(Gravity.CENTER_HORIZONTAL);
         sub.setPadding(0, dp(3), 0, dp(12));
         root.addView(sub, match());
@@ -157,7 +160,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         targetSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                 if (pos >= 0 && pos < targets.size()) {
-                    selectedBssid = targets.get(pos).bssid;
+                    String nextBssid = targets.get(pos).bssid;
+                    if (selectedBssid == null || !selectedBssid.equalsIgnoreCase(nextBssid)) {
+                        resetDistanceSmoothing(nextBssid);
+                    }
+                    selectedBssid = nextBssid;
                     radar.clearSamples();
                     radar.setContacts(buildRadarContacts(), selectedBssid);
                     spectrum.setData(lastResults, selectedBssid);
@@ -171,9 +178,12 @@ public class MainActivity extends Activity implements SensorEventListener {
         targetInfo = text("Aguardando redes…", 13, Color.rgb(205, 220, 230));
         root.addView(targetInfo, matchMargin(0, 0, 0, 7));
 
+        distanceMeter = new DistanceMeterView(this);
+        root.addView(distanceMeter, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(170)));
+
         huntButton = button("INICIAR RADAR 360°");
         huntButton.setOnClickListener(v -> toggleHunt());
-        root.addView(huntButton, matchMargin(0, 0, 0, 8));
+        root.addView(huntButton, matchMargin(0, 8, 0, 8));
 
         Button clear = button("LIMPAR MAPA DIRECIONAL");
         clear.setOnClickListener(v -> { radar.clearSamples(); updateDirectionText(); });
@@ -193,7 +203,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         networksInfo.setPadding(dp(6), dp(10), dp(6), dp(10));
         root.addView(networksInfo, match());
 
-        TextView note = text("Agora a rede conectada aparece mesmo quando o Android bloqueia/limita um novo scan. Os contatos no quadro do radar mostram SSID + dBm; a direção só é calculada depois da varredura 360°, porque RSSI sozinho não fornece ângulo real de chegada.", 12, Color.rgb(255, 210, 118));
+        TextView note = text("O nome da rede e a distância em metros são mostrados para o alvo selecionado. A distância é uma ESTIMATIVA por RSSI + frequência, suavizada quando a rede está conectada; paredes, móveis, potência do roteador, antenas e reflexos podem alterar bastante o valor real. A direção continua sendo calculada somente depois da varredura 360°, porque RSSI sozinho não fornece o ângulo real de chegada.", 12, Color.rgb(255, 210, 118));
         note.setPadding(dp(10), dp(12), dp(10), dp(12));
         note.setBackgroundColor(Color.rgb(43, 34, 18));
         root.addView(note, matchMargin(0, 8, 0, 0));
@@ -264,7 +274,13 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private boolean isLocationEnabled() {
         LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
-        return lm != null && lm.isLocationEnabled();
+        if (lm == null) return false;
+        if (Build.VERSION.SDK_INT >= 28) return lm.isLocationEnabled();
+        try {
+            return Settings.Secure.getInt(getContentResolver(), Settings.Secure.LOCATION_MODE) != Settings.Secure.LOCATION_MODE_OFF;
+        } catch (Settings.SettingNotFoundException e) {
+            return false;
+        }
     }
 
     private void refreshStatus() {
@@ -392,6 +408,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         else if (!targets.isEmpty()) targetSpinner.setSelection(0);
         else {
             selectedBssid = null;
+            resetDistanceSmoothing(null);
             targetInfo.setText("Nenhuma rede disponível. Confirme Wi‑Fi, Localização precisa e serviço Localização.");
         }
     }
@@ -442,10 +459,42 @@ public class MainActivity extends Activity implements SensorEventListener {
     private void renderTarget(Target t, Integer liveRssi) {
         int rssi = liveRssi == null ? t.rssi : liveRssi;
         int quality = quality(rssi);
-        String source = liveRssi != null || t.connected ? " • AO VIVO/conectada" : " • último scan";
+        boolean live = liveRssi != null || t.connected;
+        double rawDistance = DistanceEstimator.estimateMeters(rssi, t.frequency);
+        double shownDistance = smoothDistance(t.bssid, rawDistance, live);
+        String source = live ? " • AO VIVO/conectada" : " • último scan";
         String channelText = t.frequency > 0 ? "Canal " + channel(t.frequency) + " • " + t.frequency + " MHz" : "frequência indisponível";
-        targetInfo.setText(t.ssid + (t.connected ? "  [CONECTADA]" : "") + "\nBSSID " + displayBssid(t.bssid) + " • " + channelText + "\nSinal " + rssi + " dBm • " + quality + "%" + source);
+        targetInfo.setText(t.ssid + (t.connected ? "  [CONECTADA]" : "") +
+                "\nBSSID " + displayBssid(t.bssid) + " • " + channelText +
+                "\nSinal " + rssi + " dBm • " + quality + "%" + source +
+                "\nDistância aproximada ≈ " + DistanceEstimator.formatMeters(shownDistance));
+        distanceMeter.setMeasurement(t.ssid, shownDistance, rssi, t.frequency, live);
         radar.setSelectedSignal(t.ssid, t.bssid, rssi);
+    }
+
+    private double smoothDistance(String bssid, double rawDistance, boolean live) {
+        if (Double.isNaN(rawDistance)) return Double.NaN;
+        if (distanceBssid == null || bssid == null || !distanceBssid.equalsIgnoreCase(bssid) || Double.isNaN(smoothedDistanceMeters)) {
+            distanceBssid = bssid;
+            smoothedDistanceMeters = rawDistance;
+            return smoothedDistanceMeters;
+        }
+        double newWeight = live ? 0.28 : 0.45;
+        smoothedDistanceMeters = smoothedDistanceMeters * (1.0 - newWeight) + rawDistance * newWeight;
+        return smoothedDistanceMeters;
+    }
+
+    private void resetDistanceSmoothing(String bssid) {
+        distanceBssid = bssid;
+        smoothedDistanceMeters = Double.NaN;
+    }
+
+    private double selectedDistanceForDisplay(Target t) {
+        if (t == null) return Double.NaN;
+        if (distanceBssid != null && t.bssid != null && distanceBssid.equalsIgnoreCase(t.bssid) && !Double.isNaN(smoothedDistanceMeters)) {
+            return smoothedDistanceMeters;
+        }
+        return DistanceEstimator.estimateMeters(t.rssi, t.frequency);
     }
 
     private void refreshRadarContacts() {
@@ -467,9 +516,12 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private void updateDirectionText() {
         if (radar == null) return;
+        Target selected = findTarget(selectedBssid);
+        String targetLine = selected == null ? "" : "\nAlvo: " + selected.ssid + " • ≈ " + DistanceEstimator.formatMeters(selectedDistanceForDisplay(selected));
         float best = radar.getBestBearing();
         if (Float.isNaN(best)) {
-            directionInfo.setText("Contatos: " + targets.size() + " • amostras direcionais: " + radar.getTotalSamples() + " • cobertura: " + radar.getCoveredBins() + "/72 setores\nEscolha uma rede e gire lentamente para descobrir a direção de maior RSSI.");
+            directionInfo.setText("Contatos: " + targets.size() + " • amostras direcionais: " + radar.getTotalSamples() + " • cobertura: " + radar.getCoveredBins() + "/72 setores" +
+                    targetLine + "\nGire lentamente para descobrir a direção de maior RSSI.");
             return;
         }
         float delta = normalizeSigned(best - heading);
@@ -477,7 +529,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (Math.abs(delta) < 8) turn = "APONTE PARA FRENTE";
         else if (delta > 0) turn = "gire " + Math.round(delta) + "° para a DIREITA";
         else turn = "gire " + Math.round(-delta) + "° para a ESQUERDA";
-        directionInfo.setText(String.format(Locale.US, "Direção mais forte: %.0f° magnético • %s\nConfiança: %d%% • amostras: %d • setores: %d/72", best, turn, radar.getConfidencePercent(), radar.getTotalSamples(), radar.getCoveredBins()));
+        directionInfo.setText(String.format(Locale.US, "Direção mais forte: %.0f° magnético • %s\nConfiança: %d%% • amostras: %d • setores: %d/72", best, turn, radar.getConfidencePercent(), radar.getTotalSamples(), radar.getCoveredBins()) + targetLine);
     }
 
     private void renderNetworks() {
@@ -488,7 +540,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             int n = Math.min(18, targets.size());
             for (int i = 0; i < n; i++) {
                 Target t = targets.get(i);
-                sb.append(String.format(Locale.US, "%2d. %-20s %4d dBm   ch %-3d   %s\n", i + 1, trim(t.ssid, 20), t.rssi, channel(t.frequency), t.connected ? "CONECTADA" : (t.frequency + " MHz")));
+                String meters = DistanceEstimator.formatMeters(DistanceEstimator.estimateMeters(t.rssi, t.frequency));
+                sb.append(String.format(Locale.getDefault(), "%2d. %-18s %4d dBm  ≈ %-6s  ch %-3d  %s\n",
+                        i + 1, trim(t.ssid, 18), t.rssi, meters, channel(t.frequency), t.connected ? "CONECTADA" : (t.frequency + " MHz")));
             }
         }
         networksInfo.setText(sb.toString());
@@ -598,7 +652,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             String tail;
             if (CONNECTED_FALLBACK_BSSID.equals(bssid)) tail = "conectada";
             else tail = bssid != null && bssid.length() >= 5 ? bssid.substring(bssid.length() - 5) : String.valueOf(bssid);
-            return (connected ? "★ " : "") + ssid + "  •  " + rssi + " dBm  •  " + (frequency > 0 ? frequency + " MHz" : "freq ?") + "  •  " + tail;
+            String meters = DistanceEstimator.formatMeters(DistanceEstimator.estimateMeters(rssi, frequency));
+            return (connected ? "★ " : "") + ssid + "  •  " + rssi + " dBm  •  ≈ " + meters + "  •  " + (frequency > 0 ? frequency + " MHz" : "freq ?") + "  •  " + tail;
         }
     }
 }
