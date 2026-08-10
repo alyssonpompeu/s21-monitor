@@ -20,9 +20,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
+    <EmbeddedResource Include="Assets\index.html" />
   </ItemGroup>
 </Project>
