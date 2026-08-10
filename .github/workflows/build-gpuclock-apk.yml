@@ -52,8 +52,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: gpuclock-latest
-          name: GPU Clock Control APK
-          body: Rooted Android GPU devfreq clock controller. Uses only kernel-exposed frequencies and does not change voltage.
+          name: GPU Root & Clock Test APK
+          body: Version 1.1 with root/bootloader diagnostics and temporary acceptance testing of kernel-exposed GPU frequencies. No voltage changes and no thermal protection bypass.
           files: GPU-Clock-Control.apk
           make_latest: false
           overwrite_files: true
@@ -62,7 +62,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          printf 'run_id=%s\nexit_code=%s\n--- build log tail ---\n' "${{ github.run_id }}" "${{ steps.build.outputs.exit_code }}" > gpuclock-last-build.txt
+          printf 'run_id=%s\nhead_sha=%s\nexit_code=%s\n--- build log tail ---\n' "${{ github.run_id }}" "${{ github.sha }}" "${{ steps.build.outputs.exit_code }}" > gpuclock-last-build.txt
           tail -n 160 gpuclock-build.log >> gpuclock-last-build.txt 2>/dev/null || true
           git pull --rebase origin main || true
           git config user.name "github-actions[bot]"
