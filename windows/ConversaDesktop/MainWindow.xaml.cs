@@ -1,5 +1,6 @@
 using Microsoft.Web.WebView2.Core;
 using System.IO;
+using System.Reflection;
 using System.Windows;
 
 namespace ConversaDesktop;
@@ -16,16 +17,25 @@ public partial class MainWindow : Window
     {
         try
         {
-            var userData = Path.Combine(
+            var root = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "ConversaDesktop",
-                "WebView2");
-
+                "ConversaDesktop");
+            var userData = Path.Combine(root, "WebView2");
+            var assets = Path.Combine(root, "Assets");
             Directory.CreateDirectory(userData);
+            Directory.CreateDirectory(assets);
+
+            var htmlPath = Path.Combine(assets, "index.html");
+            using (var stream = Assembly.GetExecutingAssembly()
+                       .GetManifestResourceStream("ConversaDesktop.Assets.index.html")
+                   ?? throw new InvalidOperationException("Interface interna não encontrada."))
+            using (var output = File.Create(htmlPath))
+            {
+                stream.CopyTo(output);
+            }
+
             var environment = await CoreWebView2Environment.CreateAsync(null, userData);
             await Browser.EnsureCoreWebView2Async(environment);
-
-            var assets = Path.Combine(AppContext.BaseDirectory, "Assets");
             Browser.CoreWebView2.SetVirtualHostNameToFolderMapping(
                 "conversa.local",
                 assets,
@@ -35,7 +45,6 @@ public partial class MainWindow : Window
             Browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             Browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
             Browser.CoreWebView2.Settings.IsZoomControlEnabled = true;
-
             Browser.Source = new Uri("https://conversa.local/index.html");
         }
         catch (Exception ex)
