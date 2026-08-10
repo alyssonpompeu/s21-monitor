@@ -1,0 +1,54 @@
+run_id=31349479852
+head_sha=dc0c5970c763bae8ec524ea99f80094f4ba7cb0d
+exit_code=0
+--- build log tail ---
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :wifiradar:preBuild UP-TO-DATE
+> Task :wifiradar:preDebugBuild UP-TO-DATE
+> Task :wifiradar:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :wifiradar:javaPreCompileDebug
+> Task :wifiradar:checkDebugAarMetadata
+> Task :wifiradar:generateDebugResValues
+> Task :wifiradar:mapDebugSourceSetPaths
+> Task :wifiradar:generateDebugResources
+> Task :wifiradar:mergeDebugResources
+> Task :wifiradar:packageDebugResources
+> Task :wifiradar:createDebugCompatibleScreenManifests
+> Task :wifiradar:extractDeepLinksDebug
+> Task :wifiradar:parseDebugLocalResources
+> Task :wifiradar:processDebugMainManifest
+> Task :wifiradar:processDebugManifest
+> Task :wifiradar:mergeDebugShaders
+> Task :wifiradar:compileDebugShaders NO-SOURCE
+> Task :wifiradar:generateDebugAssets UP-TO-DATE
+> Task :wifiradar:mergeDebugAssets
+> Task :wifiradar:compressDebugAssets
+> Task :wifiradar:desugarDebugFileDependencies
+> Task :wifiradar:processDebugJavaRes NO-SOURCE
+> Task :wifiradar:processDebugManifestForPackage
+> Task :wifiradar:mergeDebugJavaResource
+> Task :wifiradar:checkDebugDuplicateClasses
+> Task :wifiradar:mergeDebugJniLibFolders
+> Task :wifiradar:mergeDebugNativeLibs NO-SOURCE
+> Task :wifiradar:stripDebugDebugSymbols NO-SOURCE
+> Task :wifiradar:mergeExtDexDebug
+> Task :wifiradar:mergeLibDexDebug
+> Task :wifiradar:processDebugResources
+> Task :wifiradar:validateSigningDebug
+
+> Task :wifiradar:compileDebugJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :wifiradar:dexBuilderDebug
+> Task :wifiradar:mergeDebugGlobalSynthetics
+> Task :wifiradar:writeDebugAppMetadata
+> Task :wifiradar:writeDebugSigningConfigVersions
+> Task :wifiradar:mergeProjectDexDebug
+> Task :wifiradar:packageDebug
+> Task :wifiradar:createDebugApkListingFileRedirect
+> Task :wifiradar:assembleDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786328387877.json
+
+BUILD SUCCESSFUL in 17s
+32 actionable tasks: 32 executed
