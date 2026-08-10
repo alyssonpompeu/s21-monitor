@@ -1,0 +1,14 @@
+POLÍTICA DE PRIVACIDADE — Wi‑Fi Spectrogram Pro
+Última atualização: 10 de agosto de 2026
+
+O Wi‑Fi Spectrogram Pro acessa informações de redes Wi‑Fi disponibilizadas pelo Android, incluindo SSID, BSSID, frequência, largura de canal e intensidade do sinal (RSSI). Em algumas versões do Android, as APIs de varredura Wi‑Fi exigem a permissão de Localização precisa e que o serviço de Localização esteja ativado.
+
+Esses dados são usados exclusivamente no próprio dispositivo para gerar o espectro, o waterfall temporal, a lista de pontos de acesso e as medições exibidas ao usuário.
+
+O aplicativo não solicita coordenadas GPS, não cria histórico de localização e não usa informações de Wi‑Fi para rastrear o deslocamento do usuário.
+
+O aplicativo não possui conta, login, anúncios, analytics ou SDKs de publicidade. Não transmite SSIDs, BSSIDs, localização, medições de sinal ou outros dados de Wi‑Fi para servidores do desenvolvedor ou de terceiros.
+
+O histórico do espectrograma existe apenas na memória durante o uso e pode ser limpo pelo usuário. Não existe banco de dados remoto nem cadastro de usuários.
+
+Contato de privacidade: https://github.com/alyssonpompeu/s21-monitor/issues
