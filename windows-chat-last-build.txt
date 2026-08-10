@@ -1,0 +1,7 @@
+run_id=31345974470
+exit_code=0
+--- build log tail ---
+  Determining projects to restore...
+  Restored D:\a\s21-monitor\s21-monitor\windows\ConversaDesktop\ConversaDesktop.csproj (in 10.06 sec).
+  ConversaDesktop -> D:\a\s21-monitor\s21-monitor\windows\ConversaDesktop\bin\Release\net8.0-windows10.0.19041.0\win-x64\ConversaDesktop.dll
+  ConversaDesktop -> D:\a\s21-monitor\s21-monitor\windows\ConversaDesktop\bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\
