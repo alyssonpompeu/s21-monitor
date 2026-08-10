@@ -1,0 +1,34 @@
+SEGURANÇA DOS DADOS — RESPOSTAS SUGERIDAS
+
+1. O app coleta ou compartilha algum dos tipos de dados exigidos pelo formulário?
+NÃO, considerando a definição do Google Play de "coleta" como transmissão de dados para fora do dispositivo. O app processa localmente SSID/BSSID/frequência/largura/RSSI e não transmite esses dados.
+
+2. Dados compartilhados com terceiros?
+NÃO.
+
+3. Dados coletados fora do dispositivo?
+NÃO.
+
+4. Conta de usuário?
+NÃO.
+
+5. Exclusão de conta?
+NÃO SE APLICA — o app não cria contas.
+
+6. Anúncios?
+NÃO.
+
+7. Localização
+O app solicita ACCESS_FINE_LOCATION porque startScan()/getScanResults() do WifiManager exigem essa permissão em determinadas versões/configurações do Android. A permissão é usada somente para obter resultados de varredura Wi‑Fi. O app não solicita coordenadas GPS, não cria histórico de localização e não transmite localização.
+
+8. Dispositivos por perto
+O app solicita NEARBY_WIFI_DEVICES em Android compatível para acessar informações Wi‑Fi próximas necessárias à função principal.
+
+9. Criptografia em trânsito
+NÃO SE APLICA aos dados do espectrograma, pois eles não são enviados para servidores.
+
+10. Exclusão de dados
+O histórico visual existe somente na memória durante o uso. O botão de limpar histórico remove o waterfall em memória; limpar os dados do app pelo Android remove preferências locais.
+
+OBSERVAÇÃO
+Revalidar estas respostas se forem adicionados analytics, crash reporting, anúncios, login, nuvem, telemetria ou qualquer SDK de terceiros.
