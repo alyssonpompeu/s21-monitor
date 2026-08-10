@@ -1,4 +1,72 @@
-run_id=31398485518
-head_sha=bd871977cdb5eb3df4c5ab53660c9ba2fddaabcd
-exit_code=
+run_id=31399122211
+head_sha=059d177baae6efe12fd4aa1157068ea4489f5dfc
+exit_code=0
 --- build log tail ---
+
+Welcome to Gradle 8.13!
+
+Here are the highlights of this release:
+ - Daemon JVM auto-provisioning
+ - Enhancements for Scala plugin and JUnit testing
+ - Improvements for build authors and plugin developers
+
+For more details see https://docs.gradle.org/8.13/release-notes.html
+
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :wifispectrum:preBuild UP-TO-DATE
+> Task :wifispectrum:preDebugBuild UP-TO-DATE
+> Task :wifispectrum:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :wifispectrum:javaPreCompileDebug
+> Task :wifispectrum:checkDebugAarMetadata
+> Task :wifispectrum:generateDebugResValues
+> Task :wifispectrum:mapDebugSourceSetPaths
+> Task :wifispectrum:generateDebugResources
+> Task :wifispectrum:packageDebugResources
+> Task :wifispectrum:mergeDebugResources
+> Task :wifispectrum:createDebugCompatibleScreenManifests
+> Task :wifispectrum:extractDeepLinksDebug
+> Task :wifispectrum:parseDebugLocalResources
+> Task :wifispectrum:processDebugMainManifest
+> Task :wifispectrum:processDebugManifest
+> Task :wifispectrum:mergeDebugShaders
+> Task :wifispectrum:compileDebugShaders NO-SOURCE
+> Task :wifispectrum:processDebugManifestForPackage
+> Task :wifispectrum:generateDebugAssets UP-TO-DATE
+> Task :wifispectrum:mergeDebugAssets
+> Task :wifispectrum:compressDebugAssets
+> Task :wifispectrum:desugarDebugFileDependencies
+> Task :wifispectrum:processDebugJavaRes NO-SOURCE
+> Task :wifispectrum:checkDebugDuplicateClasses
+> Task :wifispectrum:mergeDebugJniLibFolders
+> Task :wifispectrum:mergeExtDexDebug
+> Task :wifispectrum:mergeDebugNativeLibs NO-SOURCE
+> Task :wifispectrum:mergeDebugJavaResource
+> Task :wifispectrum:stripDebugDebugSymbols NO-SOURCE
+> Task :wifispectrum:mergeLibDexDebug
+> Task :wifispectrum:processDebugResources
+> Task :wifispectrum:validateSigningDebug
+
+> Task :wifispectrum:compileDebugJavaWithJavac
+Note: /home/runner/work/s21-monitor/s21-monitor/wifispectrum/src/main/java/com/alysson/wifispectrum/MainActivity.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :wifispectrum:dexBuilderDebug
+> Task :wifispectrum:mergeDebugGlobalSynthetics
+> Task :wifispectrum:writeDebugAppMetadata
+> Task :wifispectrum:writeDebugSigningConfigVersions
+> Task :wifispectrum:mergeProjectDexDebug
+> Task :wifispectrum:packageDebug
+> Task :wifispectrum:createDebugApkListingFileRedirect
+> Task :wifispectrum:assembleDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786372657815.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 44s
+32 actionable tasks: 32 executed
