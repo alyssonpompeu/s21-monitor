@@ -1,0 +1,49 @@
+run_id=31347489343
+exit_code=0
+--- build log tail ---
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :gpuclock:preBuild UP-TO-DATE
+> Task :gpuclock:preDebugBuild UP-TO-DATE
+> Task :gpuclock:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :gpuclock:generateDebugResValues
+> Task :gpuclock:javaPreCompileDebug
+> Task :gpuclock:checkDebugAarMetadata
+> Task :gpuclock:mapDebugSourceSetPaths
+> Task :gpuclock:generateDebugResources
+> Task :gpuclock:packageDebugResources
+> Task :gpuclock:mergeDebugResources
+> Task :gpuclock:createDebugCompatibleScreenManifests
+> Task :gpuclock:extractDeepLinksDebug
+> Task :gpuclock:parseDebugLocalResources
+> Task :gpuclock:processDebugMainManifest
+> Task :gpuclock:processDebugManifest
+> Task :gpuclock:mergeDebugShaders
+> Task :gpuclock:compileDebugShaders NO-SOURCE
+> Task :gpuclock:generateDebugAssets UP-TO-DATE
+> Task :gpuclock:mergeDebugAssets
+> Task :gpuclock:compressDebugAssets
+> Task :gpuclock:desugarDebugFileDependencies
+> Task :gpuclock:processDebugJavaRes NO-SOURCE
+> Task :gpuclock:processDebugManifestForPackage
+> Task :gpuclock:checkDebugDuplicateClasses
+> Task :gpuclock:mergeDebugJavaResource
+> Task :gpuclock:mergeExtDexDebug
+> Task :gpuclock:mergeLibDexDebug
+> Task :gpuclock:mergeDebugJniLibFolders
+> Task :gpuclock:mergeDebugNativeLibs NO-SOURCE
+> Task :gpuclock:stripDebugDebugSymbols NO-SOURCE
+> Task :gpuclock:processDebugResources
+> Task :gpuclock:validateSigningDebug
+> Task :gpuclock:compileDebugJavaWithJavac
+> Task :gpuclock:dexBuilderDebug
+> Task :gpuclock:mergeDebugGlobalSynthetics
+> Task :gpuclock:writeDebugAppMetadata
+> Task :gpuclock:writeDebugSigningConfigVersions
+> Task :gpuclock:mergeProjectDexDebug
+> Task :gpuclock:packageDebug
+> Task :gpuclock:createDebugApkListingFileRedirect
+> Task :gpuclock:assembleDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786325751291.json
+
+BUILD SUCCESSFUL in 20s
+32 actionable tasks: 32 executed
