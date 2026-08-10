@@ -1,4 +1,4 @@
-name: Build GPU Clock APK
+name: Build Android Utility APKs
 
 on:
   workflow_dispatch:
@@ -7,6 +7,7 @@ on:
     paths:
       - 'gpuclock/**'
       - 'hdrboost/**'
+      - 'wifiradar/**'
       - 'settings.gradle'
       - '.github/workflows/build-gpuclock-apk.yml'
 
@@ -18,16 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
       - name: Build GPU Clock APK
         id: build
         shell: bash
@@ -37,28 +35,14 @@ jobs:
           code=${PIPESTATUS[0]}
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
-
       - name: Prepare APK
         if: steps.build.outputs.exit_code == '0'
         run: cp gpuclock/build/outputs/apk/debug/gpuclock-debug.apk GPU-Clock-Control.apk
-
       - uses: actions/upload-artifact@v4
         if: steps.build.outputs.exit_code == '0'
         with:
           name: GPU-Clock-Control-APK
           path: GPU-Clock-Control.apk
-
-      - name: Publish release
-        if: steps.build.outputs.exit_code == '0'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: gpuclock-latest
-          name: GPU Root & Clock Test APK
-          body: Version 1.1 with root/bootloader diagnostics and temporary acceptance testing of kernel-exposed GPU frequencies. No voltage changes and no thermal protection bypass.
-          files: GPU-Clock-Control.apk
-          make_latest: false
-          overwrite_files: true
-
       - name: Record build result
         if: always()
         shell: bash
@@ -71,7 +55,6 @@ jobs:
           git add gpuclock-last-build.txt
           git commit -m "Record GPU Clock APK build [skip ci]" || true
           git push || true
-
       - name: Fail if build failed
         if: steps.build.outputs.exit_code != '0'
         run: exit 1
@@ -80,16 +63,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
       - name: Build HDR Boost APK
         id: hdrbuild
         shell: bash
@@ -99,28 +79,14 @@ jobs:
           code=${PIPESTATUS[0]}
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
-
       - name: Prepare HDR Boost APK
         if: steps.hdrbuild.outputs.exit_code == '0'
         run: cp hdrboost/build/outputs/apk/debug/hdrboost-debug.apk HDR-Boost-S21.apk
-
       - uses: actions/upload-artifact@v4
         if: steps.hdrbuild.outputs.exit_code == '0'
         with:
           name: HDR-Boost-S21-APK
           path: HDR-Boost-S21.apk
-
-      - name: Publish HDR Boost release
-        if: steps.hdrbuild.outputs.exit_code == '0'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: hdrboost-latest
-          name: HDR Boost S21 APK
-          body: One-tap reversible Samsung display boost. Max manual brightness, Vivid screen mode and Samsung HDR effect flag where available. Does not force hardware HBM.
-          files: HDR-Boost-S21.apk
-          make_latest: false
-          overwrite_files: true
-
       - name: Record HDR Boost build result
         if: always()
         shell: bash
@@ -133,7 +99,50 @@ jobs:
           git add hdrboost-last-build.txt
           git commit -m "Record HDR Boost APK build [skip ci]" || true
           git push || true
-
       - name: Fail if HDR Boost build failed
         if: steps.hdrbuild.outputs.exit_code != '0'
+        run: exit 1
+
+  wifiradar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build Wi-Fi Radar APK
+        id: radarbuild
+        shell: bash
+        run: |
+          set +e
+          gradle :wifiradar:assembleDebug --stacktrace 2>&1 | tee wifiradar-build.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Prepare Wi-Fi Radar APK
+        if: steps.radarbuild.outputs.exit_code == '0'
+        run: cp wifiradar/build/outputs/apk/debug/wifiradar-debug.apk WiFi-Hunter-Radar.apk
+      - uses: actions/upload-artifact@v4
+        if: steps.radarbuild.outputs.exit_code == '0'
+        with:
+          name: WiFi-Hunter-Radar-APK
+          path: WiFi-Hunter-Radar.apk
+      - name: Record Wi-Fi Radar build result
+        if: always()
+        shell: bash
+        run: |
+          printf 'run_id=%s\nhead_sha=%s\nexit_code=%s\n--- build log tail ---\n' "${{ github.run_id }}" "${{ github.sha }}" "${{ steps.radarbuild.outputs.exit_code }}" > wifiradar-last-build.txt
+          tail -n 180 wifiradar-build.log >> wifiradar-last-build.txt 2>/dev/null || true
+          git pull --rebase origin main || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wifiradar-last-build.txt
+          git commit -m "Record Wi-Fi Radar APK build [skip ci]" || true
+          git push || true
+      - name: Fail if Wi-Fi Radar build failed
+        if: steps.radarbuild.outputs.exit_code != '0'
         run: exit 1
