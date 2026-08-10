@@ -1,0 +1,3 @@
+Wi-Fi Spectrogram Pro 2.0
+Hybrid live mode: connected RSSI ~250 ms; ambient APs from real Android scans.
+Time on X axis, frequency on Y axis.
