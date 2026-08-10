@@ -8,7 +8,9 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.view.View;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 
 public class RadarView extends View {
@@ -16,7 +18,11 @@ public class RadarView extends View {
     private final float[] avgDbm = new float[BINS];
     private final int[] samples = new int[BINS];
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final List<Contact> contacts = new ArrayList<>();
     private float headingDeg = 0f;
+    private String selectedBssid;
+    private String selectedSsid;
+    private int selectedRssi = -127;
 
     public RadarView(Context context) {
         super(context);
@@ -26,6 +32,20 @@ public class RadarView extends View {
 
     public void setHeading(float heading) {
         headingDeg = normalize(heading);
+        invalidate();
+    }
+
+    public void setContacts(List<Contact> list, String selectedBssid) {
+        contacts.clear();
+        if (list != null) contacts.addAll(list);
+        this.selectedBssid = selectedBssid;
+        invalidate();
+    }
+
+    public void setSelectedSignal(String ssid, String bssid, int rssi) {
+        selectedSsid = ssid;
+        selectedBssid = bssid;
+        selectedRssi = rssi;
         invalidate();
     }
 
@@ -81,13 +101,6 @@ public class RadarView extends View {
         return best;
     }
 
-    public float getBestRssi() {
-        float bearing = getBestBearing();
-        if (Float.isNaN(bearing)) return Float.NaN;
-        int idx = Math.round(bearing / 5f) % BINS;
-        return avgDbm[idx];
-    }
-
     public int getConfidencePercent() {
         int covered = getCoveredBins();
         int total = getTotalSamples();
@@ -101,8 +114,12 @@ public class RadarView extends View {
     protected void onDraw(Canvas c) {
         super.onDraw(c);
         float w = getWidth(), h = getHeight();
-        float cx = w / 2f, cy = h / 2f;
-        float r = Math.min(w, h) * 0.43f;
+        float cx = w / 2f;
+        float radarTop = dp(112);
+        float cy = radarTop + Math.min(w, h - radarTop) * 0.46f;
+        float r = Math.min(w * 0.43f, (h - radarTop) * 0.41f);
+
+        drawContactsPanel(c, w);
 
         p.setStyle(Paint.Style.STROKE);
         p.setStrokeWidth(dp(1));
@@ -138,22 +155,68 @@ public class RadarView extends View {
         float best = getBestBearing();
         if (!Float.isNaN(best)) {
             drawArrow(c, cx, cy, r * 0.84f, best, Color.rgb(255, 218, 75), dp(5));
-            p.setStyle(Paint.Style.FILL);
-            p.setTextSize(dp(13));
-            p.setColor(Color.rgb(255, 226, 105));
-            c.drawText(String.format(Locale.US, "MELHOR %.0f°", best), cx, cy + dp(7), p);
-        } else {
-            p.setStyle(Paint.Style.FILL);
-            p.setTextSize(dp(12));
-            p.setColor(Color.rgb(115, 153, 132));
-            c.drawText("Gire o aparelho para mapear", cx, cy + dp(5), p);
+        }
+        drawArrow(c, cx, cy, r * 0.62f, headingDeg, Color.rgb(60, 190, 255), dp(2));
+
+        p.setStyle(Paint.Style.FILL);
+        p.setTextAlign(Paint.Align.CENTER);
+        p.setColor(Color.WHITE);
+        p.setTextSize(dp(14));
+        String center = selectedSsid == null ? (contacts.isEmpty() ? "0 REDES" : "SELECIONE UM ALVO") : trim(selectedSsid, 24);
+        c.drawText(center, cx, cy - dp(8), p);
+
+        p.setTextSize(dp(13));
+        if (selectedRssi < 0 && selectedRssi >= -120) {
+            p.setColor(signalColor(selectedRssi));
+            c.drawText(selectedRssi + " dBm", cx, cy + dp(13), p);
         }
 
-        drawArrow(c, cx, cy, r * 0.62f, headingDeg, Color.rgb(60, 190, 255), dp(2));
-        p.setStyle(Paint.Style.FILL);
         p.setTextSize(dp(11));
         p.setColor(Color.rgb(103, 201, 255));
         c.drawText(String.format(Locale.US, "S21 %.0f°", headingDeg), cx, cy + r + dp(34), p);
+
+        if (!Float.isNaN(best)) {
+            p.setTextSize(dp(12));
+            p.setColor(Color.rgb(255, 226, 105));
+            c.drawText(String.format(Locale.US, "MELHOR %.0f°", best), cx, cy + r + dp(52), p);
+        } else {
+            p.setTextSize(dp(11));
+            p.setColor(Color.rgb(145, 175, 155));
+            c.drawText("direção: aguardando varredura 360°", cx, cy + r + dp(52), p);
+        }
+    }
+
+    private void drawContactsPanel(Canvas c, float width) {
+        float left = dp(8);
+        float top = dp(8);
+        float right = width - dp(8);
+        int shown = Math.min(4, contacts.size());
+        float height = dp(30 + shown * 18);
+
+        p.setStyle(Paint.Style.FILL);
+        p.setColor(Color.argb(190, 8, 19, 16));
+        c.drawRoundRect(new RectF(left, top, right, top + height), dp(8), dp(8), p);
+
+        p.setTextAlign(Paint.Align.LEFT);
+        p.setTextSize(dp(11));
+        p.setColor(Color.rgb(114, 220, 160));
+        c.drawText("CONTATOS Wi‑Fi: " + contacts.size() + "  • direção somente após varredura", left + dp(8), top + dp(17), p);
+
+        for (int i = 0; i < shown; i++) {
+            Contact x = contacts.get(i);
+            boolean selected = selectedBssid != null && selectedBssid.equalsIgnoreCase(x.bssid);
+            p.setColor(selected ? Color.rgb(255, 221, 90) : Color.rgb(205, 232, 215));
+            p.setTextSize(dp(11));
+            String marker = selected ? "▶ " : "● ";
+            String connected = x.connected ? " ★" : "";
+            String line = marker + trim(x.ssid, 19) + connected + "   " + x.rssi + " dBm";
+            c.drawText(line, left + dp(8), top + dp(36 + i * 18), p);
+        }
+        if (contacts.size() > shown) {
+            p.setColor(Color.rgb(140, 165, 150));
+            p.setTextSize(dp(10));
+            c.drawText("+ " + (contacts.size() - shown) + " outras redes", right - dp(90), top + height - dp(5), p);
+        }
     }
 
     private void drawArrow(Canvas c, float cx, float cy, float len, float deg, int color, float stroke) {
@@ -177,7 +240,34 @@ public class RadarView extends View {
         p.setStrokeCap(Paint.Cap.BUTT);
     }
 
+    private static int signalColor(int rssi) {
+        if (rssi >= -55) return Color.rgb(110, 235, 135);
+        if (rssi >= -70) return Color.rgb(255, 216, 90);
+        return Color.rgb(255, 125, 100);
+    }
+
+    private static String trim(String s, int n) {
+        if (s == null) return "<sem nome>";
+        return s.length() <= n ? s : s.substring(0, n - 1) + "…";
+    }
+
     private float dp(float v) { return v * getResources().getDisplayMetrics().density; }
     private static float normalize(float d) { d %= 360f; return d < 0 ? d + 360f : d; }
     private static float clamp(float v, float a, float b) { return Math.max(a, Math.min(b, v)); }
+
+    public static final class Contact {
+        public final String ssid;
+        public final String bssid;
+        public final int rssi;
+        public final int frequency;
+        public final boolean connected;
+
+        public Contact(String ssid, String bssid, int rssi, int frequency, boolean connected) {
+            this.ssid = ssid;
+            this.bssid = bssid;
+            this.rssi = rssi;
+            this.frequency = frequency;
+            this.connected = connected;
+        }
+    }
 }
