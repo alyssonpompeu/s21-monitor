@@ -11,7 +11,7 @@ on:
       - '.github/workflows/build-wifispectrum-play-aab.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   bundle:
@@ -35,16 +35,52 @@ jobs:
           gradle-version: '8.13'
 
       - name: Lint release
-        run: gradle :wifispectrum:lintRelease --stacktrace
+        id: lint
+        shell: bash
+        run: |
+          set +e
+          gradle :wifispectrum:lintRelease --stacktrace 2>&1 | tee play-lint.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Build unsigned release App Bundle
-        run: gradle :wifispectrum:bundleRelease --stacktrace
+        id: bundle
+        if: steps.lint.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set +e
+          gradle :wifispectrum:bundleRelease --stacktrace 2>&1 | tee play-bundle.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Prepare bundle
+        if: steps.lint.outputs.exit_code == '0' && steps.bundle.outputs.exit_code == '0'
         run: cp wifispectrum/build/outputs/bundle/release/wifispectrum-release.aab WiFi-Spectrogram-Pro-Play-unsigned.aab
 
       - uses: actions/upload-artifact@v4
+        if: steps.lint.outputs.exit_code == '0' && steps.bundle.outputs.exit_code == '0'
         with:
           name: WiFi-Spectrogram-Pro-Play-AAB
           path: WiFi-Spectrogram-Pro-Play-unsigned.aab
           if-no-files-found: error
+
+      - name: Record Play build result
+        if: always()
+        shell: bash
+        run: |
+          printf 'run_id=%s\nhead_sha=%s\nlint_exit_code=%s\nbundle_exit_code=%s\n--- lint log tail ---\n' "${{ github.run_id }}" "${{ github.sha }}" "${{ steps.lint.outputs.exit_code }}" "${{ steps.bundle.outputs.exit_code }}" > wifispectrum-play-last-build.txt
+          tail -n 80 play-lint.log >> wifispectrum-play-last-build.txt 2>/dev/null || true
+          printf '\n--- bundle log tail ---\n' >> wifispectrum-play-last-build.txt
+          tail -n 120 play-bundle.log >> wifispectrum-play-last-build.txt 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wifispectrum-play-last-build.txt
+          git commit -m "Record Wi-Fi Spectrogram Play AAB build [skip ci]" || true
+          git pull --rebase origin main || true
+          git push || true
+
+      - name: Fail if lint or bundle failed
+        if: steps.lint.outputs.exit_code != '0' || steps.bundle.outputs.exit_code != '0'
+        run: exit 1
