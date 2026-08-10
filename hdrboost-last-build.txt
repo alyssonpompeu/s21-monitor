@@ -1,5 +1,5 @@
-run_id=31385169556
-head_sha=83412e2bb3817f9113e4c97b40cea553b0a6abe5
+run_id=31395706659
+head_sha=93e07df802a7e75834e9b62d1b0004620ae82f0d
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
@@ -7,8 +7,8 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :hdrboost:preDebugBuild UP-TO-DATE
 > Task :hdrboost:mergeDebugNativeDebugMetadata NO-SOURCE
 > Task :hdrboost:javaPreCompileDebug
-> Task :hdrboost:checkDebugAarMetadata
 > Task :hdrboost:generateDebugResValues
+> Task :hdrboost:checkDebugAarMetadata
 > Task :hdrboost:mapDebugSourceSetPaths
 > Task :hdrboost:generateDebugResources
 > Task :hdrboost:packageDebugResources
@@ -28,11 +28,11 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :hdrboost:processDebugManifestForPackage
 > Task :hdrboost:checkDebugDuplicateClasses
 > Task :hdrboost:mergeDebugJniLibFolders
-> Task :hdrboost:mergeExtDexDebug
-> Task :hdrboost:mergeLibDexDebug
+> Task :hdrboost:mergeDebugJavaResource
 > Task :hdrboost:mergeDebugNativeLibs NO-SOURCE
 > Task :hdrboost:stripDebugDebugSymbols NO-SOURCE
-> Task :hdrboost:mergeDebugJavaResource
+> Task :hdrboost:mergeExtDexDebug
+> Task :hdrboost:mergeLibDexDebug
 > Task :hdrboost:processDebugResources
 > Task :hdrboost:validateSigningDebug
 
@@ -48,7 +48,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :hdrboost:packageDebug
 > Task :hdrboost:createDebugApkListingFileRedirect
 > Task :hdrboost:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/hdrbuild-1786362557569.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/hdrbuild-1786370373337.json
 
-BUILD SUCCESSFUL in 17s
+BUILD SUCCESSFUL in 14s
 32 actionable tasks: 32 executed
