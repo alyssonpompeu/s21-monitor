@@ -1,0 +1,86 @@
+name: Build Windows Chat EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'windows/ConversaDesktop/**'
+      - '.github/workflows/build-windows-chat.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build EXE and capture result
+        id: build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          dotnet publish windows/ConversaDesktop/ConversaDesktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true *> windows-build.log
+          $code = $LASTEXITCODE
+          "exit_code=$code" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          exit 0
+
+      - name: Record build result
+        if: always()
+        shell: pwsh
+        run: |
+          git pull --rebase origin main 2>$null
+          "run_id=${{ github.run_id }}`nexit_code=${{ steps.build.outputs.exit_code }}`n--- build log tail ---" | Out-File windows-chat-last-build.txt -Encoding utf8
+          Get-Content windows-build.log -Tail 120 | Out-File windows-chat-last-build.txt -Append -Encoding utf8
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add windows-chat-last-build.txt
+          git commit -m "Record Windows chat EXE build [skip ci]" 2>$null
+          git push 2>$null
+
+      - name: Prepare portable package
+        if: steps.build.outputs.exit_code == '0'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item windows/ConversaDesktop/bin/Release/net8.0-windows10.0.19041.0/win-x64/publish/ConversaDesktop.exe dist/Conversa-Desktop.exe
+          Copy-Item windows/ConversaDesktop/bin/Release/net8.0-windows10.0.19041.0/win-x64/publish/Assets dist/Assets -Recurse
+          @"
+          Conversa Desktop
+          ================
+          Execute Conversa-Desktop.exe.
+          Requer Windows 10/11 x64 e Microsoft Edge WebView2 Runtime.
+          A pasta Assets deve permanecer ao lado do EXE.
+          "@ | Out-File dist/LEIA-ME.txt -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        if: steps.build.outputs.exit_code == '0'
+        with:
+          name: Conversa-Desktop-Windows
+          path: dist/**
+
+      - name: Publish Windows release
+        if: steps.build.outputs.exit_code == '0'
+        shell: pwsh
+        run: Compress-Archive -Path dist/* -DestinationPath Conversa-Desktop-Windows.zip -Force
+
+      - uses: softprops/action-gh-release@v2
+        if: steps.build.outputs.exit_code == '0'
+        with:
+          tag_name: desktop-chat-latest
+          name: Conversa Desktop - Windows
+          body: Cliente Windows de mensagens privadas com interface inspirada em TeamSpeak.
+          files: Conversa-Desktop-Windows.zip
+          make_latest: false
+          overwrite_files: true
+
+      - name: Fail if build failed
+        if: steps.build.outputs.exit_code != '0'
+        shell: pwsh
+        run: exit 1
