@@ -1,0 +1,2 @@
+Verification trigger for Nexmon BCM4375B1 18.41.117 firmware build.
+No firmware is installed on a device by this workflow.
