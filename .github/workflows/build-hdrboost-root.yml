@@ -46,3 +46,12 @@ jobs:
           files: HDR-Boost-S21-ROOT.apk
           make_latest: false
           overwrite_files: true
+
+      - name: Record successful HDR Boost build
+        run: |
+          printf '%s\n' "${GITHUB_RUN_ID}" > last-hdrboost-build.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add last-hdrboost-build.txt
+          git commit -m "Record successful HDR Boost build [skip ci]" || exit 0
+          git push
