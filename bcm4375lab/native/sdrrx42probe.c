@@ -1,7 +1,10 @@
 /* Userspace probe for the RX42 BCM4375B1 SDR experiment.
- * 0x630 is read-only register discovery.
- * 0x631 performs a bounded template-RAM write/read/restore while playback is OFF.
- * Neither command starts RF sample playback.
+ * Modes:
+ *   version -> PR663 0x600 only
+ *   regs    -> 0x600 + read-only register probe 0x630
+ *   tplram  -> 0x600 + bounded template-RAM write/read/restore 0x631
+ *   all     -> 0x600 + 0x630 + 0x631
+ * No mode starts RF sample playback.
  */
 #include <errno.h>
 #include <stdbool.h>
@@ -50,11 +53,28 @@ static int call_ioctl(int s, const char *ifname, unsigned int cmd, void *buf, un
     return ret;
 }
 
+static bool mode_is(const char *mode, const char *name) {
+    return strcmp(mode, name) == 0;
+}
+
 int main(int argc, char **argv) {
     const char *ifname = (argc > 1 && argv[1][0]) ? argv[1] : "wlan0";
+    const char *mode = (argc > 2 && argv[2][0]) ? argv[2] : "all";
+    bool do_regs = mode_is(mode, "regs") || mode_is(mode, "all");
+    bool do_tplram = mode_is(mode, "tplram") || mode_is(mode, "all");
+    bool valid_mode = mode_is(mode, "version") || do_regs || do_tplram;
+
+    printf("RX42_SCENARIO=%s\n", mode);
+    printf("TX_TRIGGERED=0\n");
+    if (!valid_mode) {
+        printf("RX42_SCENARIO_RESULT=INVALID_MODE\n");
+        return 22;
+    }
+
     int s = socket(AF_INET, SOCK_DGRAM, 0);
     if (s < 0) {
         printf("RX42_SDR_USER_PROBE=SOCKET_FAIL errno=%d %s\n", errno, strerror(errno));
+        printf("RX42_SCENARIO_RESULT=NOT_CONFIRMED\n");
         return 20;
     }
 
@@ -69,25 +89,32 @@ int main(int argc, char **argv) {
     ver[sizeof(ver)-1] = 0;
     if (rv >= 0) printf("PR663_VERSION=%s\n", ver);
 
-    int rp = call_ioctl(s, ifname, RX42_SDR_PROBE, ro, sizeof(ro));
-    ro[sizeof(ro)-1] = 0;
-    if (rp >= 0) printf("%s", ro);
+    int rp = -1;
+    int rt = -1;
+    if (do_regs) {
+        rp = call_ioctl(s, ifname, RX42_SDR_PROBE, ro, sizeof(ro));
+        ro[sizeof(ro)-1] = 0;
+        if (rp >= 0) printf("%s", ro);
+    }
 
-    int rt = call_ioctl(s, ifname, RX42_TPLRAM_PROBE, rw, sizeof(rw));
-    rw[sizeof(rw)-1] = 0;
-    if (rt >= 0) printf("%s", rw);
+    if (do_tplram) {
+        rt = call_ioctl(s, ifname, RX42_TPLRAM_PROBE, rw, sizeof(rw));
+        rw[sizeof(rw)-1] = 0;
+        if (rt >= 0) printf("%s", rw);
+    }
     close(s);
 
     bool version_ok = rv >= 0 && strstr(ver, "nexmon.org");
-    bool reg_ok = rp >= 0 && strstr(ro, "RX42_SDR_PROBE=1") && strstr(ro, "TX_ENABLED_BY_THIS_PROBE=0");
-    bool tpl_ok = rt >= 0 && strstr(rw, "TPLRAM_RESULT=PASS") &&
+    bool reg_ok = !do_regs || (rp >= 0 && strstr(ro, "RX42_SDR_PROBE=1") && strstr(ro, "TX_ENABLED_BY_THIS_PROBE=0"));
+    bool tpl_ok = !do_tplram || (rt >= 0 && strstr(rw, "TPLRAM_RESULT=PASS") &&
                   strstr(rw, "WRITE_READBACK_OK=1") && strstr(rw, "RESTORE_OK=1") &&
-                  strstr(rw, "PLAYBACK_STAYED_OFF=1") && strstr(rw, "TX_TRIGGERED=0");
+                  strstr(rw, "PLAYBACK_STAYED_OFF=1") && strstr(rw, "TX_TRIGGERED=0"));
 
-    if (version_ok && reg_ok && tpl_ok) {
-        printf("RX42_TPLRAM_USER_PROBE=PASS_NO_TX\n");
-        return 0;
+    bool ok = version_ok && reg_ok && tpl_ok;
+    if (do_tplram) {
+        if (ok) printf("RX42_TPLRAM_USER_PROBE=PASS_NO_TX\n");
+        else printf("RX42_TPLRAM_USER_PROBE=NOT_CONFIRMED\n");
     }
-    printf("RX42_TPLRAM_USER_PROBE=NOT_CONFIRMED\n");
-    return 21;
+    printf("RX42_SCENARIO_RESULT=%s\n", ok ? "PASS" : "NOT_CONFIRMED");
+    return ok ? 0 : 21;
 }
