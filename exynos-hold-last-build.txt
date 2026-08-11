@@ -1,0 +1,58 @@
+run_id=31447816023
+head_sha=917ea0edfb4939efe8b2b8c41640d6b2a3c18ba4
+exit_code=0
+--- build log tail ---
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :exynostuner:preBuild UP-TO-DATE
+> Task :exynostuner:preDebugBuild UP-TO-DATE
+> Task :exynostuner:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :exynostuner:javaPreCompileDebug
+> Task :exynostuner:checkDebugAarMetadata
+> Task :exynostuner:generateDebugResValues
+> Task :exynostuner:mapDebugSourceSetPaths
+> Task :exynostuner:generateDebugResources
+> Task :exynostuner:mergeDebugResources
+> Task :exynostuner:packageDebugResources
+> Task :exynostuner:createDebugCompatibleScreenManifests
+> Task :exynostuner:extractDeepLinksDebug
+> Task :exynostuner:parseDebugLocalResources
+> Task :exynostuner:processDebugMainManifest
+> Task :exynostuner:processDebugManifest
+> Task :exynostuner:mergeDebugShaders
+> Task :exynostuner:compileDebugShaders NO-SOURCE
+> Task :exynostuner:generateDebugAssets UP-TO-DATE
+> Task :exynostuner:mergeDebugAssets
+> Task :exynostuner:compressDebugAssets
+> Task :exynostuner:desugarDebugFileDependencies
+> Task :exynostuner:processDebugJavaRes NO-SOURCE
+> Task :exynostuner:processDebugManifestForPackage
+> Task :exynostuner:mergeDebugJniLibFolders
+> Task :exynostuner:checkDebugDuplicateClasses
+> Task :exynostuner:mergeDebugNativeLibs NO-SOURCE
+> Task :exynostuner:mergeExtDexDebug
+> Task :exynostuner:mergeLibDexDebug
+> Task :exynostuner:stripDebugDebugSymbols NO-SOURCE
+> Task :exynostuner:mergeDebugJavaResource
+> Task :exynostuner:processDebugResources
+> Task :exynostuner:validateSigningDebug
+> Task :exynostuner:compileDebugJavaWithJavac
+> Task :exynostuner:dexBuilderDebug
+> Task :exynostuner:mergeDebugGlobalSynthetics
+> Task :exynostuner:writeDebugAppMetadata
+> Task :exynostuner:writeDebugSigningConfigVersions
+> Task :exynostuner:mergeProjectDexDebug
+> Task :exynostuner:packageDebug
+> Task :exynostuner:createDebugApkListingFileRedirect
+> Task :exynostuner:assembleDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786409936559.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 18s
+32 actionable tasks: 32 executed
