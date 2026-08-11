@@ -37,9 +37,8 @@ jobs:
           # Legacy b43 assembler links libl; modern Ubuntu ships flex as libfl.
           sed -i 's/LDFLAGS[[:space:]]*+=[[:space:]]*-ll/LDFLAGS\t\t+= -lfl/' buildtools/b43/assembler/Makefile
 
-          # PR 663 embeds __DATE__/__TIME__ in the patched firmware. The ARM toolchain
-          # does not honor SOURCE_DATE_EPOCH for those macros, so pin only these
-          # build-metadata strings to make independent builds byte-for-byte reproducible.
+          # PR 663 embeds __DATE__/__TIME__ in the firmware. Pin only those
+          # metadata strings to obtain a byte-for-byte reproducible image.
           python3 - <<'PY'
           from pathlib import Path
           p = Path("patches/bcm4375b1/18_41_117_sta/nexmon/src/version.c")
@@ -78,7 +77,7 @@ jobs:
           stat -c '%n %s bytes' bcmdhd_sta.bin_b1
           strings -a bcmdhd_sta.bin_b1 | grep -E 'NEXMON|18\.41\.117|FW-TAG|Jun  6 2025|19:18:40' | tail -n 30 || true
 
-      - name: Package deterministic build candidate
+      - name: Verify deterministic firmware SHA-256
         run: |
           mkdir -p out
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/bcmdhd_sta.bin_b1 out/bcmdhd_sta_nexmon_18_41_117.bin
@@ -88,8 +87,20 @@ jobs:
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/patches.log out/ 2>/dev/null || true
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/flashpatches.log out/ 2>/dev/null || true
           sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin
+          test "$(sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin | cut -d' ' -f1)" = "e46d2dfc7293b7d84577527d31b93334dcf6d318b270f4e53e137d48689395c0"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Nexmon-BCM4375B1-18.41.117-deterministic-candidate
+          name: Nexmon-BCM4375B1-18.41.117-deterministic
           path: out/
+
+      - name: Publish deterministic Nexmon firmware release asset
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nexmon-bcm4375-18.41.117
+          name: Nexmon BCM4375B1 18.41.117 - deterministic verified build
+          body: Built from seemoo-lab/nexmon PR 663 commit fd117f434e1c479f6819a0ba31f9ca82d75f8a3a for BCM4375B1 firmware 18.41.117. Stock base SHA-256 1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad. Patched deterministic SHA-256 e46d2dfc7293b7d84577527d31b93334dcf6d318b270f4e53e137d48689395c0. Only version.c build date/time metadata is pinned for reproducibility.
+          files: out/bcmdhd_sta_nexmon_18_41_117.bin
+          make_latest: false
+          overwrite_files: true
