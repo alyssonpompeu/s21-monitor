@@ -10,7 +10,7 @@ final class ProbeCatalog {
             new Probe("FIRMWARE FILES", "ls -lZ /vendor/firmware/bcmdhd_sta.bin_b1 /vendor/firmware/bcmdhd_mon.bin_b1 /vendor/firmware/bcmdhd_mfg.bin_b1 2>&1"),
             new Probe("FIRMWARE HASHES", "sha256sum /vendor/firmware/bcmdhd_sta.bin_b1 /vendor/firmware/bcmdhd_mon.bin_b1 /vendor/firmware/bcmdhd_mfg.bin_b1 2>&1"),
             new Probe("LOADERS", "ls -lZ /vendor/bin/hw/macloader /vendor/bin/hw/mfgloader 2>&1"),
-            new Probe("INIT REFERENCES", "grep -RniE 'macloader|mfgloader|firmware_path|bcmdhd_(sta|mon|mfg)' /vendor/etc/init /vendor/etc /odm/etc/init /system/etc/init 2>/dev/null | head -180"),
+            new Probe("INIT REFERENCES", "grep -niE 'macloader|mfgloader|firmware_path|bcmdhd_(sta|mon|mfg)' /vendor/etc/init/*.rc /vendor/etc/wlan_vendor_rc /vendor/etc/wlan_common_rc /odm/etc/init/*.rc /system/etc/init/*.rc 2>/dev/null | head -180"),
             new Probe("WIFI PROPERTIES", "getprop | grep -iE 'mfg|wlan|wifi|bcmdhd|4375' | head -180"),
             new Probe("MACLOADER STRINGS", "/system/bin/strings /vendor/bin/hw/macloader 2>/dev/null | grep -iE 'firmware|firmware_path|bcmdhd|monitor|mfg|sta|fw_path|nvram|load.*driver|unload.*driver|usage|option' | head -240"),
             new Probe("MFGLOADER STRINGS", "/system/bin/strings /vendor/bin/hw/mfgloader 2>/dev/null | grep -iE 'firmware|firmware_path|bcmdhd|monitor|mfg|sta|fw_path|nvram|load.*driver|unload.*driver|usage|option' | head -240"),
