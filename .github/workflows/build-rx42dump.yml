@@ -56,13 +56,15 @@ jobs:
           name: BCM4375-Lab-S21-APK
           path: BCM4375-Lab-S21.apk
 
-      - name: Publish latest firmware dump APK release
+      - name: Publish latest diagnostics APK release
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: rx42dump-latest
-          name: RX42 S21 Firmware Dump - Latest
-          body: Aplicativo root somente leitura para copiar firmware/configuração Broadcom BCM4375B1 do Galaxy S21, calcular SHA-256 e gerar ZIP para análise Nexmon.
-          files: RX42-S21-Firmware-Dump.apk
+          name: RX42 / BCM4375 Diagnostics - Latest
+          body: Aplicativos de diagnóstico para o Broadcom BCM4375B1 do Galaxy S21. BCM4375 Lab v1 permanece somente leitura e não troca firmware.
+          files: |
+            RX42-S21-Firmware-Dump.apk
+            BCM4375-Lab-S21.apk
           make_latest: false
           overwrite_files: true
