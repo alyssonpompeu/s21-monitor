@@ -6,6 +6,11 @@ on:
     branches: [ "main" ]
     paths:
       - '.github/workflows/build-nexmon-bcm4375.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - '.github/workflows/build-nexmon-bcm4375.yml'
+      - 'nexmon-build-check.txt'
 
 permissions:
   contents: read
