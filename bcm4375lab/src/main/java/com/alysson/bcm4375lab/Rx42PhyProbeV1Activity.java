@@ -26,12 +26,17 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * v3 app probe: loads a BCM4375B1 Nexmon firmware containing 0x630 + 0x631.
+ * 0x631 performs only a bounded Template RAM write/read/restore while sample playback is OFF.
+ * It never invokes sample playback and never intentionally transmits RF.
+ */
 public class Rx42PhyProbeV1Activity extends Activity {
     private static final String BASE = "https://bcm4375-remote-lab.vercel.app";
     private static final String FWCLASS = "/sys/module/firmware_class/parameters/path";
-    private static final String STAGE = "/data/vendor/wifi/rx42_phyprobe_v1";
-    private static final String ASSET = "nexmon/bcmdhd_sta_rx42_sdr_probe_v1.bin";
-    private static final String EXPECTED_SHA = "a5d0d5c68daedebeef5f12f0c97892711751506fab587ffe51b23f1dfaffbdd7";
+    private static final String STAGE = "/data/vendor/wifi/rx42_tplramprobe_v2";
+    private static final String ASSET = "nexmon/bcmdhd_sta_rx42_tplram_probe_v2.bin";
+    private static final String EXPECTED_SHA = "TPLRAM_PROBE_V2_SHA";
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -52,15 +57,15 @@ public class Rx42PhyProbeV1Activity extends Activity {
         r.setBackgroundColor(0xFF071014);
         s.addView(r);
 
-        r.addView(text("RX42 PHY Probe v1", 28, Color.WHITE, true));
-        r.addView(text("BCM4375B1 • sample-playback register path • SOMENTE LEITURA", 13, 0xFF80CBC4, false));
-        r.addView(text("Este teste carrega um Nexmon experimental e consulta IOCTL 0x630. Não escreve template RAM e não transmite RF.", 13, 0xFFCFD8DC, false));
-        status = text("Pronto para prova controlada.", 15, 0xFFFFD180, true);
+        r.addView(text("RX42 Template RAM Probe v2", 28, Color.WHITE, true));
+        r.addView(text("BCM4375B1 • write/read/restore • SAMPLE PLAYBACK OFF", 13, 0xFF80CBC4, false));
+        r.addView(text("Este teste escreve só 4 palavras numa área de scratch da Template RAM, lê de volta e restaura o conteúdo original. O firmware aborta se sample playback já estiver ativo. Não chama rotina de TX.", 13, 0xFFCFD8DC, false));
+        status = text("Pronto para round-trip controlado sem TX.", 15, 0xFFFFD180, true);
         status.setPadding(0, dp(18), 0, dp(12));
         r.addView(status);
 
         run = new Button(this);
-        run.setText("CARREGAR FIRMWARE + PROBAR 0x630");
+        run.setText("CARREGAR FIRMWARE + TESTAR 0x630/0x631");
         run.setAllCaps(false);
         run.setOnClickListener(v -> confirmRun());
         r.addView(run);
@@ -76,8 +81,8 @@ public class Rx42PhyProbeV1Activity extends Activity {
     private void confirmRun() {
         if (busy) return;
         new AlertDialog.Builder(this)
-                .setTitle("Executar prova PHY somente-leitura?")
-                .setMessage("O Wi-Fi será reiniciado. SELinux ficará Permissive apenas durante o carregamento do firmware e volta a Enforcing antes do término. O IOCTL 0x630 apenas lê registradores D11; não há TX de RF neste teste.")
+                .setTitle("Testar Template RAM sem TX?")
+                .setMessage("O Wi-Fi será reiniciado. SELinux ficará Permissive apenas durante o carregamento do firmware e voltará a Enforcing. O 0x631 exige SAMPLE_PLAY_CTRL=0, salva 4 palavras, escreve um padrão, lê, restaura e verifica. Nenhuma rotina de sample playback/TX é chamada.")
                 .setNegativeButton("Cancelar", null)
                 .setPositiveButton("Executar", (d,w) -> execute()).show();
     }
@@ -89,9 +94,8 @@ public class Rx42PhyProbeV1Activity extends Activity {
             JSONObject report = new JSONObject();
             boolean success = false;
             String originalPath = "/vendor/firmware";
-            boolean monitorLoaded = false;
             try {
-                report.put("test_id", "rx42_phyprobe_v1_readonly_0630");
+                report.put("test_id", "rx42_tplram_v2_roundtrip_0631_no_tx");
                 report.put("model", android.os.Build.MODEL);
                 report.put("hardware", android.os.Build.HARDWARE);
                 report.put("android", android.os.Build.VERSION.RELEASE);
@@ -108,8 +112,8 @@ public class Rx42PhyProbeV1Activity extends Activity {
                 if (!id.output.contains("uid=0") || !"Enforcing".equalsIgnoreCase(se))
                     throw new Exception("preflight: root + SELinux Enforcing necessários");
 
-                post("Extraindo firmware experimental…");
-                File src = new File(getFilesDir(), "bcmdhd_sta_rx42_sdr_probe_v1.bin");
+                post("Extraindo firmware Template RAM Probe…");
+                File src = new File(getFilesDir(), "bcmdhd_sta_rx42_tplram_probe_v2.bin");
                 copyAsset(ASSET, src);
                 String qsrc = q(src.getAbsolutePath());
                 String stageCmd = "rm -rf " + q(STAGE) + "; mkdir -p " + q(STAGE) +
@@ -127,11 +131,11 @@ public class Rx42PhyProbeV1Activity extends Activity {
                 post("Entrando em Samsung B1 Monitor…");
                 rr("svc wifi disable; sleep 2; setprop vendor.wlandriver.mode monitor; setprop ctl.start mfgloader; sleep 3", 9);
                 String mon = rr("cat /sys/wifi/wifiver 2>/dev/null", 4);
-                monitorLoaded = mon.contains("B1 Monitor");
+                boolean monitorLoaded = mon.contains("B1 Monitor");
                 tr.append("=== MONITOR ===\n").append(mon).append("MONITOR_CONFIRMED=").append(monitorLoaded).append('\n');
                 if (!monitorLoaded) throw new Exception("B1 Monitor não confirmado");
 
-                post("Carregando Nexmon PHY Probe…");
+                post("Carregando Nexmon Template RAM Probe…");
                 rr("printf '%s' " + q(STAGE) + " > " + FWCLASS, 4);
                 String setPath = rr("cat " + FWCLASS + " 2>/dev/null", 3).trim();
                 tr.append("FWCLASS_STAGE=").append(setPath).append('\n');
@@ -146,12 +150,15 @@ public class Rx42PhyProbeV1Activity extends Activity {
                 String net = rr("cat /sys/wifi/wifiver 2>/dev/null", 4);
                 tr.append("=== EXPERIMENTAL NETWORK ===\n").append(net).append('\n');
 
-                post("Consultando IOCTL 0x630…");
-                String probe = rr(nativeProbe() + " wlan0", 8);
-                tr.append("=== IOCTL 0x630 ===\n").append(probe).append('\n');
-                success = probe.contains("RX42_SDR_USER_PROBE=SUPPORTED_READ_ONLY") &&
-                          probe.contains("SDR_REGISTER_BLOCK=ACCESSIBLE") &&
-                          probe.contains("TX_ENABLED_BY_THIS_PROBE=0");
+                post("Executando 0x630 + 0x631 sem TX…");
+                String probe = rr(nativeProbe() + " wlan0", 9);
+                tr.append("=== IOCTL 0x630 + 0x631 ===\n").append(probe).append('\n');
+                success = probe.contains("RX42_TPLRAM_USER_PROBE=PASS_NO_TX") &&
+                          probe.contains("TPLRAM_RESULT=PASS") &&
+                          probe.contains("WRITE_READBACK_OK=1") &&
+                          probe.contains("RESTORE_OK=1") &&
+                          probe.contains("PLAYBACK_STAYED_OFF=1") &&
+                          probe.contains("TX_TRIGGERED=0");
                 report.put("probe_output", probe);
                 report.put("success", success);
                 report.put("experimental_sha", EXPECTED_SHA);
@@ -168,7 +175,7 @@ public class Rx42PhyProbeV1Activity extends Activity {
                     String finalSe = rr("getenforce 2>&1", 3).trim();
                     String finalPath = rr("cat " + FWCLASS + " 2>/dev/null", 3).trim();
                     String finalWifi = rr("cat /sys/wifi/wifiver 2>/dev/null", 4);
-                    String finalProbe = rr(nativeProbe() + " wlan0", 8);
+                    String finalProbe = rr(nativeProbe() + " wlan0", 9);
                     tr.append("=== FINAL ===\nSELinux=").append(finalSe)
                       .append("\nfwclass=").append(finalPath)
                       .append("\nwifiver=\n").append(finalWifi)
@@ -188,7 +195,7 @@ public class Rx42PhyProbeV1Activity extends Activity {
             ui.post(() -> {
                 busy = false; run.setEnabled(false);
                 status.setTextColor(ok ? 0xFF81C784 : 0xFFEF9A9A);
-                status.setText(ok ? "0x630 CONFIRMADO • SEM TX • relatório enviado" : "PROVA NÃO CONFIRMADA • estado seguro restaurado");
+                status.setText(ok ? "TEMPLATE RAM ROUND-TRIP OK • PLAYBACK OFF • SEM TX" : "PROVA NÃO CONFIRMADA • estado seguro restaurado");
                 log.setText(shown);
             });
         });
