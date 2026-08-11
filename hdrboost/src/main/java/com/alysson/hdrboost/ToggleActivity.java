@@ -18,7 +18,7 @@ public class ToggleActivity extends Activity {
         Toast.makeText(this, result.message, Toast.LENGTH_LONG).show();
 
         // Root is the preferred path. WRITE_SETTINGS remains only as a non-root fallback.
-        if (!result.enabled && !HdrController.hasRoot() && !Settings.System.canWrite(this)) {
+        if (!result.enabled && !Settings.System.canWrite(this)) {
             Intent intent = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
                     Uri.parse("package:" + getPackageName()));
             startActivity(intent);
