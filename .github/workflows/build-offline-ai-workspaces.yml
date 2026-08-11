@@ -1,0 +1,294 @@
+name: Build Offline AI Workspace APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "feature/offline-ptbr-ai-workspaces" ]
+    paths-ignore:
+      - 'offlineai-workspace-last-successful-build.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  build-offline-ai-workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      SD_CPP_COMMIT: bcc7e29568b94a25f78e99d34a8fa048d77536b1
+      LEXICON_SHA256: 2eb81afe3ea215dfea59890021e8cebb9f3b71a80fe6a56dfb29f84e2870b0db
+      DICTIONARY_PDF_SHA256: acf31020fd2b217d0fde0f47fc1f6d75d747ed224d173ade4539e35ff047caf7
+      QWEN_MODEL_REVISION: 31e04817b38d226cdd13454bcc3982ebaa5a386b
+      QWEN_MODEL_SHA256: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
+      QWEN_MODEL_FILE: Qwen3.5-2B-Q4_K_M.gguf
+      IMAGE_MODEL_FILE: segmind_tiny-sd-q4_K.gguf
+      IMAGE_MODEL_SHA256: 69fe70e0b72f3ea22830b12ddabeb55ee8fe55a28ccc0b763ace4cf39af346d6
+
+    steps:
+      - name: Checkout workspace variant
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          "$SDKMANAGER" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Pin llama.cpp source
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+
+      - name: Tune Qwen 2B runtime for S21 resource headroom
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          native = Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          text = native.read_text(encoding='utf-8')
+          replacements = {
+              'constexpr int   N_THREADS_MAX           = 4;': 'constexpr int   N_THREADS_MAX           = 3;',
+              'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;': 'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
+              'constexpr int   BATCH_SIZE              = 512;': 'constexpr int   BATCH_SIZE              = 128;',
+              'constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;': 'constexpr float DEFAULT_SAMPLER_TEMP    = 0.75f;',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Pinned ai_chat.cpp no longer matches expected tuning point: {old}')
+              text = text.replace(old, new, 1)
+          native.write_text(text, encoding='utf-8')
+
+          activity = Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
+          app = activity.read_text(encoding='utf-8')
+          markers = {
+              'Qwen3.5-0.8B-Q4_K_M.gguf': 'Qwen3.5-2B-Q4_K_M.gguf',
+              'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517': 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
+          }
+          for old, new in markers.items():
+              if old not in app:
+                  raise SystemExit(f'MainActivity model marker missing: {old}')
+              app = app.replace(old, new, 1)
+          activity.write_text(app, encoding='utf-8')
+          PY
+
+      - name: Build stable-diffusion.cpp ARM64 image engine
+        shell: bash
+        run: |
+          rm -rf vendor/stable-diffusion.cpp build/sd-android
+          git clone https://github.com/leejet/stable-diffusion.cpp.git vendor/stable-diffusion.cpp
+          git -C vendor/stable-diffusion.cpp checkout "$SD_CPP_COMMIT"
+          git -C vendor/stable-diffusion.cpp submodule update --init --recursive
+
+          CMAKE="$ANDROID_HOME/cmake/3.31.6/bin/cmake"
+          NINJA="$ANDROID_HOME/cmake/3.31.6/bin/ninja"
+          TOOLCHAIN="$ANDROID_HOME/ndk/29.0.13113456/build/cmake/android.toolchain.cmake"
+
+          "$CMAKE" -S vendor/stable-diffusion.cpp -B build/sd-android -G Ninja \
+            -DCMAKE_MAKE_PROGRAM="$NINJA" \
+            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-31 \
+            -DANDROID_STL=c++_static \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSD_BUILD_EXAMPLES=ON \
+            -DSD_WEBP=OFF \
+            -DSD_WEBM=OFF \
+            -DSD_CUDA=OFF \
+            -DSD_HIPBLAS=OFF \
+            -DSD_METAL=OFF \
+            -DSD_VULKAN=OFF \
+            -DSD_OPENCL=OFF \
+            -DSD_SYCL=OFF \
+            -DSD_BUILD_SHARED_LIBS=OFF \
+            -DSD_BUILD_SHARED_GGML_LIB=OFF \
+            -DGGML_NATIVE=OFF
+
+          "$CMAKE" --build build/sd-android --target sd-cli -- -j2
+          SD_CLI="$(find build/sd-android -type f -name sd-cli -perm -111 | head -n 1)"
+          test -n "$SD_CLI"
+          file "$SD_CLI"
+          mkdir -p offlineai/src/main/jniLibs/arm64-v8a
+          cp "$SD_CLI" offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          chmod 755 offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          ls -lh offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+
+      - name: Download and verify linguistic sources
+        shell: bash
+        run: |
+          mkdir -p build/offline-sources offlineai/src/main/assets
+
+          curl -L --fail --retry 5 \
+            https://www.ime.usp.br/~pf/dicios/br-sem-acentos.txt \
+            -o build/offline-sources/br-sem-acentos.txt
+          echo "$LEXICON_SHA256  build/offline-sources/br-sem-acentos.txt" | sha256sum -c -
+
+          curl -L --fail --retry 5 \
+            https://www.gutenberg.org/files/31552/31552-pdf.pdf \
+            -o build/offline-sources/31552-pdf.pdf
+          echo "$DICTIONARY_PDF_SHA256  build/offline-sources/31552-pdf.pdf" | sha256sum -c -
+
+          pdftotext -layout -enc UTF-8 \
+            build/offline-sources/31552-pdf.pdf \
+            build/offline-sources/dicionario.txt
+
+          python3 scripts/build_ptbr_memory.py \
+            --lexicon build/offline-sources/br-sem-acentos.txt \
+            --dictionary build/offline-sources/dicionario.txt \
+            --output offlineai/src/main/assets/ptbr_memory.db
+
+      - name: Download and verify Qwen3.5 2B Q4_K_M
+        shell: bash
+        run: |
+          curl -L --fail --retry 5 --retry-delay 5 \
+            "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/${QWEN_MODEL_REVISION}/${QWEN_MODEL_FILE}?download=true" \
+            -o offlineai/src/main/assets/model.gguf
+          echo "$QWEN_MODEL_SHA256  offlineai/src/main/assets/model.gguf" | sha256sum -c -
+          ls -lh offlineai/src/main/assets/model.gguf
+
+      - name: Record workspace source manifest
+        shell: bash
+        run: |
+          cat > offlineai/src/main/assets/source_manifest.json <<EOF
+          {
+            "variant": "workspace-qwen3.5-2b",
+            "language": "pt-BR",
+            "runtime": "llama.cpp",
+            "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
+            "runtime_policy": "CPU-only ARM64; max llama workers 3; Vulkan disabled; context 4096; batch 128; temperature 0.75; RAM reserve and thermal admission control",
+            "base_model": "Qwen/Qwen3.5-2B",
+            "quantization_repo": "unsloth/Qwen3.5-2B-GGUF",
+            "quantization_revision": "$QWEN_MODEL_REVISION",
+            "model": "$QWEN_MODEL_FILE",
+            "model_sha256": "$QWEN_MODEL_SHA256",
+            "image_runtime": "stable-diffusion.cpp",
+            "stable_diffusion_cpp_commit": "$SD_CPP_COMMIT",
+            "image_model_pack": "$IMAGE_MODEL_FILE",
+            "image_model_sha256": "$IMAGE_MODEL_SHA256",
+            "image_model_bundled_in_apk": false,
+            "lexicon_sha256": "$LEXICON_SHA256",
+            "dictionary_pdf_sha256": "$DICTIONARY_PDF_SHA256"
+          }
+          EOF
+
+      - name: Build installable workspace ARM64 debug APK
+        id: build_apk
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee offlineai-workspace-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$STATUS" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          src = Path('offlineai-workspace-build.log').read_text(encoding='utf-8', errors='replace').splitlines()
+          patterns = re.compile(r'(error:|fatal error:|CMake Error|FAILED:|ninja:|Execution failed|BUILD FAILED|What went wrong|Caused by:)')
+          hits = [i for i, line in enumerate(src) if patterns.search(line)]
+          selected = set()
+          for i in hits:
+              selected.update(range(max(0, i - 12), min(len(src), i + 35)))
+          lines = [src[i] for i in sorted(selected)]
+          if not lines:
+              lines = src[-600:]
+          Path('offlineai-workspace-last-build-error.txt').write_text('\n'.join(lines[-1000:]) + '\n', encoding='utf-8')
+          PY
+            cat offlineai-workspace-last-build-error.txt
+            exit "$STATUS"
+          fi
+
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk IA-Offline-PTBR-S21-Workspace.apk
+          sha256sum IA-Offline-PTBR-S21-Workspace.apk | tee IA-Offline-PTBR-S21-Workspace.apk.sha256
+          unzip -l IA-Offline-PTBR-S21-Workspace.apk | grep -E 'lib/arm64-v8a/libsd-cli.so|assets/model.gguf|assets/ptbr_memory.db'
+          ls -lh IA-Offline-PTBR-S21-Workspace.apk
+
+      - name: Download verified optional image model pack
+        shell: bash
+        run: |
+          curl -L --fail --retry 5 --retry-delay 5 \
+            "https://huggingface.co/turingevo/tiny-sd-gguf/resolve/main/${IMAGE_MODEL_FILE}?download=true" \
+            -o "$IMAGE_MODEL_FILE"
+          echo "$IMAGE_MODEL_SHA256  $IMAGE_MODEL_FILE" | sha256sum -c -
+          sha256sum "$IMAGE_MODEL_FILE" > "$IMAGE_MODEL_FILE.sha256"
+          ls -lh "$IMAGE_MODEL_FILE"
+
+      - name: Upload workspace build diagnostics
+        if: failure() && steps.build_apk.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-ai-workspace-build-diagnostics
+          path: |
+            offlineai-workspace-last-build-error.txt
+            offlineai-workspace-build.log
+          retention-days: 7
+
+      - name: Upload workspace APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-Workspace-APK
+          path: |
+            IA-Offline-PTBR-S21-Workspace.apk
+            IA-Offline-PTBR-S21-Workspace.apk.sha256
+          compression-level: 0
+
+      - name: Publish workspace APK and optional image pack
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-workspace-v1
+          name: IA Offline Workspace para Galaxy S21
+          body: |
+            Edição experimental avançada para Galaxy S21 / Exynos 2100.
+
+            - Qwen3.5 2B Q4_K_M totalmente local para texto/código.
+            - Projetos separados com arquivos e histórico isolados.
+            - Personalização de nome e extensão da resposta.
+            - Perfis locais Avançado, Intermediário e Rápido; estes nomes NÃO representam GPT-5.6, GPT-5.5 ou o3 e não usam serviços OpenAI.
+            - Proteção conservadora de RAM e temperatura, llama limitado a no máximo 3 workers; Vulkan permanece desativado.
+            - Geração de imagens 512x512 via stable-diffusion.cpp, 2 threads e VAE tiling. O modelo Tiny-SD é um pacote opcional separado para não aumentar ainda mais o APK.
+
+            Para imagens, baixe também segmind_tiny-sd-q4_K.gguf e importe pelo menu lateral do app. Depois disso a geração funciona sem internet.
+          files: |
+            IA-Offline-PTBR-S21-Workspace.apk
+            IA-Offline-PTBR-S21-Workspace.apk.sha256
+            segmind_tiny-sd-q4_K.gguf
+            segmind_tiny-sd-q4_K.gguf.sha256
+          make_latest: false
+          overwrite_files: true
+
+      - name: Record successful workspace workflow run
+        shell: bash
+        run: |
+          printf '%s\n' "${GITHUB_RUN_ID}" > offlineai-workspace-last-successful-build.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add offlineai-workspace-last-successful-build.txt
+          git commit -m "Record workspace APK build [skip ci]" || exit 0
+          git push origin HEAD:${GITHUB_REF_NAME}
