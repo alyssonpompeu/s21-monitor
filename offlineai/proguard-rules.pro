@@ -1,0 +1,2 @@
+-keep class com.arm.aichat.** { *; }
+-dontwarn com.arm.aichat.**
