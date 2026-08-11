@@ -96,6 +96,12 @@ class DialogueBrain {
         while (history.size > MAX_TURNS_TOTAL) history.removeFirst()
     }
 
+    fun clearProject(projectId: Long) {
+        val kept = history.filter { it.projectId != projectId }
+        history.clear()
+        kept.forEach(history::addLast)
+    }
+
     private fun recentConversation(projectId: Long, limit: Int): String {
         val turns = history.filter { it.projectId == projectId }.takeLast(limit)
         if (turns.isEmpty()) return ""

@@ -9,7 +9,7 @@
         android:allowBackup="false"
         android:extractNativeLibs="true"
         android:hardwareAccelerated="true"
-        android:label="IA Offline Workspace"
+        android:label="IA Offline Workspace v2"
         android:largeHeap="true"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">

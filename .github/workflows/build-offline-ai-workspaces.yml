@@ -1,17 +1,17 @@
-name: Build Offline AI Workspace APK
+name: Build Offline AI Workspace v2 APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "feature/offline-ptbr-ai-workspaces" ]
+    branches: [ "feature/offline-ptbr-ai-workspaces-v2" ]
     paths-ignore:
-      - 'offlineai-workspace-last-successful-build.txt'
+      - 'offlineai-workspace-v2-last-successful-build.txt'
 
 permissions:
   contents: write
 
 jobs:
-  build-offline-ai-workspace:
+  build-offline-ai-workspace-v2:
     runs-on: ubuntu-latest
     timeout-minutes: 150
 
@@ -27,7 +27,7 @@ jobs:
       IMAGE_MODEL_SHA256: 69fe70e0b72f3ea22830b12ddabeb55ee8fe55a28ccc0b763ace4cf39af346d6
 
     steps:
-      - name: Checkout workspace variant
+      - name: Checkout Workspace v2 variant
         uses: actions/checkout@v4
 
       - name: Set up Java 17
@@ -97,7 +97,11 @@ jobs:
           activity.write_text(app, encoding='utf-8')
           PY
 
-      - name: Build stable-diffusion.cpp ARM64 image engine
+      - name: Apply Workspace v2 UI and project features
+        shell: bash
+        run: python3 scripts/apply_workspace_v2_ui.py
+
+      - name: Build stable-diffusion.cpp ARM64 image engine without OpenMP dependency
         shell: bash
         run: |
           rm -rf vendor/stable-diffusion.cpp build/sd-android
@@ -108,6 +112,7 @@ jobs:
           CMAKE="$ANDROID_HOME/cmake/3.31.6/bin/cmake"
           NINJA="$ANDROID_HOME/cmake/3.31.6/bin/ninja"
           TOOLCHAIN="$ANDROID_HOME/ndk/29.0.13113456/build/cmake/android.toolchain.cmake"
+          READELF="$ANDROID_HOME/ndk/29.0.13113456/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
 
           "$CMAKE" -S vendor/stable-diffusion.cpp -B build/sd-android -G Ninja \
             -DCMAKE_MAKE_PROGRAM="$NINJA" \
@@ -127,12 +132,18 @@ jobs:
             -DSD_SYCL=OFF \
             -DSD_BUILD_SHARED_LIBS=OFF \
             -DSD_BUILD_SHARED_GGML_LIB=OFF \
-            -DGGML_NATIVE=OFF
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=OFF
 
           "$CMAKE" --build build/sd-android --target sd-cli -- -j2
           SD_CLI="$(find build/sd-android -type f -name sd-cli -perm -111 | head -n 1)"
           test -n "$SD_CLI"
           file "$SD_CLI"
+          "$READELF" -d "$SD_CLI" | tee build/sd-cli-needed.txt
+          if grep -q 'libomp.so' build/sd-cli-needed.txt; then
+            echo 'ERROR: image engine still depends on libomp.so' >&2
+            exit 1
+          fi
           mkdir -p offlineai/src/main/jniLibs/arm64-v8a
           cp "$SD_CLI" offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
           chmod 755 offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
@@ -171,12 +182,12 @@ jobs:
           echo "$QWEN_MODEL_SHA256  offlineai/src/main/assets/model.gguf" | sha256sum -c -
           ls -lh offlineai/src/main/assets/model.gguf
 
-      - name: Record workspace source manifest
+      - name: Record Workspace v2 source manifest
         shell: bash
         run: |
           cat > offlineai/src/main/assets/source_manifest.json <<EOF
           {
-            "variant": "workspace-qwen3.5-2b",
+            "variant": "workspace-qwen3.5-2b-v2",
             "language": "pt-BR",
             "runtime": "llama.cpp",
             "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
@@ -188,21 +199,23 @@ jobs:
             "model_sha256": "$QWEN_MODEL_SHA256",
             "image_runtime": "stable-diffusion.cpp",
             "stable_diffusion_cpp_commit": "$SD_CPP_COMMIT",
+            "image_runtime_openmp": false,
             "image_model_pack": "$IMAGE_MODEL_FILE",
             "image_model_sha256": "$IMAGE_MODEL_SHA256",
             "image_model_bundled_in_apk": false,
+            "features": ["per-project search history", "project delete menu", "project-scoped files", "resource guard"],
             "lexicon_sha256": "$LEXICON_SHA256",
             "dictionary_pdf_sha256": "$DICTIONARY_PDF_SHA256"
           }
           EOF
 
-      - name: Build installable workspace ARM64 debug APK
+      - name: Build installable Workspace v2 ARM64 debug APK
         id: build_apk
         shell: bash
         run: |
           set +e
           set -o pipefail
-          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee offlineai-workspace-build.log
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee offlineai-workspace-v2-build.log
           STATUS=${PIPESTATUS[0]}
           set -e
 
@@ -210,7 +223,7 @@ jobs:
             python3 - <<'PY'
           from pathlib import Path
           import re
-          src = Path('offlineai-workspace-build.log').read_text(encoding='utf-8', errors='replace').splitlines()
+          src = Path('offlineai-workspace-v2-build.log').read_text(encoding='utf-8', errors='replace').splitlines()
           patterns = re.compile(r'(error:|fatal error:|CMake Error|FAILED:|ninja:|Execution failed|BUILD FAILED|What went wrong|Caused by:)')
           hits = [i for i, line in enumerate(src) if patterns.search(line)]
           selected = set()
@@ -219,16 +232,16 @@ jobs:
           lines = [src[i] for i in sorted(selected)]
           if not lines:
               lines = src[-600:]
-          Path('offlineai-workspace-last-build-error.txt').write_text('\n'.join(lines[-1000:]) + '\n', encoding='utf-8')
+          Path('offlineai-workspace-v2-last-build-error.txt').write_text('\n'.join(lines[-1000:]) + '\n', encoding='utf-8')
           PY
-            cat offlineai-workspace-last-build-error.txt
+            cat offlineai-workspace-v2-last-build-error.txt
             exit "$STATUS"
           fi
 
-          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk IA-Offline-PTBR-S21-Workspace.apk
-          sha256sum IA-Offline-PTBR-S21-Workspace.apk | tee IA-Offline-PTBR-S21-Workspace.apk.sha256
-          unzip -l IA-Offline-PTBR-S21-Workspace.apk | grep -E 'lib/arm64-v8a/libsd-cli.so|assets/model.gguf|assets/ptbr_memory.db'
-          ls -lh IA-Offline-PTBR-S21-Workspace.apk
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk IA-Offline-PTBR-S21-Workspace-v2.apk
+          sha256sum IA-Offline-PTBR-S21-Workspace-v2.apk | tee IA-Offline-PTBR-S21-Workspace-v2.apk.sha256
+          unzip -l IA-Offline-PTBR-S21-Workspace-v2.apk | grep -E 'lib/arm64-v8a/libsd-cli.so|assets/model.gguf|assets/ptbr_memory.db'
+          ls -lh IA-Offline-PTBR-S21-Workspace-v2.apk
 
       - name: Download verified optional image model pack
         shell: bash
@@ -240,55 +253,55 @@ jobs:
           sha256sum "$IMAGE_MODEL_FILE" > "$IMAGE_MODEL_FILE.sha256"
           ls -lh "$IMAGE_MODEL_FILE"
 
-      - name: Upload workspace build diagnostics
+      - name: Upload Workspace v2 build diagnostics
         if: failure() && steps.build_apk.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: offline-ai-workspace-build-diagnostics
+          name: offline-ai-workspace-v2-build-diagnostics
           path: |
-            offlineai-workspace-last-build-error.txt
-            offlineai-workspace-build.log
+            offlineai-workspace-v2-last-build-error.txt
+            offlineai-workspace-v2-build.log
           retention-days: 7
 
-      - name: Upload workspace APK artifact
+      - name: Upload Workspace v2 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: IA-Offline-PTBR-S21-Workspace-APK
+          name: IA-Offline-PTBR-S21-Workspace-v2-APK
           path: |
-            IA-Offline-PTBR-S21-Workspace.apk
-            IA-Offline-PTBR-S21-Workspace.apk.sha256
+            IA-Offline-PTBR-S21-Workspace-v2.apk
+            IA-Offline-PTBR-S21-Workspace-v2.apk.sha256
           compression-level: 0
 
-      - name: Publish workspace APK and optional image pack
+      - name: Publish Workspace v2 APK and optional image pack
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: offline-ai-workspace-v1
-          name: IA Offline Workspace para Galaxy S21
+          tag_name: offline-ai-workspace-v2
+          name: IA Offline Workspace v2 para Galaxy S21
           body: |
-            Edição experimental avançada para Galaxy S21 / Exynos 2100.
+            Segunda edição experimental, instalável lado a lado com a Workspace v1.
 
-            - Qwen3.5 2B Q4_K_M totalmente local para texto/código.
-            - Projetos separados com arquivos e histórico isolados.
-            - Personalização de nome e extensão da resposta.
-            - Perfis locais Avançado, Intermediário e Rápido; estes nomes NÃO representam GPT-5.6, GPT-5.5 ou o3 e não usam serviços OpenAI.
-            - Proteção conservadora de RAM e temperatura, llama limitado a no máximo 3 workers; Vulkan permanece desativado.
-            - Geração de imagens 512x512 via stable-diffusion.cpp, 2 threads e VAE tiling. O modelo Tiny-SD é um pacote opcional separado para não aumentar ainda mais o APK.
+            - Corrige o erro `libomp.so not found`: o stable-diffusion.cpp é compilado com GGML_OPENMP=OFF e o CI rejeita qualquer binário que ainda dependa de libomp.so.
+            - Histórico de pesquisas local por projeto, acessível pelo ícone de histórico dentro da barra de pesquisa.
+            - Menu `⋮` em cada projeto com Renomear e Excluir.
+            - Ao excluir um projeto, remove biblioteca indexada, histórico de pesquisa e imagens geradas daquele projeto.
+            - Qwen3.5 2B Q4_K_M, projetos, personalização e proteção de RAM/temperatura permanecem locais.
+            - Geração de imagens 512x512 via stable-diffusion.cpp, 2 threads e VAE tiling.
 
-            Para imagens, baixe também segmind_tiny-sd-q4_K.gguf e importe pelo menu lateral do app. Depois disso a geração funciona sem internet.
+            Para imagens, use o mesmo `segmind_tiny-sd-q4_K.gguf` e importe pelo menu lateral da v2.
           files: |
-            IA-Offline-PTBR-S21-Workspace.apk
-            IA-Offline-PTBR-S21-Workspace.apk.sha256
+            IA-Offline-PTBR-S21-Workspace-v2.apk
+            IA-Offline-PTBR-S21-Workspace-v2.apk.sha256
             segmind_tiny-sd-q4_K.gguf
             segmind_tiny-sd-q4_K.gguf.sha256
           make_latest: false
           overwrite_files: true
 
-      - name: Record successful workspace workflow run
+      - name: Record successful Workspace v2 workflow run
         shell: bash
         run: |
-          printf '%s\n' "${GITHUB_RUN_ID}" > offlineai-workspace-last-successful-build.txt
+          printf '%s\n' "${GITHUB_RUN_ID}" > offlineai-workspace-v2-last-successful-build.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add offlineai-workspace-last-successful-build.txt
-          git commit -m "Record workspace APK build [skip ci]" || exit 0
+          git add offlineai-workspace-v2-last-successful-build.txt
+          git commit -m "Record Workspace v2 APK build [skip ci]" || exit 0
           git push origin HEAD:${GITHUB_REF_NAME}

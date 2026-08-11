@@ -66,6 +66,10 @@ class ImageGenerationManager(
         ImportResult(modelFile, actual)
     }
 
+    suspend fun deleteProjectImages(projectId: Long) = withContext(Dispatchers.IO) {
+        File(outputDir, "project_$projectId").deleteRecursively()
+    }
+
     suspend fun generate(
         projectId: Long,
         prompt: String,
@@ -103,10 +107,12 @@ class ImageGenerationManager(
         )
 
         progress("Gerando imagem localmente • $steps etapas")
-        val process = ProcessBuilder(args)
+        val processBuilder = ProcessBuilder(args)
             .directory(context.filesDir)
             .redirectErrorStream(true)
-            .start()
+        // Keep packaged native dependencies discoverable if a future engine build needs one.
+        processBuilder.environment()["LD_LIBRARY_PATH"] = context.applicationInfo.nativeLibraryDir
+        val process = processBuilder.start()
 
         try {
             process.inputStream.bufferedReader().useLines { lines ->

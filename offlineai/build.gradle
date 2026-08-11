@@ -8,12 +8,12 @@ android {
     compileSdk 36
 
     defaultConfig {
-        // Workspace edition stays installable beside both the 0.8B and Qwen 2B test builds.
-        applicationId 'com.alysson.offlineai.workspace'
+        // V2 stays installable beside the previous Workspace so rollback is immediate.
+        applicationId 'com.alysson.offlineai.workspacev2'
         minSdk 31
         targetSdk 35
-        versionCode 4
-        versionName '3.0.0-workspace'
+        versionCode 5
+        versionName '3.1.0-workspace-v2'
 
         ndk {
             abiFilters 'arm64-v8a'
