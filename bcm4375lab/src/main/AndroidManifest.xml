@@ -3,12 +3,12 @@
 
     <application
         android:allowBackup="false"
-        android:label="BCM4375 SELinux Proof v4.2"
+        android:label="BCM4375 Remote Lab"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false"
         android:extractNativeLibs="true">
         <activity
-            android:name=".SelinuxStockProofV42Activity"
+            android:name=".RemoteLabActivity"
             android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
@@ -16,6 +16,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".SelinuxStockProofV42Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".NexmonVendorWifiV41Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".FirmwarePathProofV40Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".FirmwarePathScoutV39Activity" android:screenOrientation="portrait" android:exported="false" />
