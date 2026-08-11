@@ -62,42 +62,44 @@ public class RemoteLab3Activity extends Activity {
         r.addView(text("BCM4375 Remote Lab 3", 27, Color.WHITE, true));
         r.addView(text("Nexmon monitor RX • sem reload de firmware", 12, 0xFF80CBC4, false));
         r.addView(text("Samsung " + Build.MODEL + " • " + Build.HARDWARE + " • Android " + Build.VERSION.RELEASE, 12, 0xFFCFD8DC, false));
-        status = text("Sincronize o teste atual.", 14, 0xFFFFD180, true); status.setPadding(0,dp(14),0,dp(10)); r.addView(status);
+        status = text("Carregue o teste de monitor RX.", 14, 0xFFFFD180, true); status.setPadding(0,dp(14),0,dp(10)); r.addView(status);
         details = text("lab_id=" + labId, 11, 0xFFB0BEC5, false); details.setTypeface(Typeface.MONOSPACE); r.addView(details);
-        sync = button("1. SINCRONIZAR TESTE ONLINE"); sync.setOnClickListener(v -> syncConfig()); r.addView(sync);
+        sync = button("1. CARREGAR TESTE MONITOR RX"); sync.setOnClickListener(v -> loadConfig()); r.addView(sync);
         run = button("2. EXECUTAR TESTE ATUAL"); run.setEnabled(false); run.setOnClickListener(v -> confirmRun()); r.addView(run);
         log = text("Nenhum teste executado.", 11, 0xFFE0E0E0, false); log.setTypeface(Typeface.MONOSPACE); log.setTextIsSelectable(true); log.setPadding(0,dp(12),0,0); r.addView(log);
         return s;
     }
 
-    private void syncConfig() {
+    private void loadConfig() {
         if (busy) return;
-        setBusy("Consultando backend…");
-        worker.execute(() -> {
-            try {
-                JSONObject c = new JSONObject(httpGet(BASE + "/api/config"));
-                validateConfig(c);
-                config = c;
-                ui.post(() -> {
-                    busy=false; sync.setEnabled(true); run.setEnabled(true);
-                    status.setTextColor(0xFF81C784); status.setText("TESTE ONLINE PRONTO");
-                    details.setText("lab_id="+labId+"\ntest_id="+c.optString("test_id")+" rev="+c.optInt("revision")+"\n"+c.optString("title"));
-                    log.setText(c.toString());
-                });
-            } catch(Exception e) { fail("FALHA AO SINCRONIZAR", e); }
-        });
+        try {
+            JSONObject c = localMonitorConfig();
+            validateConfig(c);
+            config = c;
+            status.setTextColor(0xFF81C784); status.setText("TESTE MONITOR RX PRONTO");
+            details.setText("lab_id="+labId+"\ntest_id="+c.optString("test_id")+" rev="+c.optInt("revision")+"\n"+c.optString("title"));
+            log.setText(c.toString()); run.setEnabled(true);
+        } catch(Exception e) { fail("FALHA AO CARREGAR", e); }
+    }
+
+    private JSONObject localMonitorConfig() throws Exception {
+        JSONObject c = new JSONObject();
+        c.put("schema",1); c.put("test_id","v44_nexmon_monitor_rx"); c.put("revision",1);
+        c.put("title","Nexmon 0x600 confirmado → monitor_on → sniff radiotap → monitor_off");
+        JSONArray a = new JSONArray();
+        a.put("preflight_nexmon"); a.put("monitor_on"); a.put("probe_monitor"); a.put("sniff_radiotap"); a.put("monitor_off"); a.put("ensure_nexmon_final");
+        c.put("operations",a); return c;
     }
 
     private void validateConfig(JSONObject c) throws Exception {
-        if (c.optInt("schema") != 1) throw new Exception("schema remoto não suportado");
+        if (c.optInt("schema") != 1) throw new Exception("schema não suportado");
         JSONArray ops = c.getJSONArray("operations");
-        for (int i=0;i<ops.length();i++) if (!isAllowed(ops.getString(i))) throw new Exception("operação remota não permitida: "+ops.getString(i));
+        for (int i=0;i<ops.length();i++) if (!isAllowed(ops.getString(i))) throw new Exception("operação não permitida: "+ops.getString(i));
     }
 
     private boolean isAllowed(String op) {
         switch(op) {
-            case "preflight_nexmon": case "monitor_on": case "probe_monitor": case "sniff_radiotap":
-            case "monitor_off": case "ensure_nexmon_final": return true;
+            case "preflight_nexmon": case "monitor_on": case "probe_monitor": case "sniff_radiotap": case "monitor_off": case "ensure_nexmon_final": return true;
             default: return false;
         }
     }
@@ -105,7 +107,7 @@ public class RemoteLab3Activity extends Activity {
     private void confirmRun() {
         JSONObject c=config; if(c==null || busy) return;
         new AlertDialog.Builder(this).setTitle("Executar "+c.optString("test_id"))
-                .setMessage("Teste passivo de recepção: ativa monitor mode do Nexmon por poucos segundos, observa frames e desativa monitor. Não transmite e não recarrega firmware.")
+                .setMessage("Teste passivo: ativa monitor mode do Nexmon por poucos segundos, observa frames e desativa monitor. Não transmite e não recarrega firmware.")
                 .setNegativeButton("Cancelar", null)
                 .setPositiveButton("Executar", (d,w)->executeConfig(c)).show();
     }
@@ -142,7 +144,7 @@ public class RemoteLab3Activity extends Activity {
                     report.put("triage",tri); report.put("trace",trace.toString()); report.put("finished_ms",System.currentTimeMillis());
                 } catch(Exception ignored) {}
             }
-            try { report.put("upload_response",httpPost(BASE+"/api/report",report.toString())); }
+            try { Thread.sleep(1200); report.put("upload_response",httpPost(BASE+"/api/report",report.toString())); }
             catch(Exception e) { try { report.put("upload_error",e.toString()); } catch(Exception ignored) {} }
             final boolean ok=report.optBoolean("success",false);
             ui.post(() -> {
@@ -170,9 +172,7 @@ public class RemoteLab3Activity extends Activity {
             }
             case "probe_monitor": return triage().output;
             case "sniff_radiotap": return RootReader.run(nativeSniff()+" wlan0 6",10).output;
-            case "monitor_off": {
-                RootReader.Result r=RootReader.run(nativeProbe()+" wlan0 monitor_off",6); Thread.sleep(800); return r.output;
-            }
+            case "monitor_off": { RootReader.Result r=RootReader.run(nativeProbe()+" wlan0 monitor_off",6); Thread.sleep(800); return r.output; }
             case "ensure_nexmon_final": return triage().output+"\nSELinux="+RootReader.run("getenforce 2>&1",3).output.trim();
             default: throw new Exception("operação não permitida");
         }
@@ -182,7 +182,6 @@ public class RemoteLab3Activity extends Activity {
     private String nativeProbe(){ return q(getApplicationInfo().nativeLibraryDir+"/libnexprobe.so"); }
     private String nativeSniff(){ return q(getApplicationInfo().nativeLibraryDir+"/libmonrx.so"); }
 
-    private static String httpGet(String u) throws Exception { HttpURLConnection c=(HttpURLConnection)new URL(u).openConnection(); c.setConnectTimeout(10000); c.setReadTimeout(10000); c.setRequestMethod("GET"); return read(c); }
     private static String httpPost(String u,String body) throws Exception { HttpURLConnection c=(HttpURLConnection)new URL(u).openConnection(); c.setConnectTimeout(10000); c.setReadTimeout(15000); c.setRequestMethod("POST"); c.setDoOutput(true); c.setRequestProperty("Content-Type","application/json; charset=utf-8"); try(OutputStream o=c.getOutputStream()){o.write(body.getBytes(StandardCharsets.UTF_8));} return read(c); }
     private static String read(HttpURLConnection c) throws Exception { int code=c.getResponseCode(); InputStream in=(code>=200&&code<300)?c.getInputStream():c.getErrorStream(); StringBuilder s=new StringBuilder(); try(BufferedReader r=new BufferedReader(new InputStreamReader(in,StandardCharsets.UTF_8))){String l;while((l=r.readLine())!=null)s.append(l);} if(code<200||code>=300) throw new Exception("HTTP "+code+" "+s); return s.toString(); }
 
