@@ -6,6 +6,11 @@ on:
     paths:
       - '.github/workflows/build-nexmon-sdr-probe.yml'
       - 'sdr-probe/**'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - '.github/workflows/build-nexmon-sdr-probe.yml'
+      - 'sdr-probe/**'
   workflow_dispatch:
 
 permissions:
