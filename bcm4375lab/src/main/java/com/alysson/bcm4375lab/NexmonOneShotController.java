@@ -22,6 +22,7 @@ final class NexmonOneShotController {
     static final String RESULT_PATH = "/data/adb/bcm4375_nexmon_oneshot_result.txt";
     static final String STATE_PATH = "/data/adb/bcm4375_nexmon_oneshot_state.txt";
     private static final String ASSET = "nexmon/bcmdhd_sta_nexmon_18_41_117.bin";
+    private static final String MODULE_VERSION = "18.41.117-pr663-guard2";
 
     interface Progress { void onProgress(String text); }
 
@@ -53,6 +54,7 @@ final class NexmonOneShotController {
                 "D=''; [ -d '" + STAGED_DIR + "' ] && D='" + STAGED_DIR + "'; " +
                 "[ -z \"$D\" ] && [ -d '" + ACTIVE_DIR + "' ] && D='" + ACTIVE_DIR + "'; " +
                 "if [ -z \"$D\" ]; then echo ABSENT; " +
+                "elif ! grep -q '^version=" + MODULE_VERSION + "$' \"$D/module.prop\" 2>/dev/null; then echo LEGACY; " +
                 "elif [ -e \"$D/remove\" ]; then echo REMOVE_PENDING; " +
                 "elif [ -e \"$D/disable\" ]; then echo DISABLED; else echo ARMED; fi";
         return RootReader.run(cmd, 4).output.trim();
@@ -101,15 +103,11 @@ final class NexmonOneShotController {
         String moduleProp =
                 "id=" + MODULE_ID + "\n" +
                 "name=BCM4375B1 Nexmon One-Shot\n" +
-                "version=18.41.117-pr663-guard2\n" +
+                "version=" + MODULE_VERSION + "\n" +
                 "versionCode=301\n" +
                 "author=BCM4375 Lab\n" +
                 "description=One-shot Nexmon BCM4375B1 firmware overlay with early reboot-loop guard.\n";
 
-        // Magisk runs module post-fs-data before module mounts. On the first armed boot,
-        // record that the one-shot has started but leave the module enabled so it can mount.
-        // If the device reboots before late_start/service.sh can create disable, the second
-        // post-fs-data sees the marker and disables the module before that second mount.
         String postFs =
                 "#!/system/bin/sh\n" +
                 "MODDIR=${0%/*}\n" +
@@ -166,6 +164,7 @@ final class NexmonOneShotController {
                 "test -n \"$D\" && " +
                 "chmod 0755 \"$D/post-fs-data.sh\" \"$D/service.sh\" && " +
                 "chmod 0644 \"$D/system/vendor/firmware/bcmdhd_sta.bin_b1\" && " +
+                "grep -q '^version=" + MODULE_VERSION + "$' \"$D/module.prop\" && " +
                 "test \"$(sha256sum \"$D/system/vendor/firmware/bcmdhd_sta.bin_b1\" | cut -d' ' -f1)\" = '" + NEXMON_SHA + "' && " +
                 "rm -f \"$D/remove\" && touch \"$D/disable\" && sync";
         return RootReader.run(cmd, 45);
@@ -176,6 +175,7 @@ final class NexmonOneShotController {
                 "D=''; [ -d '" + STAGED_DIR + "' ] && D='" + STAGED_DIR + "'; " +
                 "[ -z \"$D\" ] && [ -d '" + ACTIVE_DIR + "' ] && D='" + ACTIVE_DIR + "'; " +
                 "test -n \"$D\" && " +
+                "grep -q '^version=" + MODULE_VERSION + "$' \"$D/module.prop\" && " +
                 "test \"$(sha256sum \"$D/system/vendor/firmware/bcmdhd_sta.bin_b1\" 2>/dev/null | cut -d' ' -f1)\" = '" + NEXMON_SHA + "' && " +
                 "rm -f '" + RESULT_PATH + "' '" + STATE_PATH + "' && " +
                 "rm -f \"$D/remove\" \"$D/disable\" && sync && test ! -e \"$D/disable\"";
@@ -202,7 +202,7 @@ final class NexmonOneShotController {
 
     static String collectEvidence() {
         StringBuilder out = new StringBuilder();
-        out.append("BCM4375 Lab v3.0.1 - Nexmon one-shot evidence\n\n");
+        out.append("BCM4375 Lab v3.0.2 - Nexmon one-shot evidence\n\n");
         out.append("module_state=").append(moduleState()).append('\n');
         out.append("module_location=").append(moduleLocation()).append('\n');
         out.append("module_fw_sha=").append(moduleFirmwareSha()).append('\n');
