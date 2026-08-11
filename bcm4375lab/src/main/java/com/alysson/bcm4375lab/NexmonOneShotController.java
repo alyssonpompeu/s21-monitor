@@ -20,7 +20,7 @@ final class NexmonOneShotController {
     static final String ACTIVE_DIR = "/data/adb/modules/" + MODULE_ID;
     static final String STAGED_DIR = "/data/adb/modules_update/" + MODULE_ID;
     static final String STOCK_SHA = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad";
-    static final String NEXMON_SHA = "4ecea63a782f8378d750a7257a9edbdd5d9b164bf1e97ac30a8ab0be5fd98e41";
+    static final String NEXMON_SHA = "e46d2dfc7293b7d84577527d31b93334dcf6d318b270f4e53e137d48689395c0";
     static final String RELEASE_URL = "https://github.com/alyssonpompeu/s21-monitor/releases/download/nexmon-bcm4375-18.41.117/bcmdhd_sta_nexmon_18_41_117.bin";
     static final String STOCK_PATH = "/vendor/firmware/bcmdhd_sta.bin_b1";
     static final String RESULT_PATH = "/data/adb/bcm4375_nexmon_oneshot_result.txt";
@@ -85,7 +85,7 @@ final class NexmonOneShotController {
         }
         if (out.exists()) out.delete();
 
-        if (progress != null) progress.onProgress("Baixando firmware Nexmon reprodutível verificado…");
+        if (progress != null) progress.onProgress("Baixando firmware Nexmon determinístico verificado…");
         HttpURLConnection conn = (HttpURLConnection) new URL(RELEASE_URL).openConnection();
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(30000);
@@ -133,8 +133,8 @@ final class NexmonOneShotController {
         String moduleProp =
                 "id=" + MODULE_ID + "\n" +
                 "name=BCM4375B1 Nexmon One-Shot\n" +
-                "version=18.41.117-pr663-repro\n" +
-                "versionCode=2\n" +
+                "version=18.41.117-pr663-deterministic\n" +
+                "versionCode=3\n" +
                 "author=BCM4375 Lab\n" +
                 "description=One-shot Nexmon BCM4375B1 test with next-boot auto-disable.\n";
 
