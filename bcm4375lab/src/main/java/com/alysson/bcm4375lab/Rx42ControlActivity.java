@@ -28,7 +28,7 @@ public class Rx42ControlActivity extends Activity {
     private final Handler ui=new Handler(Looper.getMainLooper());
     private TextView status,rfState,packetView,valuesView,hopsView,profileView;
     private SeekBar throttle,steering,ch3,ch4;
-    private Button diagnose,phyProbe,bind,neutral;
+    private Button diagnose,scenarioLab,phyProbe,bind,neutral;
     private Afhds2aEngine engine;
     private int stableId;
     private volatile boolean nexmonPresent;
@@ -57,8 +57,9 @@ public class Rx42ControlActivity extends Activity {
         rfState=mono("LINK: NÃO CONECTADO\nPHY GFSK TX: NÃO VALIDADO\n"+engine.describeIds(),12,0xFFE0E0E0);root.addView(rfState);
 
         diagnose=button("1. VERIFICAR NEXMON / BACKEND RF");diagnose.setOnClickListener(v->diagnoseRf());root.addView(diagnose);
-        phyProbe=button("2. TESTAR TEMPLATE RAM 0x631 (SEM TX)");phyProbe.setOnClickListener(v->startActivity(new Intent(this,Rx42PhyProbeV1Activity.class)));root.addView(phyProbe);
-        bind=button("3. PREPARAR / BIND RX42");bind.setOnClickListener(v->attemptBind());root.addView(bind);
+        scenarioLab=button("2. ABRIR MULTI-LAB (VÁRIOS CENÁRIOS NO MESMO APK)");scenarioLab.setOnClickListener(v->startActivity(new Intent(this,MarxScenarioLabActivity.class)));root.addView(scenarioLab);
+        phyProbe=button("3. TESTAR TEMPLATE RAM 0x631 (SEM TX)");phyProbe.setOnClickListener(v->startActivity(new Intent(this,Rx42PhyProbeV1Activity.class)));root.addView(phyProbe);
+        bind=button("4. PREPARAR / BIND RX42");bind.setOnClickListener(v->attemptBind());root.addView(bind);
 
         root.addView(section("PERFIL ORIGINAL FS-i6 2.0.17"));
         profileView=mono(FsI6ReverseProfile.summary()+"\n\nREGISTROS A7105 EXTRAÍDOS:\n"+FsI6ReverseProfile.compactRegisterDump(),10,0xFFB2DFDB);profileView.setTextIsSelectable(true);root.addView(profileView);
@@ -76,7 +77,7 @@ public class Rx42ControlActivity extends Activity {
         root.addView(section("PACOTE 0x58 — 38 BYTES"));
         packetView=mono("",11,0xFFE0E0E0);packetView.setTextIsSelectable(true);root.addView(packetView);
 
-        TextView note=txt("Segurança: motor inicia em 1000 µs. Remova hélice/motor durante testes. O teste 0x631 valida apenas escrita/leitura/restauração da Template RAM, com endereçamento explícito por word. Ele NÃO transmite RF. O bind permanece bloqueado até o backend GFSK ser validado.",12,0xFFFFAB91,false);note.setPadding(0,dp(18),0,0);root.addView(note);
+        TextView note=txt("Segurança: motor inicia em 1000 µs. Remova hélice/motor durante testes. O Multi-Lab reúne preflight, Nexmon, self-test AFHDS2A, snapshot técnico, Template RAM e recuperação no mesmo APK. O backend GFSK TX continua bloqueado até ser validado.",12,0xFFFFAB91,false);note.setPadding(0,dp(18),0,0);root.addView(note);
         return scroll;
     }
 
