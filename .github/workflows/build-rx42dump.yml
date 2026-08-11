@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   build:
@@ -34,6 +35,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+
+      - name: Bundle verified Nexmon BCM4375B1 18.41.117 firmware
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf /tmp/nexmon-artifact bcm4375lab/src/main/assets/nexmon
+          mkdir -p /tmp/nexmon-artifact bcm4375lab/src/main/assets/nexmon
+          gh api repos/${{ github.repository }}/actions/artifacts/9085679307/zip > /tmp/nexmon.zip
+          unzip -q /tmp/nexmon.zip -d /tmp/nexmon-artifact
+          test "$(sha256sum /tmp/nexmon-artifact/bcmdhd_sta_nexmon_18_41_117.bin | cut -d' ' -f1)" = "ec77f799a989e8104322d3c51901685426389c435a968e30d89f134f47c03d0c"
+          cp /tmp/nexmon-artifact/bcmdhd_sta_nexmon_18_41_117.bin bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_nexmon_18_41_117.bin
 
       - name: Build RX42 firmware dump APK
         run: gradle :rx42dump:assembleDebug --stacktrace
@@ -62,7 +74,7 @@ jobs:
         with:
           tag_name: rx42dump-latest
           name: RX42 / BCM4375 Diagnostics - Latest
-          body: Aplicativos de diagnóstico para o Broadcom BCM4375B1 do Galaxy S21. BCM4375 Lab v1 permanece somente leitura e não troca firmware.
+          body: BCM4375 Lab v3 inclui preflight Nexmon BCM4375B1 18.41.117 e preparação reversível de módulo Magisk. O módulo é criado desativado por padrão.
           files: |
             RX42-S21-Firmware-Dump.apk
             BCM4375-Lab-S21.apk
