@@ -34,7 +34,7 @@ class AttachmentImporter(
     private val resolver: ContentResolver = context.contentResolver
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
-    suspend fun import(uri: Uri, progress: (String) -> Unit): Result {
+    suspend fun import(uri: Uri, projectId: Long, progress: (String) -> Unit): Result {
         val name = displayName(uri)
         val mime = resolver.getType(uri).orEmpty().ifBlank { guessMime(name) }
         progress("Lendo $name…")
@@ -46,7 +46,7 @@ class AttachmentImporter(
             else -> throw IllegalArgumentException("Formato não suportado: $mime")
         }
 
-        library.addDocument(name, mime, extraction.sections)
+        library.addDocument(projectId, name, mime, extraction.sections)
         return Result(
             name = name,
             sections = extraction.sections.size,
