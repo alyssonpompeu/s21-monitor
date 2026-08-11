@@ -1,11 +1,15 @@
-name: Build Nexmon BCM4375B1 18.41.117 SDR Probe
+name: Build BCM4375 SDR Probe Firmware
 
 on:
+  push:
+    branches: [ "bcm4375-sdr-probe-v1" ]
+    paths:
+      - '.github/workflows/build-nexmon-sdr-probe.yml'
+      - 'sdr-probe/**'
   pull_request:
     branches: [ "main" ]
     paths:
-      - '.github/workflows/build-nexmon-bcm4375.yml'
-      - 'nexmon-build-check.txt'
+      - '.github/workflows/build-nexmon-sdr-probe.yml'
       - 'sdr-probe/**'
   workflow_dispatch:
 
@@ -16,14 +20,14 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Install Nexmon build dependencies
+      - name: Install dependencies
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y git gawk qpdf flex libfl-dev bison xxd make patch python3 zlib1g-dev \
             libc6:i386 libstdc++6:i386 zlib1g:i386 libncurses5:i386
 
-      - name: Clone exact Nexmon BCM4375B1 18.41.117 PR663
+      - name: Clone exact PR663 target
         run: |
           git clone --depth 1 https://github.com/seemoo-lab/nexmon.git nexmon
           cd nexmon
@@ -32,11 +36,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "fd117f434e1c479f6819a0ba31f9ca82d75f8a3a"
           sed -i 's/LDFLAGS[[:space:]]*+=[[:space:]]*-ll/LDFLAGS\t\t+= -lfl/' buildtools/b43/assembler/Makefile
 
-      - name: Verify stock firmware identity
-        run: |
-          test "$(sha256sum nexmon/firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1 | cut -d' ' -f1)" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
-
-      - name: Add read-only IOCTL 0x630 sample-playback register probe
+      - name: Add read-only BCM4375 sample-playback register probe
         run: |
           cd nexmon
           python3 - <<'PY'
@@ -70,31 +70,26 @@ jobs:
 '''
           p.write_text(s.replace(marker, block + marker, 1))
           PY
-          grep -n -A28 -B2 'case 0x630' patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
+          grep -n -A30 -B3 'case 0x630' patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
 
-      - name: Build Nexmon tools and extract firmware components
+      - name: Verify stock firmware identity
+        run: |
+          test "$(sha256sum nexmon/firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1 | cut -d' ' -f1)" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
+
+      - name: Build Nexmon and experimental firmware
         shell: bash
         run: |
           cd nexmon
           source setup_env.sh
           make -j2
-
-      - name: Build BCM4375B1 SDR probe firmware
-        shell: bash
-        run: |
-          cd nexmon
-          source setup_env.sh
           cd patches/bcm4375b1/18_41_117_sta/nexmon
           make init
           make -j1
           mkdir -p "$GITHUB_WORKSPACE/out"
           cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/out/bcmdhd_sta_rx42_sdr_probe_v1.bin"
           sha256sum bcmdhd_sta.bin_b1 | tee "$GITHUB_WORKSPACE/out/sha256.txt"
-          stat -c '%n %s bytes' bcmdhd_sta.bin_b1 | tee "$GITHUB_WORKSPACE/out/stat.txt"
           cp log/compiler.log "$GITHUB_WORKSPACE/out/" 2>/dev/null || true
           cp log/linker.err "$GITHUB_WORKSPACE/out/" 2>/dev/null || true
-          cp log/patches.log "$GITHUB_WORKSPACE/out/" 2>/dev/null || true
-          cp log/flashpatches.log "$GITHUB_WORKSPACE/out/" 2>/dev/null || true
           strings -a bcmdhd_sta.bin_b1 | grep -E '18\.41\.117|nexmon.org' | tail -20 > "$GITHUB_WORKSPACE/out/strings.txt" || true
 
       - uses: actions/upload-artifact@v4
