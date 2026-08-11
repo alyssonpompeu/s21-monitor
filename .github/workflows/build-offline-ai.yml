@@ -127,12 +127,48 @@ jobs:
           du -h offlineai/src/main/assets/*
 
       - name: Build installable ARM64 debug APK
+        id: build_apk
         shell: bash
         run: |
-          gradle :offlineai:assembleDebug --stacktrace --no-daemon
+          set +e
+          set -o pipefail
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee offlineai-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$STATUS" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          src = Path('offlineai-build.log').read_text(encoding='utf-8', errors='replace').splitlines()
+          patterns = re.compile(r'(error:|fatal error:|CMake Error|FAILED:|ninja:|Execution failed|BUILD FAILED|What went wrong|Caused by:)')
+          hits = [i for i, line in enumerate(src) if patterns.search(line)]
+          selected = set()
+          for i in hits:
+              selected.update(range(max(0, i - 10), min(len(src), i + 31)))
+          lines = [src[i] for i in sorted(selected)]
+          if not lines:
+              lines = src[-500:]
+          Path('offlineai-last-build-error.txt').write_text('\n'.join(lines[-900:]) + '\n', encoding='utf-8')
+          PY
+            cat offlineai-last-build-error.txt
+            exit "$STATUS"
+          fi
+
           cp offlineai/build/outputs/apk/debug/offlineai-debug.apk IA-Offline-PTBR-S21.apk
           sha256sum IA-Offline-PTBR-S21.apk | tee IA-Offline-PTBR-S21.apk.sha256
           ls -lh IA-Offline-PTBR-S21.apk
+
+      - name: Upload build diagnostics
+        if: failure() && steps.build_apk.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-ai-build-diagnostics
+          path: |
+            offlineai-last-build-error.txt
+            offlineai-build.log
+          retention-days: 7
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
