@@ -14,29 +14,22 @@ import android.widget.TextView;
 
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * v3 app probe: loads a BCM4375B1 Nexmon firmware containing 0x630 + 0x631.
- * 0x631 performs only a bounded Template RAM write/read/restore while sample playback is OFF.
- * It never invokes sample playback and never intentionally transmits RF.
+ * MARX V1.0 probe for BCM4375B1 18.41.117.
+ * IOCTL 0x631 performs a bounded Template RAM write/read/restore with an explicit
+ * pointer assignment for each 32-bit word. It never invokes sample playback or TX.
  */
 public class Rx42PhyProbeV1Activity extends Activity {
-    private static final String BASE = "https://bcm4375-remote-lab.vercel.app";
     private static final String FWCLASS = "/sys/module/firmware_class/parameters/path";
-    private static final String STAGE = "/data/vendor/wifi/rx42_tplramprobe_v2";
-    private static final String ASSET = "nexmon/bcmdhd_sta_rx42_tplram_probe_v2.bin";
-    private static final String EXPECTED_SHA = "TPLRAM_PROBE_V2_SHA";
+    private static final String STAGE = "/data/vendor/wifi/marx_tplram_v1";
+    private static final String ASSET = "nexmon/bcmdhd_sta_marx_tplram_v1.bin";
+    private static final String EXPECTED_SHA = "MARX_TPLRAM_V1_SHA";
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -57,10 +50,10 @@ public class Rx42PhyProbeV1Activity extends Activity {
         r.setBackgroundColor(0xFF071014);
         s.addView(r);
 
-        r.addView(text("RX42 Template RAM Probe v2", 28, Color.WHITE, true));
-        r.addView(text("BCM4375B1 • write/read/restore • SAMPLE PLAYBACK OFF", 13, 0xFF80CBC4, false));
-        r.addView(text("Este teste escreve só 4 palavras numa área de scratch da Template RAM, lê de volta e restaura o conteúdo original. O firmware aborta se sample playback já estiver ativo. Não chama rotina de TX.", 13, 0xFFCFD8DC, false));
-        status = text("Pronto para round-trip controlado sem TX.", 15, 0xFFFFD180, true);
+        r.addView(text("MARX V1.0", 30, Color.WHITE, true));
+        r.addView(text("BCM4375B1 • Template RAM • endereçamento explícito • TX OFF", 13, 0xFF80CBC4, false));
+        r.addView(text("Este teste salva 4 words da área de scratch, posiciona o ponteiro antes de cada acesso, escreve quatro padrões diferentes, lê de volta e restaura cada word original. SAMPLE_PLAY_CTRL deve permanecer exatamente igual antes/depois. Nenhuma rotina de sample playback/TX é chamada.", 13, 0xFFCFD8DC, false));
+        status = text("Pronto para round-trip MARX V1.0 sem TX.", 15, 0xFFFFD180, true);
         status.setPadding(0, dp(18), 0, dp(12));
         r.addView(status);
 
@@ -81,21 +74,21 @@ public class Rx42PhyProbeV1Activity extends Activity {
     private void confirmRun() {
         if (busy) return;
         new AlertDialog.Builder(this)
-                .setTitle("Testar Template RAM sem TX?")
-                .setMessage("O Wi-Fi será reiniciado. SELinux ficará Permissive apenas durante o carregamento do firmware e voltará a Enforcing. O 0x631 exige SAMPLE_PLAY_CTRL=0, salva 4 palavras, escreve um padrão, lê, restaura e verifica. Nenhuma rotina de sample playback/TX é chamada.")
+                .setTitle("MARX V1.0 — testar Template RAM?")
+                .setMessage("O Wi-Fi será reiniciado. SELinux ficará Permissive apenas durante o carregamento do firmware e voltará a Enforcing. O 0x631 salva 4 words, usa um endereço explícito para cada word, escreve, lê, restaura e verifica. O registrador SAMPLE_PLAY_CTRL não é escrito. Nenhuma rotina de sample playback/TX é chamada.")
                 .setNegativeButton("Cancelar", null)
                 .setPositiveButton("Executar", (d,w) -> execute()).show();
     }
 
     private void execute() {
-        busy = true; run.setEnabled(false); status.setText("Executando…");
+        busy = true; run.setEnabled(false); status.setText("Executando MARX V1.0…");
         worker.execute(() -> {
             StringBuilder tr = new StringBuilder();
             JSONObject report = new JSONObject();
             boolean success = false;
             String originalPath = "/vendor/firmware";
             try {
-                report.put("test_id", "rx42_tplram_v2_roundtrip_0631_no_tx");
+                report.put("test_id", "marx_v1_tplram_explicit_ptr_0631_no_tx");
                 report.put("model", android.os.Build.MODEL);
                 report.put("hardware", android.os.Build.HARDWARE);
                 report.put("android", android.os.Build.VERSION.RELEASE);
@@ -105,15 +98,15 @@ public class Rx42PhyProbeV1Activity extends Activity {
                 String se = rr("getenforce 2>&1", 4).trim();
                 originalPath = rr("cat " + FWCLASS + " 2>/dev/null", 4).trim();
                 if (originalPath.isEmpty()) originalPath = "/vendor/firmware";
-                tr.append("=== PREFLIGHT ===\nroot=").append(id.output.contains("uid=0"))
+                tr.append("=== MARX V1.0 PREFLIGHT ===\nroot=").append(id.output.contains("uid=0"))
                   .append("\nSELinux=").append(se)
                   .append("\nfwclass=").append(originalPath)
                   .append("\nwifiver=\n").append(rr("cat /sys/wifi/wifiver 2>/dev/null", 4)).append('\n');
                 if (!id.output.contains("uid=0") || !"Enforcing".equalsIgnoreCase(se))
                     throw new Exception("preflight: root + SELinux Enforcing necessários");
 
-                post("Extraindo firmware Template RAM Probe…");
-                File src = new File(getFilesDir(), "bcmdhd_sta_rx42_tplram_probe_v2.bin");
+                post("Extraindo firmware MARX V1.0…");
+                File src = new File(getFilesDir(), "bcmdhd_sta_marx_tplram_v1.bin");
                 copyAsset(ASSET, src);
                 String qsrc = q(src.getAbsolutePath());
                 String stageCmd = "rm -rf " + q(STAGE) + "; mkdir -p " + q(STAGE) +
@@ -126,7 +119,7 @@ public class Rx42PhyProbeV1Activity extends Activity {
                 tr.append("=== STAGE ===\n").append(rr(stageCmd, 8));
                 String stagedSha = rr("sha256sum " + q(STAGE + "/bcmdhd_sta.bin_b1") + " | awk '{print $1}'", 4).trim();
                 tr.append("staged_sha=").append(stagedSha).append('\n');
-                if (!EXPECTED_SHA.equalsIgnoreCase(stagedSha)) throw new Exception("SHA do firmware experimental não confere");
+                if (!EXPECTED_SHA.equalsIgnoreCase(stagedSha)) throw new Exception("SHA do firmware MARX não confere");
 
                 post("Entrando em Samsung B1 Monitor…");
                 rr("svc wifi disable; sleep 2; setprop vendor.wlandriver.mode monitor; setprop ctl.start mfgloader; sleep 3", 9);
@@ -135,7 +128,7 @@ public class Rx42PhyProbeV1Activity extends Activity {
                 tr.append("=== MONITOR ===\n").append(mon).append("MONITOR_CONFIRMED=").append(monitorLoaded).append('\n');
                 if (!monitorLoaded) throw new Exception("B1 Monitor não confirmado");
 
-                post("Carregando Nexmon Template RAM Probe…");
+                post("Carregando Nexmon MARX V1.0…");
                 rr("printf '%s' " + q(STAGE) + " > " + FWCLASS, 4);
                 String setPath = rr("cat " + FWCLASS + " 2>/dev/null", 3).trim();
                 tr.append("FWCLASS_STAGE=").append(setPath).append('\n');
@@ -148,9 +141,9 @@ public class Rx42PhyProbeV1Activity extends Activity {
 
                 rr("setprop vendor.wlandriver.mode normal; setprop ctl.start mfgloader; sleep 3; svc wifi enable; sleep 4", 12);
                 String net = rr("cat /sys/wifi/wifiver 2>/dev/null", 4);
-                tr.append("=== EXPERIMENTAL NETWORK ===\n").append(net).append('\n');
+                tr.append("=== MARX EXPERIMENTAL NETWORK ===\n").append(net).append('\n');
 
-                post("Executando 0x630 + 0x631 sem TX…");
+                post("Executando 0x630 + 0x631 com ponteiro explícito…");
                 String probe = rr(nativeProbe() + " wlan0", 9);
                 tr.append("=== IOCTL 0x630 + 0x631 ===\n").append(probe).append('\n');
                 success = probe.contains("RX42_TPLRAM_USER_PROBE=PASS_NO_TX") &&
@@ -169,7 +162,7 @@ public class Rx42PhyProbeV1Activity extends Activity {
                 try {
                     rr("printf '%s' " + q(originalPath) + " > " + FWCLASS + "; setenforce 1", 5);
                     if (!success) {
-                        post("Falhou; restaurando firmware normal…");
+                        post("Restaurando firmware normal…");
                         rr("svc wifi disable; sleep 2; setprop vendor.wlandriver.mode normal; setprop ctl.start mfgloader; sleep 3; svc wifi enable; sleep 3", 11);
                     }
                     String finalSe = rr("getenforce 2>&1", 3).trim();
@@ -189,13 +182,13 @@ public class Rx42PhyProbeV1Activity extends Activity {
                 } catch(Exception ignored) {}
             }
 
-            try { postReport(report); } catch(Exception e) { tr.append("UPLOAD_ERROR=").append(e).append('\n'); }
+            tr.append("REPORT_MODE=LOCAL_ONLY\n");
             boolean ok = success;
             String shown = tr.toString();
             ui.post(() -> {
                 busy = false; run.setEnabled(false);
                 status.setTextColor(ok ? 0xFF81C784 : 0xFFEF9A9A);
-                status.setText(ok ? "TEMPLATE RAM ROUND-TRIP OK • PLAYBACK OFF • SEM TX" : "PROVA NÃO CONFIRMADA • estado seguro restaurado");
+                status.setText(ok ? "MARX V1.0 • TEMPLATE RAM PASS • SEM TX" : "MARX V1.0 • PROVA NÃO CONFIRMADA • estado seguro restaurado");
                 log.setText(shown);
             });
         });
@@ -211,18 +204,6 @@ public class Rx42PhyProbeV1Activity extends Activity {
             while ((n = in.read(b)) > 0) out.write(b, 0, n);
         }
         dst.setReadable(true, false);
-    }
-
-    private static void postReport(JSONObject j) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(BASE + "/api/report").openConnection();
-        c.setConnectTimeout(10000); c.setReadTimeout(15000); c.setRequestMethod("POST"); c.setDoOutput(true);
-        c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        try (OutputStream o = c.getOutputStream()) { o.write(j.toString().getBytes(StandardCharsets.UTF_8)); }
-        int code = c.getResponseCode();
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream(), StandardCharsets.UTF_8))) {
-            while (br.readLine() != null) {}
-        }
-        if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
     }
 
     private TextView text(String s, float sp, int color, boolean bold) {
