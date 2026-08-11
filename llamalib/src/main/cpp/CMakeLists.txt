@@ -18,14 +18,27 @@ if(DEFINED ANDROID_ABI)
     endif()
 endif()
 
-set(LLAMA_SRC "${CMAKE_CURRENT_LIST_DIR}/../../../../vendor/llama.cpp")
+set(PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../..")
+set(LLAMA_SRC "${PROJECT_ROOT}/vendor/llama.cpp")
 set(AICHAT_CPP "${LLAMA_SRC}/examples/llama.android/lib/src/main/cpp")
+set(VULKAN_CPP_HEADERS "${PROJECT_ROOT}/build/vulkan-headers/include")
 
 if(NOT EXISTS "${LLAMA_SRC}/CMakeLists.txt")
     message(FATAL_ERROR "vendor/llama.cpp is missing. Run the offline AI bootstrap/build workflow first.")
 endif()
 
+if(GGML_VULKAN AND NOT EXISTS "${VULKAN_CPP_HEADERS}/vulkan/vulkan.hpp")
+    message(FATAL_ERROR "Isolated Vulkan C++ headers are missing at ${VULKAN_CPP_HEADERS}")
+endif()
+
 add_subdirectory("${LLAMA_SRC}" build-llama)
+
+if(GGML_VULKAN AND TARGET ggml-vulkan)
+    # Android NDK ships the Vulkan C API, while modern ggml-vulkan also consumes
+    # Vulkan-Hpp. Use a copied Vulkan-only include tree so host libc++/glibc
+    # headers never leak into the Android cross-compilation search path.
+    target_include_directories(ggml-vulkan PRIVATE "${VULKAN_CPP_HEADERS}")
+endif()
 
 add_library(${CMAKE_PROJECT_NAME} SHARED
         "${AICHAT_CPP}/ai_chat.cpp")
