@@ -1,0 +1,49 @@
+name: Build RX42 S21 RF Diagnostic APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'rx42diag/**'
+      - 'settings.gradle'
+      - '.github/workflows/build-rx42diag.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build RX42 diagnostic debug APK
+        run: gradle :rx42diag:assembleDebug --stacktrace
+
+      - name: Rename APK
+        run: cp rx42diag/build/outputs/apk/debug/rx42diag-debug.apk RX42-S21-RF-Diagnostic.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RX42-S21-RF-Diagnostic-APK
+          path: RX42-S21-RF-Diagnostic.apk
+
+      - name: Publish latest diagnostic APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rx42diag-latest
+          name: RX42 S21 RF Diagnostic - Latest
+          body: APK de diagnóstico root para identificar o chipset/driver Wi-Fi e Bluetooth do Galaxy S21 e coletar dados úteis para o projeto MA-RX42/A7105.
+          files: RX42-S21-RF-Diagnostic.apk
+          make_latest: false
+          overwrite_files: true
