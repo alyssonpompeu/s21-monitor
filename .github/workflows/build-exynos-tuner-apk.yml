@@ -8,6 +8,12 @@ on:
       - 'exynostuner/**'
       - 'settings.gradle'
       - '.github/workflows/build-exynos-tuner-apk.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'exynostuner/**'
+      - 'settings.gradle'
+      - '.github/workflows/build-exynos-tuner-apk.yml'
 
 permissions:
   contents: write
@@ -47,7 +53,7 @@ jobs:
           name: Exynos-2100-Tuner-APK
           path: Exynos-2100-Tuner.apk
       - name: Record build result
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         shell: bash
         run: |
           printf 'run_id=%s\nhead_sha=%s\nexit_code=%s\n--- build log tail ---\n' "${{ github.run_id }}" "${{ github.sha }}" "${{ steps.build.outputs.exit_code }}" > exynos-tuner-last-build.txt
