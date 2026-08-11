@@ -66,7 +66,7 @@ public class MainActivity extends Activity {
 
         TextView title = text("BCM4375 Lab", 28, Color.WHITE, true);
         root.addView(title);
-        TextView subtitle = text("S21 • BCM4375B1 • automação root somente leitura", 12, 0xFF80CBC4, false);
+        TextView subtitle = text("v1.1 • S21 • BCM4375B1 • root somente leitura", 12, 0xFF80CBC4, false);
         subtitle.setPadding(0, dp(4), 0, dp(12));
         root.addView(subtitle);
 
@@ -93,7 +93,7 @@ public class MainActivity extends Activity {
         root.addView(save);
 
         Button active = new Button(this);
-        active.setText("MODO ATIVO BLOQUEADO NA V1");
+        active.setText("MODO ATIVO BLOQUEADO NA V1.1");
         active.setEnabled(false);
         root.addView(active);
 
@@ -102,7 +102,7 @@ public class MainActivity extends Activity {
         checks.setPadding(0, dp(14), 0, dp(12));
         root.addView(checks);
 
-        TextView note = text("O app executa apenas consultas fechadas, exporta macloader/mfgloader e cria um relatório. Não escreve em firmware_path, não reinicia wlan0 e não substitui firmware.", 12, 0xFFB0BEC5, false);
+        TextView note = text("Cada consulta tem timeout. Se uma etapa falhar ou travar, o app registra TIMEOUT e continua. Nenhuma escrita em firmware_path, nenhum restart de wlan0 e nenhuma troca de firmware.", 12, 0xFFB0BEC5, false);
         note.setPadding(0, 0, 0, dp(12));
         root.addView(note);
 
@@ -117,42 +117,52 @@ public class MainActivity extends Activity {
         analyze.setEnabled(false);
         save.setEnabled(false);
         status.setTextColor(0xFFFFD180);
-        status.setText("Solicitando root e lendo o stack Broadcom…");
+        status.setText("Etapa 0 • aguardando autorização root…");
         checks.setText("Executando verificações…");
-        output.setText("Coletando dados. Nenhuma escrita será feita.");
+        output.setText("Se o Magisk solicitar permissão, autorize BCM4375 Lab.\nNenhuma escrita será feita.");
 
         worker.execute(() -> {
             try {
-                RootReader.Result root = RootReader.run("id");
+                RootReader.Result root = RootReader.run("id", 30);
+                if (root.timedOut) {
+                    showFailure("ROOT: TIMEOUT", "O Magisk não respondeu em 30 s. Abra o Magisk, confirme a permissão do BCM4375 Lab e tente novamente.\n\n" + root.output);
+                    return;
+                }
                 if (root.code != 0 || !root.output.contains("uid=0")) {
                     showFailure("ROOT NEGADO / INDISPONÍVEL", root.output);
                     return;
                 }
 
                 StringBuilder report = new StringBuilder();
-                report.append("BCM4375 Lab v1.0.0\n")
+                report.append("BCM4375 Lab v1.1.0\n")
                         .append("Model: ").append(Build.MODEL).append('\n')
                         .append("Device: ").append(Build.DEVICE).append('\n')
                         .append("Hardware: ").append(Build.HARDWARE).append("\n\n");
 
-                for (ProbeCatalog.Probe probe : ProbeCatalog.ALL) {
-                    RootReader.Result r = RootReader.run(probe.command);
+                int total = ProbeCatalog.ALL.length;
+                for (int i = 0; i < total; i++) {
+                    ProbeCatalog.Probe probe = ProbeCatalog.ALL[i];
+                    postProgress(i + 1, total, probe.label);
+                    RootReader.Result r = RootReader.run(probe.command, 8);
                     report.append("=== ").append(probe.label).append(" ===\n")
-                            .append(r.output).append("[exit=").append(r.code).append("]\n\n");
+                            .append(r.output)
+                            .append(r.timedOut ? "[timeout=YES]\n" : "")
+                            .append("[exit=").append(r.code).append("]\n\n");
                 }
 
-                String wifiver = RootReader.run("cat /sys/wifi/wifiver 2>/dev/null").output;
-                String hashes = RootReader.run("sha256sum /vendor/firmware/bcmdhd_sta.bin_b1 /vendor/firmware/bcmdhd_mon.bin_b1 /vendor/firmware/bcmdhd_mfg.bin_b1 2>/dev/null").output;
-                String mfgStrings = RootReader.run("/system/bin/strings /vendor/bin/hw/mfgloader 2>/dev/null | grep -iE 'firmware_path|bcmdhd_mon.bin|bcmdhd_mfg.bin'").output;
+                postStatus("Validando firmware e loaders…");
+                String wifiver = RootReader.run("cat /sys/wifi/wifiver 2>/dev/null", 5).output;
+                String hashes = RootReader.run("sha256sum /vendor/firmware/bcmdhd_sta.bin_b1 /vendor/firmware/bcmdhd_mon.bin_b1 /vendor/firmware/bcmdhd_mfg.bin_b1 2>/dev/null", 8).output;
+                String mfgStrings = RootReader.run("/system/bin/strings /vendor/bin/hw/mfgloader 2>/dev/null | grep -iE 'firmware_path|bcmdhd_mon.bin|bcmdhd_mfg.bin'", 5).output;
 
                 boolean modelOk = "SM-G991B".equalsIgnoreCase(Build.MODEL);
                 boolean hwOk = "exynos2100".equalsIgnoreCase(Build.HARDWARE);
                 boolean fwOk = wifiver.contains("18.41.117") && wifiver.contains("B1 Network");
                 boolean staOk = hashes.contains(EXPECTED_STA_SHA);
-                boolean monOk = RootReader.run("test -f /vendor/firmware/bcmdhd_mon.bin_b1").code == 0;
-                boolean mfgOk = RootReader.run("test -f /vendor/firmware/bcmdhd_mfg.bin_b1").code == 0;
-                boolean pathOk = RootReader.run("test -w /sys/module/dhd/parameters/firmware_path").code == 0;
-                boolean loadersOk = RootReader.run("test -x /vendor/bin/hw/macloader && test -x /vendor/bin/hw/mfgloader").code == 0;
+                boolean monOk = RootReader.run("test -f /vendor/firmware/bcmdhd_mon.bin_b1", 3).code == 0;
+                boolean mfgOk = RootReader.run("test -f /vendor/firmware/bcmdhd_mfg.bin_b1", 3).code == 0;
+                boolean pathOk = RootReader.run("test -w /sys/module/dhd/parameters/firmware_path", 3).code == 0;
+                boolean loadersOk = RootReader.run("test -x /vendor/bin/hw/macloader && test -x /vendor/bin/hw/mfgloader", 3).code == 0;
                 boolean evidenceOk = mfgStrings.contains("firmware_path") && mfgStrings.contains("bcmdhd_mon.bin") && mfgStrings.contains("bcmdhd_mfg.bin");
 
                 String summary = check("Modelo SM-G991B", modelOk) +
@@ -165,8 +175,9 @@ public class MainActivity extends Activity {
                         check("macloader/mfgloader executáveis", loadersOk) +
                         check("mfgloader referencia MON/MFG", evidenceOk);
                 report.append("=== PREFLIGHT ===\n").append(summary);
-                report.append("ACTIVE_MODE=LOCKED_READ_ONLY_V1\n");
+                report.append("ACTIVE_MODE=LOCKED_READ_ONLY_V1_1\n");
 
+                postStatus("Criando pacote de análise…");
                 File work = new File(getCacheDir(), "bcm4375lab");
                 ExportUtil.deleteRecursive(work);
                 if (!work.mkdirs() && !work.isDirectory()) throw new Exception("Falha criando cache de trabalho");
@@ -186,7 +197,7 @@ public class MainActivity extends Activity {
 
                 File readme = new File(work, "README-FIRST.txt");
                 try (FileOutputStream out = new FileOutputStream(readme)) {
-                    out.write(("BCM4375 Lab v1.0.0\nSomente leitura. Nenhuma troca de firmware foi executada.\nEnvie este ZIP para análise dos loaders antes de habilitar modo ativo.\n").getBytes(StandardCharsets.UTF_8));
+                    out.write(("BCM4375 Lab v1.1.0\nSomente leitura. Nenhuma troca de firmware foi executada.\nEnvie este ZIP para análise dos loaders antes de habilitar modo ativo.\n").getBytes(StandardCharsets.UTF_8));
                 }
                 files.add(readme);
 
@@ -214,8 +225,19 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void postProgress(int current, int total, String label) {
+        ui.post(() -> {
+            status.setText("Etapa " + current + "/" + total + " • " + label);
+            output.setText("Executando: " + label + "\nTimeout máximo desta consulta: 8 s.\nNenhuma escrita será feita.");
+        });
+    }
+
+    private void postStatus(String value) {
+        ui.post(() -> status.setText(value));
+    }
+
     private void exportRootFile(List<File> files, File work, String source, String name) throws Exception {
-        if (RootReader.run("test -f '" + source + "'").code != 0) return;
+        if (RootReader.run("test -f '" + source + "'", 3).code != 0) return;
         File dest = new File(work, name);
         if (ExportUtil.copyRootFile(source, dest) >= 0) files.add(dest);
     }
