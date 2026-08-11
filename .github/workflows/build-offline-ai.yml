@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y glslc libvulkan-dev poppler-utils
+          sudo apt-get install -y glslc libvulkan-dev spirv-headers spirv-tools glslang-tools poppler-utils
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           set +o pipefail
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
