@@ -7,12 +7,25 @@ import java.io.InputStream;
 import java.security.MessageDigest;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 final class ExportUtil {
     static long copyRootFile(String source, File dest) throws Exception {
         Process p = new ProcessBuilder("su", "-c", "cat '" + source.replace("'", "'\\''") + "' 2>/dev/null").start();
+        boolean finished = p.waitFor(10, TimeUnit.SECONDS);
+        if (!finished) {
+            p.destroy();
+            if (!p.waitFor(500, TimeUnit.MILLISECONDS)) p.destroyForcibly();
+            dest.delete();
+            return -1;
+        }
+        if (p.exitValue() != 0) {
+            dest.delete();
+            return -1;
+        }
+
         long total = 0;
         try (InputStream in = p.getInputStream(); FileOutputStream out = new FileOutputStream(dest)) {
             byte[] buf = new byte[65536];
@@ -21,11 +34,6 @@ final class ExportUtil {
                 out.write(buf, 0, n);
                 total += n;
             }
-        }
-        int code = p.waitFor();
-        if (code != 0) {
-            dest.delete();
-            return -1;
         }
         return total;
     }
