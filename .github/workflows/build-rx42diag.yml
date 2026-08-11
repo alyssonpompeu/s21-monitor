@@ -47,3 +47,12 @@ jobs:
           files: RX42-S21-RF-Diagnostic.apk
           make_latest: false
           overwrite_files: true
+
+      - name: Record successful diagnostic build
+        run: |
+          printf '%s\n' "${GITHUB_RUN_ID}" > rx42diag-last-successful-build.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rx42diag-last-successful-build.txt
+          git commit -m "Record RX42 diagnostic APK build [skip ci]" || exit 0
+          git push
