@@ -3,12 +3,13 @@ package com.alysson.offlineai
 import java.util.ArrayDeque
 
 /**
- * Lightweight conversational layer that helps a small local model understand casual PT-BR,
- * follow-up references and the user's likely intent without sending anything off-device.
+ * Lightweight local conversational layer for intent resolution, project continuity and
+ * user-selected response depth. No information leaves the device.
  */
 class DialogueBrain {
 
     private data class Turn(
+        val projectId: Long,
         val user: String,
         val assistant: String,
     )
@@ -16,14 +17,39 @@ class DialogueBrain {
     private val history = ArrayDeque<Turn>()
 
     fun buildPrompt(
+        projectId: Long,
+        projectName: String,
         originalQuestion: String,
         lexicalContext: String,
         libraryContext: String,
+        userName: String,
+        answerLength: AppPreferences.AnswerLength,
+        qualityProfile: AppPreferences.QualityProfile,
+        specificInstruction: String,
     ): String {
         val interpretationHint = normalizeCasualPtBr(originalQuestion)
-        val recent = recentConversation()
+        val historyLimit = when (qualityProfile) {
+            AppPreferences.QualityProfile.ADVANCED -> 6
+            AppPreferences.QualityProfile.INTERMEDIATE -> 4
+            AppPreferences.QualityProfile.FAST -> 2
+        }
+        val recent = recentConversation(projectId, historyLimit)
 
         return buildString {
+            appendLine("<preferencias_locais>")
+            appendLine("Projeto ativo: $projectName")
+            if (userName.isNotBlank()) appendLine("Nome informado pelo usuário: $userName")
+            appendLine("Perfil de qualidade local: ${qualityProfile.label}")
+            appendLine(qualityProfile.instruction)
+            appendLine("Extensão desejada: ${answerLength.label}")
+            appendLine(answerLength.instruction)
+            if (answerLength == AppPreferences.AnswerLength.SPECIFIC && specificInstruction.isNotBlank()) {
+                appendLine("Preferência específica: ${specificInstruction.take(1000)}")
+            }
+            appendLine("Esses perfis são configurações do modelo local; não alegue ser ou usar um modelo de nuvem específico.")
+            appendLine("</preferencias_locais>")
+            appendLine()
+
             if (recent.isNotBlank()) {
                 appendLine(recent)
                 appendLine()
@@ -39,12 +65,13 @@ class DialogueBrain {
 
             appendLine("<orientacao_de_intencao>")
             appendLine("Entenda primeiro o que a pessoa provavelmente quis dizer; não responda de forma excessivamente literal.")
-            appendLine("Considere erros de digitação, abreviações, falta de acentos, gírias, frases incompletas e referências a mensagens anteriores.")
-            appendLine("Se houver uma interpretação claramente mais provável e de baixo risco, use-a sem interromper a conversa com pergunta de confirmação.")
-            appendLine("Só peça esclarecimento quando interpretações plausíveis levarem a respostas realmente diferentes ou quando faltar um dado essencial.")
+            appendLine("Considere erros de digitação, abreviações, falta de acentos, gírias, frases incompletas e referências às mensagens anteriores do mesmo projeto.")
+            appendLine("Se houver uma interpretação claramente mais provável e de baixo risco, use-a sem interromper a conversa com confirmação desnecessária.")
+            appendLine("Só peça esclarecimento quando interpretações plausíveis levarem a respostas materialmente diferentes ou faltar um dado essencial.")
+            appendLine("Se o pedido envolver código, preserve requisitos, identifique riscos de implementação e entregue a solução mais executável possível.")
             if (interpretationHint != originalQuestion) {
                 appendLine("Leitura auxiliar normalizada: $interpretationHint")
-                appendLine("A frase original continua sendo a fonte principal; a leitura auxiliar serve apenas para compreender abreviações.")
+                appendLine("A frase original continua sendo a fonte principal; a leitura auxiliar serve apenas para compreender linguagem informal.")
             }
             appendLine("</orientacao_de_intencao>")
             appendLine()
@@ -54,27 +81,29 @@ class DialogueBrain {
         }
     }
 
-    fun recordTurn(user: String, assistant: String) {
+    fun recordTurn(projectId: Long, user: String, assistant: String) {
         val cleanUser = user.trim()
         val cleanAssistant = assistant.trim()
         if (cleanUser.isEmpty() || cleanAssistant.isEmpty()) return
 
         history.addLast(
             Turn(
+                projectId = projectId,
                 user = cleanUser.take(MAX_USER_CHARS),
                 assistant = cleanAssistant.take(MAX_ASSISTANT_CHARS),
             )
         )
-        while (history.size > MAX_TURNS) history.removeFirst()
+        while (history.size > MAX_TURNS_TOTAL) history.removeFirst()
     }
 
-    private fun recentConversation(): String {
-        if (history.isEmpty()) return ""
+    private fun recentConversation(projectId: Long, limit: Int): String {
+        val turns = history.filter { it.projectId == projectId }.takeLast(limit)
+        if (turns.isEmpty()) return ""
 
         return buildString {
             appendLine("<historico_conversacional_local>")
-            appendLine("Use este histórico apenas para resolver continuidade, pronomes, elipses e preferências já expressas pelo usuário.")
-            history.forEach { turn ->
+            appendLine("Histórico recente apenas deste projeto. Use-o para continuidade, pronomes, elipses e preferências já expressas.")
+            turns.forEach { turn ->
                 appendLine("Usuário: ${turn.user}")
                 appendLine("Assistente: ${turn.assistant}")
             }
@@ -101,21 +130,26 @@ class DialogueBrain {
     }
 
     companion object {
-        private const val MAX_TURNS = 4
-        private const val MAX_USER_CHARS = 700
-        private const val MAX_ASSISTANT_CHARS = 1100
+        private const val MAX_TURNS_TOTAL = 18
+        private const val MAX_USER_CHARS = 900
+        private const val MAX_ASSISTANT_CHARS = 1600
 
         private val REPLACEMENTS = linkedMapOf(
             "vc" to "você",
             "vcs" to "vocês",
             "oq" to "o que",
+            "q" to "que",
+            "pq" to "porque",
             "tb" to "também",
             "tbm" to "também",
             "nao" to "não",
+            "n" to "não",
             "pfv" to "por favor",
             "dps" to "depois",
             "agr" to "agora",
             "blz" to "beleza",
+            "msg" to "mensagem",
+            "app" to "aplicativo",
         )
     }
 }
