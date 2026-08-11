@@ -6,3 +6,4 @@
 - Saves and restores original settings/sysfs values on disable.
 - Keeps WRITE_SETTINGS as a non-root fallback.
 - Does not claim to convert SDR into true HDR; real HDR remains content/compositor/display-pipeline dependent.
+- Build verification is performed by the dedicated HDR Boost pull-request workflow.
