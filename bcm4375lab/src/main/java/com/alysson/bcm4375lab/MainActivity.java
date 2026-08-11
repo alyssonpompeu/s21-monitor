@@ -67,7 +67,7 @@ public class MainActivity extends Activity {
         scroll.addView(root);
 
         root.addView(text("BCM4375 Lab", 28, Color.WHITE, true));
-        TextView subtitle = text("v2.0 • BCM4375B1 • Samsung MON temporário + rollback", 12, 0xFF80CBC4, false);
+        TextView subtitle = text("v2.1 • BCM4375B1 • Samsung MON + capability probe + rollback", 12, 0xFF80CBC4, false);
         subtitle.setPadding(0, dp(4), 0, dp(12));
         root.addView(subtitle);
 
@@ -88,7 +88,7 @@ public class MainActivity extends Activity {
         root.addView(analyze);
 
         monitorTest = new Button(this);
-        monitorTest.setText("2. TESTAR SAMSUNG MONITOR POR 10 s");
+        monitorTest.setText("2. TESTAR SAMSUNG MONITOR + CAPACIDADES");
         monitorTest.setEnabled(false);
         monitorTest.setOnClickListener(v -> confirmMonitorTest());
         root.addView(monitorTest);
@@ -105,9 +105,9 @@ public class MainActivity extends Activity {
         root.addView(checks);
 
         TextView note = text(
-                "O teste ativo usa o mfgloader original da Samsung. Ele não substitui arquivos em /vendor. " +
-                "O Wi-Fi será interrompido por alguns segundos; o app tenta STA → MON → STA e religa o Wi-Fi ao final. " +
-                "Nexmon continua fora desta versão.",
+                "O teste usa o mfgloader original da Samsung. Não substitui arquivos em /vendor. " +
+                "Enquanto B1 Monitor estiver ativo, a v2.1 coleta apenas capacidades/estado; não injeta quadros e não usa Nexmon. " +
+                "No rollback, o Wi-Fi é religado antes da confirmação B1 Network, conforme observado no seu S21.",
                 12, 0xFFB0BEC5, false);
         note.setPadding(0, 0, 0, dp(12));
         root.addView(note);
@@ -137,7 +137,7 @@ public class MainActivity extends Activity {
                 }
 
                 StringBuilder report = new StringBuilder();
-                report.append("BCM4375 Lab v2.0.0 - preflight\n")
+                report.append("BCM4375 Lab v2.1.0 - preflight\n")
                         .append("Model: ").append(Build.MODEL).append('\n')
                         .append("Device: ").append(Build.DEVICE).append('\n')
                         .append("Hardware: ").append(Build.HARDWARE).append("\n\n");
@@ -157,13 +157,13 @@ public class MainActivity extends Activity {
                 String summary = pf.summary();
                 report.append("=== ACTIVE PREFLIGHT ===\n").append(summary);
                 report.append("ACTIVE_READY=").append(pf.ok ? "YES" : "NO").append('\n');
-                createReportZip("BCM4375-Lab-S21-preflight.zip", "bcm4375-v2-preflight.txt", report.toString());
+                createReportZip("BCM4375-Lab-S21-preflight.zip", "bcm4375-v21-preflight.txt", report.toString());
 
                 ui.post(() -> {
                     busy = false;
                     checks.setText(summary);
                     status.setTextColor(pf.ok ? 0xFF81C784 : 0xFFFFD180);
-                    status.setText(pf.ok ? "BASE VALIDADA • teste Samsung MON liberado" : "BASE NÃO VALIDADA • teste ativo bloqueado");
+                    status.setText(pf.ok ? "BASE VALIDADA • Samsung MON liberado" : "BASE NÃO VALIDADA • teste ativo bloqueado");
                     output.setText(report + "\nPacote preflight pronto.");
                     setButtons(true, pf.ok, true);
                 });
@@ -177,7 +177,7 @@ public class MainActivity extends Activity {
         if (busy) return;
         new AlertDialog.Builder(this)
                 .setTitle("Teste Samsung Monitor")
-                .setMessage("O Wi-Fi será desligado temporariamente. O app tentará carregar B1 Monitor por 10 segundos e depois restaurar B1 Network/STA automaticamente. Não feche o app durante o teste.")
+                .setMessage("O Wi-Fi será desligado temporariamente. O app carregará B1 Monitor, coletará uma sondagem de capacidades e depois restaurará B1 Network/STA. Não feche o app durante o teste.")
                 .setNegativeButton("Cancelar", null)
                 .setPositiveButton("Executar teste", (d, w) -> runMonitorTest())
                 .show();
@@ -198,7 +198,7 @@ public class MainActivity extends Activity {
             boolean rollbackOk = false;
             try {
                 Preflight pf = preflight();
-                report.append("BCM4375 Lab v2.0.0 - Samsung MON test\n\n").append(pf.summary()).append('\n');
+                report.append("BCM4375 Lab v2.1.0 - Samsung MON capability test\n\n").append(pf.summary()).append('\n');
                 if (!pf.ok) throw new Exception("Preflight ativo não passou. Nenhuma troca foi feita.");
 
                 String wifiState = RootReader.run("settings get global wifi_on", 4).output.trim();
@@ -219,30 +219,49 @@ public class MainActivity extends Activity {
                 report.append("start_monitor_exit=").append(startResult.code).append(" timeout=").append(startResult.timedOut).append('\n');
                 if (startResult.code != 0 || startResult.timedOut) throw new Exception("init não aceitou iniciar mfgloader: " + startResult.output);
 
-                monitorLoaded = MonitorController.waitForFirmware("B1 Monitor", 10);
+                monitorLoaded = MonitorController.waitForFirmware("B1 Monitor", 12);
                 report.append(MonitorController.snapshot("MONITOR ATTEMPT"));
-                if (!monitorLoaded) throw new Exception("B1 Monitor não apareceu dentro de 10 s.");
+                if (!monitorLoaded) throw new Exception("B1 Monitor não apareceu dentro de 12 s.");
 
-                for (int left = 10; left >= 1; left--) {
+                postStatus("B1 MONITOR • coletando capacidades…");
+                report.append("\n=== MONITOR CAPABILITY PROBE ===\n");
+                report.append(RootReader.run(
+                        "echo net_type=$(cat /sys/class/net/wlan0/type 2>/dev/null); " +
+                        "echo net_flags=$(cat /sys/class/net/wlan0/flags 2>/dev/null); " +
+                        "echo '-- ip details --'; ip -details link show wlan0 2>&1; " +
+                        "echo '-- proc wireless --'; cat /proc/net/wireless 2>&1; " +
+                        "echo '-- tools --'; " +
+                        "for x in /system/bin/iw /vendor/bin/iw /system_ext/bin/iw /system/bin/wl /vendor/bin/wl /vendor/bin/hw/wl /system/bin/nexutil /vendor/bin/nexutil; do [ -e $x ] && ls -l $x; done; " +
+                        "echo '-- vendor driver props --'; getprop | grep -i 'vendor.wlandriver'; " +
+                        "echo '-- monitor log --'; dmesg | grep -iE 'monitor mode|radiotap|monitor|promisc' | tail -100",
+                        8).output);
+
+                for (int left = 5; left >= 1; left--) {
                     final int sec = left;
-                    ui.post(() -> status.setText("B1 MONITOR CARREGADO • rollback em " + sec + " s"));
+                    ui.post(() -> status.setText("B1 MONITOR ATIVO • rollback em " + sec + " s"));
                     Thread.sleep(1000);
                 }
             } catch (Exception e) {
                 report.append("\nTEST_EXCEPTION=").append(e.getClass().getSimpleName()).append(": ").append(e.getMessage()).append('\n');
             } finally {
                 try {
-                    postStatus("ROLLBACK • restaurando Samsung STA…");
+                    postStatus("ROLLBACK • apontando para Samsung STA…");
                     MonitorController.setMode("normal");
                     RootReader.Result restoreStart = MonitorController.startSamsungLoader();
                     report.append("rollback_start_exit=").append(restoreStart.code).append(" timeout=").append(restoreStart.timedOut).append('\n');
-                    rollbackOk = MonitorController.waitForFirmware("B1 Network", 12);
-                    report.append(MonitorController.snapshot("AFTER ROLLBACK"));
+
+                    // No S21 testado, mfgloader coloca wlan0 DOWN e firmware_path=STA.
+                    // O STA é efetivamente carregado quando o framework Wi-Fi abre wlan0 novamente.
                     if (wifiWasEnabled) {
-                        postStatus("ROLLBACK • religando Wi-Fi…");
+                        postStatus("ROLLBACK • religando Wi-Fi para carregar STA…");
+                        Thread.sleep(800);
                         MonitorController.wifi(true);
-                        Thread.sleep(2500);
                     }
+
+                    postStatus("ROLLBACK • aguardando B1 Network…");
+                    rollbackOk = MonitorController.waitForFirmware("B1 Network", 20);
+                    report.append(MonitorController.snapshot("AFTER ROLLBACK"));
+                    report.append("wifi_on_after=").append(RootReader.run("settings get global wifi_on", 4).output.trim()).append('\n');
                 } catch (Exception rollbackError) {
                     report.append("ROLLBACK_EXCEPTION=").append(rollbackError.getMessage()).append('\n');
                 }
@@ -251,10 +270,10 @@ public class MainActivity extends Activity {
                 report.append("rollback_network_ok=").append(rollbackOk).append('\n');
                 report.append("wifi_was_enabled=").append(wifiWasEnabled).append('\n');
                 report.append("\n=== DHD LOG AFTER TEST ===\n")
-                        .append(RootReader.run("dmesg | grep -iE 'dhd|bcmdhd|firmware|4375|mfgloader|wlandriver' | tail -220", 6).output);
+                        .append(RootReader.run("dmesg | grep -iE 'dhd|bcmdhd|firmware|4375|mfgloader|wlandriver|monitor mode' | tail -280", 7).output);
 
                 try {
-                    createReportZip("BCM4375-Lab-S21-monitor-test.zip", "bcm4375-monitor-test.txt", report.toString());
+                    createReportZip("BCM4375-Lab-S21-monitor-capability-test.zip", "bcm4375-monitor-capability-test.txt", report.toString());
                 } catch (Exception zipError) {
                     report.append("ZIP_ERROR=").append(zipError.getMessage()).append('\n');
                 }
@@ -270,7 +289,7 @@ public class MainActivity extends Activity {
                     monitorTest.setEnabled(rb);
                     if (mon && rb) {
                         status.setTextColor(0xFF81C784);
-                        status.setText("SUCESSO • B1 Monitor carregou e STA foi restaurado");
+                        status.setText("SUCESSO • B1 Monitor + capability probe + STA restaurado");
                     } else if (rb) {
                         status.setTextColor(0xFFFFD180);
                         status.setText("MON não confirmado • STA restaurado com sucesso");
@@ -305,7 +324,7 @@ public class MainActivity extends Activity {
     }
 
     private void createReportZip(String zipName, String reportName, String body) throws Exception {
-        File work = new File(getCacheDir(), "bcm4375-v2");
+        File work = new File(getCacheDir(), "bcm4375-v21");
         ExportUtil.deleteRecursive(work);
         if (!work.mkdirs() && !work.isDirectory()) throw new Exception("Falha criando diretório de relatório");
         File reportFile = new File(work, reportName);
@@ -355,7 +374,7 @@ public class MainActivity extends Activity {
                 byte[] buf = new byte[65536];
                 int n;
                 while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-                ui.post(() -> Toast.makeText(this, "ZIP salvo.", Toast.LENGTH_LONG).show());
+                ui.post(() -> Toast.makeText(this, "ZIP salvo. Envie esse arquivo aqui.", Toast.LENGTH_LONG).show());
             } catch (Exception e) {
                 ui.post(() -> Toast.makeText(this, "Falha ao salvar: " + e.getMessage(), Toast.LENGTH_LONG).show());
             }
@@ -369,7 +388,6 @@ public class MainActivity extends Activity {
             status.setText(title);
             output.setText(details);
             analyze.setEnabled(true);
-            monitorTest.setEnabled(false);
         });
     }
 
@@ -387,9 +405,9 @@ public class MainActivity extends Activity {
     }
 
     private static final class Preflight {
+        final boolean ok;
         final boolean rootOk, modelOk, hwOk, networkOk, staHash, monHash, mfgHash, pathOk, loaderOk, serviceOk, stateOk;
         final String loaderStatus;
-        final boolean ok;
 
         Preflight(boolean rootOk, boolean modelOk, boolean hwOk, boolean networkOk,
                   boolean staHash, boolean monHash, boolean mfgHash, boolean pathOk,
@@ -410,22 +428,22 @@ public class MainActivity extends Activity {
         }
 
         String summary() {
-            return line("Root", rootOk) +
-                    line("Modelo SM-G991B", modelOk) +
-                    line("Hardware Exynos 2100", hwOk) +
-                    line("Ativo: 18.41.117 B1 Network", networkOk) +
-                    line("SHA STA exato", staHash) +
-                    line("SHA MON exato", monHash) +
-                    line("SHA MFG exato", mfgHash) +
-                    line("firmware_path gravável", pathOk) +
-                    line("mfgloader executável", loaderOk) +
-                    line("serviço mfgloader Samsung presente", serviceOk) +
-                    line("mfgloader não está em estado ok", stateOk) +
+            return checkLine("Root", rootOk) +
+                    checkLine("Modelo SM-G991B", modelOk) +
+                    checkLine("Hardware Exynos 2100", hwOk) +
+                    checkLine("Ativo: 18.41.117 B1 Network", networkOk) +
+                    checkLine("SHA STA exato", staHash) +
+                    checkLine("SHA MON exato", monHash) +
+                    checkLine("SHA MFG exato", mfgHash) +
+                    checkLine("firmware_path gravável", pathOk) +
+                    checkLine("mfgloader executável", loaderOk) +
+                    checkLine("serviço mfgloader Samsung presente", serviceOk) +
+                    checkLine("mfgloader não está em estado ok", stateOk) +
                     "loader_status_before=" + loaderStatus + "\n";
         }
 
-        private String line(String name, boolean yes) {
-            return (yes ? "[OK]   " : "[FAIL] ") + name + "\n";
+        private static String checkLine(String label, boolean ok) {
+            return (ok ? "[OK]   " : "[FAIL] ") + label + "\n";
         }
     }
 }
