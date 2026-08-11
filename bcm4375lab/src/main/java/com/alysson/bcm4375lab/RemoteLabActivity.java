@@ -86,11 +86,12 @@ public class RemoteLabActivity extends Activity {
                 JSONObject c = new JSONObject(body);
                 validateConfig(c);
                 config = c;
+                final String shown = c.toString();
                 ui.post(() -> {
                     busy=false; sync.setEnabled(true); run.setEnabled(true);
                     status.setTextColor(0xFF81C784); status.setText("TESTE ONLINE PRONTO");
                     details.setText("lab_id=" + labId + "\n" + "test_id=" + c.optString("test_id") + " rev=" + c.optInt("revision") + "\n" + c.optString("title"));
-                    log.setText(c.toString(2));
+                    log.setText(shown);
                 });
             } catch (Exception e) { fail("FALHA AO SINCRONIZAR", e); }
         });
