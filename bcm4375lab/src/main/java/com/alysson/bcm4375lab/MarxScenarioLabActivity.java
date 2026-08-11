@@ -26,9 +26,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * MARX LAB V1.1: one APK, multiple isolated RF-development scenarios.
- * Scenarios 0-4 never invoke sample playback or RF TX. Experimental scenarios
- * always restore firmware_class, SELinux Enforcing and normal Wi-Fi in finally.
+ * MARX LAB V1.1 LOGS: one APK, multiple isolated RF-development scenarios.
+ * Every test is appended to a persistent local transcript. Scenarios 0-4 never
+ * invoke sample playback or RF TX. Experimental scenarios restore firmware_class,
+ * SELinux Enforcing and normal Wi-Fi in finally.
  */
 public class MarxScenarioLabActivity extends Activity {
     private static final String FWCLASS = "/sys/module/firmware_class/parameters/path";
@@ -54,6 +55,12 @@ public class MarxScenarioLabActivity extends Activity {
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(buildUi());
+        refreshCumulativeLog();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        refreshCumulativeLog();
     }
 
     @Override protected void onDestroy() {
@@ -69,12 +76,12 @@ public class MarxScenarioLabActivity extends Activity {
         root.setBackgroundColor(0xFF071014);
         scroll.addView(root);
 
-        root.addView(txt("MARX LAB V1.1", 30, Color.WHITE, true));
-        root.addView(txt("SM-G991B • BCM4375B1 • laboratório multi-cenário", 13, 0xFF80CBC4, false));
+        root.addView(txt("MARX LAB V1.1 LOGS", 30, Color.WHITE, true));
+        root.addView(txt("SM-G991B • BCM4375B1 • laboratório multi-cenário + histórico persistente", 13, 0xFF80CBC4, false));
         root.addView(txt("Samsung " + Build.MODEL + " • " + Build.HARDWARE + " • Android " + Build.VERSION.RELEASE, 12, 0xFFB0BEC5, false));
-        root.addView(txt("Objetivo: parar de criar um APK para cada etapa. Este APK separa preflight, backend, leitura 0x630, round-trip 0x631, sequência completa, laboratório AFHDS2A e restauração de emergência.", 13, 0xFFCFD8DC, false));
+        root.addView(txt("Cada execução é salva separadamente no log acumulado. Você pode fazer 0, 1, 2, 3, 4, laboratório AFHDS2A, teste detalhado 0x631 e restauração stock; depois copie tudo de uma vez.", 13, 0xFFCFD8DC, false));
 
-        status = txt("Pronto. Comece pelo Cenário 0 ou rode diretamente um cenário seguro.", 15, 0xFFFFD180, true);
+        status = txt("Pronto. O log persistente não é apagado ao trocar de tela ou fechar o app.", 15, 0xFFFFD180, true);
         status.setPadding(0, dp(16), 0, dp(8));
         root.addView(status);
 
@@ -82,32 +89,39 @@ public class MarxScenarioLabActivity extends Activity {
         buttons.setOrientation(LinearLayout.VERTICAL);
         root.addView(buttons);
 
-        addButton("CENÁRIO 0 — PREFLIGHT / ESTADO ATUAL", () -> runJob("Preflight…", this::preflight));
-        addButton("CENÁRIO 1 — BACKEND ATUAL / PR663", () -> runJob("Diagnosticando backend atual…", this::backendCurrent));
-        addButton("CENÁRIO 2 — NEXMON + 0x630 SOMENTE LEITURA", () -> confirmExperimental("0x630 somente leitura", "regs"));
-        addButton("CENÁRIO 3 — 0x631 TEMPLATE RAM / RESTORE", () -> confirmExperimental("0x631 write/read/restore", "tplram"));
-        addButton("CENÁRIO 4 — SEQUÊNCIA SEGURA COMPLETA 0x600+0x630+0x631", () -> confirmExperimental("sequência segura completa", "all"));
-        addButton("CENÁRIO 5 — LAB AFHDS2A / PACOTES (SEM TX)", () -> startActivity(new Intent(this, Rx42ControlActivity.class)));
-        addButton("TESTE DETALHADO 0x631 — TELA ANTIGA", () -> startActivity(new Intent(this, Rx42PhyProbeV1Activity.class)));
-        addButton("RESTAURAR STOCK + SELINUX ENFORCING", () -> confirmRestore());
-        addButton("COPIAR LOG", this::copyLog);
+        addButton("CENÁRIO 0 — PREFLIGHT / ESTADO ATUAL", () -> runJob("CENARIO_0_PREFLIGHT", "Preflight…", this::preflight));
+        addButton("CENÁRIO 1 — BACKEND ATUAL / PR663", () -> runJob("CENARIO_1_BACKEND", "Diagnosticando backend atual…", this::backendCurrent));
+        addButton("CENÁRIO 2 — NEXMON + 0x630 SOMENTE LEITURA", () -> confirmExperimental("CENARIO_2_0x630", "0x630 somente leitura", "regs"));
+        addButton("CENÁRIO 3 — 0x631 TEMPLATE RAM / RESTORE", () -> confirmExperimental("CENARIO_3_0x631", "0x631 write/read/restore", "tplram"));
+        addButton("CENÁRIO 4 — SEQUÊNCIA SEGURA COMPLETA 0x600+0x630+0x631", () -> confirmExperimental("CENARIO_4_ALL", "sequência segura completa", "all"));
+        addButton("CENÁRIO 5 — LAB AFHDS2A / PACOTES (SEM TX)", () -> {
+            MarxLabLogStore.append(this, "CENARIO_5_AFHDS2A", "OPENED_AFHDS2A_LAB=1\nTX_ENABLED=0\n");
+            startActivity(new Intent(this, Rx42ControlActivity.class));
+        });
+        addButton("TESTE DETALHADO 0x631 — TELA ANTIGA", () -> {
+            MarxLabLogStore.append(this, "DETAILED_0x631", "OPENED_DETAILED_0x631=1\nTX_ENABLED=0\n");
+            startActivity(new Intent(this, Rx42PhyProbeV1Activity.class));
+        });
+        addButton("RESTAURAR STOCK + SELINUX ENFORCING", this::confirmRestore);
+        addButton("COPIAR LOG COMPLETO DE TODOS OS TESTES", this::copyLog);
+        addButton("LIMPAR LOG ACUMULADO", this::confirmClearLog);
 
-        TextView safety = txt("SEGURANÇA: os cenários 0-4 não chamam sample playback e não habilitam TX. Os cenários experimentais restauram firmware_class, SELinux e Wi-Fi normal mesmo em falha. O Cenário 5 apenas prepara/visualiza pacotes AFHDS2A; o backend GFSK permanece bloqueado.", 12, 0xFFFFAB91, false);
+        TextView safety = txt("SEGURANÇA: cenários 0-4 e o teste detalhado 0x631 não chamam sample playback e não habilitam TX. O Cenário 5 apenas monta/analisa AFHDS2A; GFSK TX continua bloqueado. Em falha experimental o transcript parcial é preservado antes da restauração.", 12, 0xFFFFAB91, false);
         safety.setPadding(0, dp(18), 0, dp(8));
         root.addView(safety);
 
-        log = mono("Nenhum cenário executado.", 11, 0xFFE0E0E0);
+        log = mono("Carregando log acumulado…", 11, 0xFFE0E0E0);
         root.addView(log);
         return scroll;
     }
 
-    private void confirmExperimental(String label, String mode) {
+    private void confirmExperimental(String section, String label, String mode) {
         if (busy) return;
         new AlertDialog.Builder(this)
                 .setTitle("Executar " + label + "?")
-                .setMessage("O Wi-Fi será reiniciado e o firmware MARX será carregado temporariamente. SELinux ficará Permissive apenas durante o carregamento e voltará a Enforcing no bloco finally. Ao terminar, o app restaura o firmware normal. Nenhuma rotina de sample playback/TX é chamada.")
+                .setMessage("O Wi-Fi será reiniciado e o firmware MARX será carregado temporariamente. A entrada em B1 Monitor agora usa poll por até 15 s e salva snapshot mesmo em falha. SELinux volta a Enforcing no finally. Nenhuma rotina de sample playback/TX é chamada.")
                 .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Executar", (d, w) -> runJob("Executando " + label + "…", () -> experimental(mode)))
+                .setPositiveButton("Executar", (d, w) -> runJob(section, "Executando " + label + "…", () -> experimental(mode)))
                 .show();
     }
 
@@ -115,13 +129,27 @@ public class MarxScenarioLabActivity extends Activity {
         if (busy) return;
         new AlertDialog.Builder(this)
                 .setTitle("Restaurar estado stock?")
-                .setMessage("Força firmware_class para /vendor/firmware, SELinux Enforcing, modo Wi-Fi normal e reinicia o Wi-Fi.")
+                .setMessage("Força firmware_class para /vendor/firmware, SELinux Enforcing, modo Wi-Fi normal e reinicia o Wi-Fi. O resultado também será salvo no log acumulado.")
                 .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Restaurar", (d, w) -> runJob("Restaurando stock…", this::restoreStock))
+                .setPositiveButton("Restaurar", (d, w) -> runJob("RESTORE_STOCK_SELINUX", "Restaurando stock…", this::restoreStock))
                 .show();
     }
 
-    private void runJob(String running, ScenarioJob job) {
+    private void confirmClearLog() {
+        if (busy) return;
+        new AlertDialog.Builder(this)
+                .setTitle("Limpar histórico?")
+                .setMessage("Apaga somente o arquivo de log local do MARX LAB. Não altera firmware, Wi-Fi ou SELinux.")
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Limpar", (d, w) -> {
+                    MarxLabLogStore.clear(this);
+                    refreshCumulativeLog();
+                    status.setTextColor(0xFF81C784);
+                    status.setText("Log acumulado limpo.");
+                }).show();
+    }
+
+    private void runJob(String section, String running, ScenarioJob job) {
         if (busy) return;
         busy = true;
         setButtons(false);
@@ -132,15 +160,16 @@ public class MarxScenarioLabActivity extends Activity {
             try {
                 result = job.run();
             } catch (Throwable t) {
-                result = new ScenarioResult(false, "EXCEPTION=" + t + "\n");
+                result = new ScenarioResult(false, "UNCAUGHT_EXCEPTION=" + t + "\n");
             }
+            MarxLabLogStore.append(this, section, result.text);
             ScenarioResult finalResult = result;
             ui.post(() -> {
                 busy = false;
                 setButtons(true);
                 status.setTextColor(finalResult.ok ? 0xFF81C784 : 0xFFEF9A9A);
-                status.setText(finalResult.ok ? "Cenário concluído: PASS" : "Cenário concluído: NÃO CONFIRMADO / FAIL");
-                log.setText(finalResult.text);
+                status.setText(finalResult.ok ? "Cenário concluído: PASS • log salvo" : "Cenário concluído: NÃO CONFIRMADO / FAIL • log salvo");
+                refreshCumulativeLog();
             });
         });
     }
@@ -152,12 +181,16 @@ public class MarxScenarioLabActivity extends Activity {
         String fw = rr("cat " + FWCLASS + " 2>/dev/null", 4).trim();
         String wifi = rr("cat /sys/wifi/wifiver 2>/dev/null", 4);
         String mode = rr("getprop vendor.wlandriver.mode 2>/dev/null", 3).trim();
+        String statusProp = rr("getprop vendor.wlandriver.status 2>/dev/null", 3).trim();
+        String fwParam = rr("cat /sys/module/dhd/parameters/firmware_path 2>/dev/null", 3).trim();
         boolean root = id.contains("uid=0");
         boolean enforcing = "Enforcing".equalsIgnoreCase(se);
         out.append("root=").append(root).append('\n');
         out.append("SELinux=").append(se).append('\n');
         out.append("firmware_class.path=").append(fw.isEmpty() ? "<default/empty>" : fw).append('\n');
         out.append("vendor.wlandriver.mode=").append(mode).append('\n');
+        out.append("vendor.wlandriver.status=").append(statusProp).append('\n');
+        out.append("dhd.firmware_path=").append(fwParam).append('\n');
         out.append("wifiver=\n").append(wifi).append('\n');
         out.append("PREFLIGHT_RESULT=").append(root && enforcing ? "PASS" : "CHECK_REQUIRED").append('\n');
         return new ScenarioResult(root && enforcing, out.toString());
@@ -170,22 +203,27 @@ public class MarxScenarioLabActivity extends Activity {
         boolean root = id.contains("uid=0");
         boolean nex = probe.contains("NEXPROBE_PR663_600=true") || probe.contains("TRIAGE_RESULT=NEXMON_PRESENT");
         out.append("root=").append(root).append('\n');
-        out.append(probe).append('\n');
+        out.append("mode=").append(MonitorController.mode()).append('\n');
+        out.append("status=").append(MonitorController.status()).append('\n');
+        out.append("wifiver=\n").append(MonitorController.wifiver()).append('\n');
+        out.append("probe=\n").append(probe).append('\n');
         out.append("BACKEND_CURRENT_RESULT=").append(root && nex ? "PASS" : "NOT_PRESENT_OR_NOT_CONFIRMED").append('\n');
         return new ScenarioResult(root && nex, out.toString());
     }
 
-    private ScenarioResult experimental(String mode) throws Exception {
+    private ScenarioResult experimental(String mode) {
         StringBuilder tr = new StringBuilder();
         String originalPath = rr("cat " + FWCLASS + " 2>/dev/null", 4).trim();
         if (originalPath.isEmpty()) originalPath = "/vendor/firmware";
         boolean success = false;
+        boolean restored = false;
         try {
             tr.append("=== MARX LAB EXPERIMENTAL mode=").append(mode).append(" ===\n");
             String id = rr("id 2>&1", 4);
             String se = rr("getenforce 2>&1", 4).trim();
             tr.append("root=").append(id.contains("uid=0")).append("\nSELinux=").append(se).append('\n');
             tr.append("original_fwclass=").append(originalPath).append('\n');
+            tr.append("initial_snapshot=\n").append(MonitorController.snapshot("INITIAL"));
             if (!id.contains("uid=0") || !"Enforcing".equalsIgnoreCase(se))
                 throw new Exception("preflight exige root e SELinux Enforcing");
 
@@ -206,25 +244,36 @@ public class MarxScenarioLabActivity extends Activity {
             if (!EXPECTED_SHA.equalsIgnoreCase(stagedSha)) throw new Exception("SHA do firmware não confere");
 
             post("Entrando em Samsung B1 Monitor…");
-            rr("svc wifi disable; sleep 2; setprop vendor.wlandriver.mode monitor; setprop ctl.start mfgloader; sleep 3", 9);
-            String mon = rr("cat /sys/wifi/wifiver 2>/dev/null", 4);
-            tr.append("=== MONITOR ===\n").append(mon);
-            if (!mon.contains("B1 Monitor")) throw new Exception("B1 Monitor não confirmado");
+            tr.append("=== WIFI OFF ===\n").append(MonitorController.wifi(false).output).append('\n');
+            sleep(1200);
+            tr.append("=== MODE MONITOR ===\n").append(MonitorController.setMode("monitor").output).append('\n');
+            tr.append("=== START MONITOR ===\n").append(MonitorController.startSamsungLoader().output).append('\n');
+            boolean monOk = MonitorController.waitForFirmware("B1 Monitor", 15);
+            tr.append(MonitorController.snapshot("MONITOR_GATE"));
+            tr.append("MONITOR_CONFIRMED=").append(monOk).append('\n');
+            if (!monOk) throw new Exception("B1 Monitor não confirmado após poll de 15 s");
 
             post("Carregando firmware experimental…");
-            rr("printf '%s' " + q(STAGE) + " > " + FWCLASS, 4);
-            String activePath = rr("cat " + FWCLASS + " 2>/dev/null", 3).trim();
+            String setOut = rr("printf '%s' " + q(STAGE) + " > " + FWCLASS + "; cat " + FWCLASS + " 2>&1", 5);
+            String activePath = setOut.trim();
+            tr.append("=== SET FWCLASS ===\n").append(setOut).append('\n');
             tr.append("FWCLASS_STAGE=").append(activePath).append('\n');
             if (!STAGE.equals(activePath)) throw new Exception("firmware_class.path não aceitou staging");
 
-            rr("setenforce 0", 3);
-            String loadSe = rr("getenforce 2>&1", 3).trim();
+            String setPerm = rr("setenforce 0; getenforce 2>&1", 4);
+            String loadSe = setPerm.trim();
+            tr.append("=== SELINUX LOAD ===\n").append(setPerm).append('\n');
             tr.append("SELINUX_LOAD=").append(loadSe).append('\n');
-            if (!"Permissive".equalsIgnoreCase(loadSe)) throw new Exception("não entrou em Permissive");
+            if (!loadSe.contains("Permissive")) throw new Exception("não entrou em Permissive");
 
-            rr("setprop vendor.wlandriver.mode normal; setprop ctl.start mfgloader; sleep 3; svc wifi enable; sleep 4", 12);
-            String net = rr("cat /sys/wifi/wifiver 2>/dev/null", 4);
-            tr.append("=== EXPERIMENTAL NETWORK ===\n").append(net).append('\n');
+            tr.append("=== MODE NORMAL ===\n").append(MonitorController.setMode("normal").output).append('\n');
+            tr.append("=== START EXPERIMENTAL NETWORK ===\n").append(MonitorController.startSamsungLoader().output).append('\n');
+            sleep(900);
+            tr.append("=== WIFI ON ===\n").append(MonitorController.wifi(true).output).append('\n');
+            boolean netOk = MonitorController.waitForFirmware("B1 Network/rsdb", 15);
+            tr.append(MonitorController.snapshot("EXPERIMENTAL_NETWORK"));
+            tr.append("EXPERIMENTAL_NETWORK_CONFIRMED=").append(netOk).append('\n');
+            if (!netOk) throw new Exception("B1 Network experimental não confirmado após poll de 15 s");
 
             post("Executando probe mode=" + mode + "…");
             String probe = rr(sdrProbe() + " wlan0 " + q(mode), 12);
@@ -234,46 +283,64 @@ public class MarxScenarioLabActivity extends Activity {
                 success = success && probe.contains("TX_TRIGGERED=0") && probe.contains("PLAYBACK_STAYED_OFF=1");
             }
             tr.append("SCENARIO_APP_RESULT=").append(success ? "PASS" : "NOT_CONFIRMED").append('\n');
+        } catch (Throwable e) {
+            tr.append("EXCEPTION=").append(e.getClass().getName()).append(": ").append(e.getMessage()).append('\n');
         } finally {
             post("Restaurando estado stock…");
             tr.append("=== FINALLY / RESTORE ===\n");
             tr.append(rr("printf '%s' " + q(originalPath) + " > " + FWCLASS + "; setenforce 1", 5));
-            tr.append(rr("svc wifi disable; sleep 2; setprop vendor.wlandriver.mode normal; setprop ctl.start mfgloader; sleep 3; svc wifi enable; sleep 3", 11));
+            tr.append("=== RESTORE MODE NORMAL ===\n").append(MonitorController.wifi(false).output).append('\n');
+            sleep(1000);
+            tr.append(MonitorController.setMode("normal").output).append('\n');
+            tr.append(MonitorController.startSamsungLoader().output).append('\n');
+            sleep(900);
+            tr.append(MonitorController.wifi(true).output).append('\n');
+            MonitorController.waitForFirmware("B1 Network/rsdb", 15);
             String finalSe = rr("getenforce 2>&1", 3).trim();
             String finalPath = rr("cat " + FWCLASS + " 2>/dev/null", 3).trim();
-            String finalWifi = rr("cat /sys/wifi/wifiver 2>/dev/null", 4);
+            tr.append(MonitorController.snapshot("FINAL_STOCK"));
             rr("rm -rf " + q(STAGE), 4);
             tr.append("final_SELinux=").append(finalSe).append('\n');
             tr.append("final_fwclass=").append(finalPath).append('\n');
-            tr.append("final_wifiver=\n").append(finalWifi).append('\n');
-            boolean restored = "Enforcing".equalsIgnoreCase(finalSe) && originalPath.equals(finalPath);
+            restored = "Enforcing".equalsIgnoreCase(finalSe) && originalPath.equals(finalPath);
             tr.append("RESTORE_STATE=").append(restored ? "PASS" : "CHECK_REQUIRED").append('\n');
-            success = success && restored;
         }
-        return new ScenarioResult(success, tr.toString());
+        return new ScenarioResult(success && restored, tr.toString());
     }
 
     private ScenarioResult restoreStock() {
         StringBuilder out = new StringBuilder("=== MARX LAB / RESTORE STOCK ===\n");
         out.append(rr("printf '%s' '/vendor/firmware' > " + FWCLASS + "; setenforce 1", 5));
-        out.append(rr("svc wifi disable; sleep 2; setprop vendor.wlandriver.mode normal; setprop ctl.start mfgloader; sleep 3; svc wifi enable; sleep 3", 11));
+        out.append("\n=== WIFI OFF ===\n").append(MonitorController.wifi(false).output);
+        sleep(1000);
+        out.append("\n=== MODE NORMAL ===\n").append(MonitorController.setMode("normal").output);
+        out.append("\n=== START NORMAL ===\n").append(MonitorController.startSamsungLoader().output);
+        sleep(900);
+        out.append("\n=== WIFI ON ===\n").append(MonitorController.wifi(true).output);
+        boolean network = MonitorController.waitForFirmware("B1 Network/rsdb", 15);
         rr("rm -rf " + q(STAGE), 4);
         String se = rr("getenforce 2>&1", 3).trim();
         String fw = rr("cat " + FWCLASS + " 2>/dev/null", 3).trim();
-        String wifi = rr("cat /sys/wifi/wifiver 2>/dev/null", 4);
-        boolean ok = "Enforcing".equalsIgnoreCase(se) && "/vendor/firmware".equals(fw);
+        boolean ok = "Enforcing".equalsIgnoreCase(se) && "/vendor/firmware".equals(fw) && network;
+        out.append('\n').append(MonitorController.snapshot("RESTORE_FINAL"));
         out.append("SELinux=").append(se).append('\n');
         out.append("firmware_class.path=").append(fw).append('\n');
-        out.append("wifiver=\n").append(wifi).append('\n');
+        out.append("NETWORK_CONFIRMED=").append(network).append('\n');
         out.append("RESTORE_RESULT=").append(ok ? "PASS" : "CHECK_REQUIRED").append('\n');
         return new ScenarioResult(ok, out.toString());
     }
 
     private void copyLog() {
+        String all = MarxLabLogStore.readAll(this);
         ClipboardManager cb = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        cb.setPrimaryClip(ClipData.newPlainText("MARX LAB log", log.getText()));
+        cb.setPrimaryClip(ClipData.newPlainText("MARX LAB V1.1 complete log", all));
         status.setTextColor(0xFF81C784);
-        status.setText("Log copiado para a área de transferência.");
+        status.setText("Log completo copiado • " + MarxLabLogStore.size(this) + " bytes");
+        log.setText(all);
+    }
+
+    private void refreshCumulativeLog() {
+        if (log != null) log.setText(MarxLabLogStore.readAll(this));
     }
 
     private void addButton(String label, Runnable action) {
@@ -296,6 +363,7 @@ public class MarxScenarioLabActivity extends Activity {
     private String nexProbe() { return q(getApplicationInfo().nativeLibraryDir + "/libnexprobe.so"); }
     private String sdrProbe() { return q(getApplicationInfo().nativeLibraryDir + "/libsdrrx42probe.so"); }
     private void post(String s) { ui.post(() -> status.setText(s)); }
+    private static void sleep(long ms) { try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } }
 
     private void copyAsset(String asset, File dst) throws Exception {
         try (InputStream in = getAssets().open(asset); FileOutputStream out = new FileOutputStream(dst)) {
