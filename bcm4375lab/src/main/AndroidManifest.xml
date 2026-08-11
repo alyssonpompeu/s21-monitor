@@ -3,7 +3,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="RX42 Control FS-i6 RE v2"
+        android:label="RX42 Control FS-i6 RE v3"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false"
         android:extractNativeLibs="true">
