@@ -61,7 +61,7 @@ jobs:
           git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
           git -C vendor/llama.cpp submodule update --init --recursive
 
-      - name: Tune runtime for Galaxy S21 stability
+      - name: Tune runtime for Galaxy S21 stability and conversation
         shell: bash
         run: |
           python3 - <<'PY'
@@ -71,6 +71,7 @@ jobs:
           replacements = {
               'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;': 'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
               'constexpr int   BATCH_SIZE              = 512;': 'constexpr int   BATCH_SIZE              = 256;',
+              'constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;': 'constexpr float DEFAULT_SAMPLER_TEMP    = 0.8f;',
           }
           for old, new in replacements.items():
               if old not in text:
@@ -119,7 +120,7 @@ jobs:
             "language": "pt-BR",
             "runtime": "llama.cpp",
             "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
-            "runtime_policy": "CPU-only ARM64; Vulkan disabled for Galaxy S21 Mali-G78 stability; context 4096; batch 256",
+            "runtime_policy": "CPU-only ARM64; Vulkan disabled for Galaxy S21 Mali-G78 stability; context 4096; batch 256; sampler temperature 0.8",
             "model": "Qwen3.5-0.8B-Q4_K_M.gguf",
             "model_sha256": "$MODEL_SHA256",
             "lexicon_url": "https://www.ime.usp.br/~pf/dicios/br-sem-acentos.txt",
@@ -194,6 +195,7 @@ jobs:
             APK ARM64 totalmente offline para o Galaxy S21/Exynos 2100.
             Runtime llama.cpp fixado por commit, modelo Qwen3.5 0.8B Q4_K_M e memória lexical local construída a partir das fontes verificadas por SHA-256.
             Revisão de estabilidade: CPU-only no Mali-G78, Vulkan desativado, contexto 4096 e batch 256 para reduzir risco de crash nativo durante a inicialização.
+            Revisão conversacional: interpretação de PT-BR informal, memória curta de conversa, continuidade de referências e sampler 0.8 para respostas menos rígidas.
           files: |
             IA-Offline-PTBR-S21.apk
             IA-Offline-PTBR-S21.apk.sha256
