@@ -36,11 +36,15 @@ public class MainActivity extends Activity {
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     private TextView status;
-    private TextView checks;
+    private TextView stateView;
     private TextView output;
-    private Button analyze;
-    private Button save;
-    private Button monitorTest;
+    private Button preflightButton;
+    private Button prepareButton;
+    private Button armButton;
+    private Button rebootButton;
+    private Button disarmButton;
+    private Button collectButton;
+    private Button saveButton;
     private File zipFile;
     private volatile boolean busy;
 
@@ -67,7 +71,7 @@ public class MainActivity extends Activity {
         scroll.addView(root);
 
         root.addView(text("BCM4375 Lab", 28, Color.WHITE, true));
-        TextView subtitle = text("v2.1 • BCM4375B1 • Samsung MON + capability probe + rollback", 12, 0xFF80CBC4, false);
+        TextView subtitle = text("v3.0 • Nexmon BCM4375B1 18.41.117 • Magisk one-shot", 12, 0xFF80CBC4, false);
         subtitle.setPadding(0, dp(4), 0, dp(12));
         root.addView(subtitle);
 
@@ -78,56 +82,67 @@ public class MainActivity extends Activity {
         device.setBackgroundColor(0xFF172027);
         root.addView(device);
 
-        status = text("Primeiro execute a análise. O teste ativo só libera se toda a base bater.", 14, 0xFFFFD180, true);
-        status.setPadding(0, dp(14), 0, dp(12));
+        status = text("Comece pelo preflight. Nenhum arquivo de /vendor será gravado diretamente.", 14, 0xFFFFD180, true);
+        status.setPadding(0, dp(14), 0, dp(10));
         root.addView(status);
 
-        analyze = new Button(this);
-        analyze.setText("1. ANALISAR BCM4375");
-        analyze.setOnClickListener(this::runAnalysis);
-        root.addView(analyze);
+        stateView = text("Estado ainda não verificado.", 12, 0xFFB0BEC5, false);
+        stateView.setTypeface(Typeface.MONOSPACE);
+        stateView.setPadding(0, 0, 0, dp(12));
+        root.addView(stateView);
 
-        monitorTest = new Button(this);
-        monitorTest.setText("2. TESTAR SAMSUNG MONITOR + CAPACIDADES");
-        monitorTest.setEnabled(false);
-        monitorTest.setOnClickListener(v -> confirmMonitorTest());
-        root.addView(monitorTest);
+        preflightButton = button("1. NEXMON PREFLIGHT");
+        preflightButton.setOnClickListener(v -> runPreflight());
+        root.addView(preflightButton);
 
-        save = new Button(this);
-        save.setText("SALVAR ÚLTIMO PACOTE ZIP");
-        save.setEnabled(false);
-        save.setOnClickListener(v -> saveZip());
-        root.addView(save);
+        prepareButton = button("2. BAIXAR + PREPARAR MÓDULO DESATIVADO");
+        prepareButton.setEnabled(false);
+        prepareButton.setOnClickListener(v -> confirmPrepare());
+        root.addView(prepareButton);
 
-        checks = text("Pré-verificações ainda não executadas.", 12, 0xFFB0BEC5, false);
-        checks.setTypeface(Typeface.MONOSPACE);
-        checks.setPadding(0, dp(14), 0, dp(12));
-        root.addView(checks);
+        armButton = button("3. ARMAR NEXMON PARA O PRÓXIMO BOOT");
+        armButton.setEnabled(false);
+        armButton.setOnClickListener(v -> confirmArm());
+        root.addView(armButton);
+
+        rebootButton = button("4. REINICIAR PARA TESTAR NEXMON");
+        rebootButton.setEnabled(false);
+        rebootButton.setOnClickListener(v -> confirmReboot());
+        root.addView(rebootButton);
+
+        disarmButton = button("DESARMAR / GARANTIR STOCK NO PRÓXIMO BOOT");
+        disarmButton.setEnabled(false);
+        disarmButton.setOnClickListener(v -> disarm());
+        root.addView(disarmButton);
+
+        collectButton = button("5. COLETAR RESULTADO NEXMON");
+        collectButton.setEnabled(false);
+        collectButton.setOnClickListener(v -> collectEvidence());
+        root.addView(collectButton);
+
+        saveButton = button("SALVAR ÚLTIMO PACOTE ZIP");
+        saveButton.setEnabled(false);
+        saveButton.setOnClickListener(v -> saveZip());
+        root.addView(saveButton);
 
         TextView note = text(
-                "O teste usa o mfgloader original da Samsung. Não substitui arquivos em /vendor. " +
-                "Enquanto B1 Monitor estiver ativo, a v2.1 coleta apenas capacidades/estado; não injeta quadros e não usa Nexmon. " +
-                "No rollback, o Wi-Fi é religado antes da confirmação B1 Network, conforme observado no seu S21.",
+                "Proteção one-shot: o módulo substitui somente /vendor/firmware/bcmdhd_sta.bin_b1 via overlay Magisk. " +
+                "No primeiro boot ativo, post-fs-data.sh cria o marcador disable, portanto o boot seguinte volta ao firmware Samsung. " +
+                "A v3.0 não altera SELinux e ainda não executa nexutil/injection.",
                 12, 0xFFB0BEC5, false);
-        note.setPadding(0, 0, 0, dp(12));
+        note.setPadding(0, dp(12), 0, dp(12));
         root.addView(note);
 
-        output = text("Toque em 1. ANALISAR BCM4375.", 11, 0xFFE0E0E0, false);
+        output = text("Toque em 1. NEXMON PREFLIGHT.", 11, 0xFFE0E0E0, false);
         output.setTypeface(Typeface.MONOSPACE);
         output.setTextIsSelectable(true);
         root.addView(output);
         return scroll;
     }
 
-    private void runAnalysis(View ignored) {
+    private void runPreflight() {
         if (busy) return;
-        busy = true;
-        setButtons(false, false, false);
-        status.setTextColor(0xFFFFD180);
-        status.setText("Etapa 0 • aguardando autorização root…");
-        checks.setText("Executando verificações…");
-        output.setText("Se o Magisk solicitar permissão, autorize BCM4375 Lab.");
-
+        setBusy("Executando Nexmon preflight…");
         worker.execute(() -> {
             try {
                 RootReader.Result root = RootReader.run("id", 30);
@@ -136,195 +151,240 @@ public class MainActivity extends Activity {
                     return;
                 }
 
-                StringBuilder report = new StringBuilder();
-                report.append("BCM4375 Lab v2.1.0 - preflight\n")
-                        .append("Model: ").append(Build.MODEL).append('\n')
-                        .append("Device: ").append(Build.DEVICE).append('\n')
-                        .append("Hardware: ").append(Build.HARDWARE).append("\n\n");
-
-                int total = ProbeCatalog.ALL.length;
-                for (int i = 0; i < total; i++) {
-                    ProbeCatalog.Probe probe = ProbeCatalog.ALL[i];
-                    postProgress(i + 1, total, probe.label);
-                    RootReader.Result r = RootReader.run(probe.command, 8);
-                    report.append("=== ").append(probe.label).append(" ===\n")
-                            .append(r.output)
-                            .append(r.timedOut ? "[timeout=YES]\n" : "")
-                            .append("[exit=").append(r.code).append("]\n\n");
-                }
-
-                Preflight pf = preflight();
-                String summary = pf.summary();
-                report.append("=== ACTIVE PREFLIGHT ===\n").append(summary);
-                report.append("ACTIVE_READY=").append(pf.ok ? "YES" : "NO").append('\n');
-                createReportZip("BCM4375-Lab-S21-preflight.zip", "bcm4375-v21-preflight.txt", report.toString());
-
-                ui.post(() -> {
-                    busy = false;
-                    checks.setText(summary);
-                    status.setTextColor(pf.ok ? 0xFF81C784 : 0xFFFFD180);
-                    status.setText(pf.ok ? "BASE VALIDADA • Samsung MON liberado" : "BASE NÃO VALIDADA • teste ativo bloqueado");
-                    output.setText(report + "\nPacote preflight pronto.");
-                    setButtons(true, pf.ok, true);
-                });
+                State s = readState();
+                String report = buildPreflightReport(s);
+                createReportZip("BCM4375-Lab-S21-nexmon-preflight.zip", "bcm4375-nexmon-preflight.txt", report);
+                ui.post(() -> applyState(s, report));
             } catch (Exception e) {
-                showFailure("Falha na análise", e.getClass().getSimpleName() + ": " + e.getMessage());
+                showFailure("Falha no preflight", e.getClass().getSimpleName() + ": " + e.getMessage());
             }
         });
     }
 
-    private void confirmMonitorTest() {
-        if (busy) return;
+    private State readState() {
+        String wifiver = NexmonOneShotController.wifiver();
+        String currentSha = NexmonOneShotController.currentFirmwareSha();
+        String moduleState = NexmonOneShotController.moduleState();
+        String moduleSha = NexmonOneShotController.moduleFirmwareSha();
+        boolean root = RootReader.run("id", 5).output.contains("uid=0");
+        boolean model = "SM-G991B".equalsIgnoreCase(Build.MODEL);
+        boolean hw = "exynos2100".equalsIgnoreCase(Build.HARDWARE);
+        boolean magisk = NexmonOneShotController.magiskReady();
+        boolean nexmonActive = NexmonOneShotController.isNexmonActive();
+        boolean stockNetwork = wifiver.contains("18.41.117") && wifiver.contains("B1 Network") && NexmonOneShotController.STOCK_SHA.equalsIgnoreCase(currentSha);
+        boolean moduleValid = NexmonOneShotController.NEXMON_SHA.equalsIgnoreCase(moduleSha);
+        return new State(root, model, hw, magisk, nexmonActive, stockNetwork, currentSha, moduleState, moduleSha, wifiver, moduleValid);
+    }
+
+    private String buildPreflightReport(State s) {
+        StringBuilder r = new StringBuilder();
+        r.append("BCM4375 Lab v3.0.0 - Nexmon preflight\n\n");
+        r.append(check("root", s.root));
+        r.append(check("SM-G991B", s.model));
+        r.append(check("Exynos 2100", s.hw));
+        r.append(check("Magisk modules writable", s.magisk));
+        r.append(check("Stock B1 Network + stock SHA", s.stockNetwork));
+        r.append("[INFO] Nexmon active = ").append(s.nexmonActive).append('\n');
+        r.append("[INFO] Current firmware SHA = ").append(s.currentSha).append('\n');
+        r.append("[INFO] Module state = ").append(s.moduleState).append('\n');
+        r.append("[INFO] Module firmware SHA = ").append(s.moduleSha).append('\n');
+        r.append("[INFO] Module firmware valid = ").append(s.moduleValid).append('\n');
+        r.append("\n=== WIFIVER ===\n").append(s.wifiver);
+        r.append("\n=== MAGISK ===\n").append(NexmonOneShotController.magiskInfo());
+        r.append("\n=== SELINUX ===\n").append(RootReader.run("getenforce 2>&1", 3).output);
+        r.append("\nEXPECTED_STOCK_SHA=").append(NexmonOneShotController.STOCK_SHA).append('\n');
+        r.append("EXPECTED_NEXMON_SHA=").append(NexmonOneShotController.NEXMON_SHA).append('\n');
+        return r.toString();
+    }
+
+    private void applyState(State s, String report) {
+        busy = false;
+        boolean baseOk = s.root && s.model && s.hw && s.magisk;
+        boolean canPrepare = baseOk && s.stockNetwork && !s.nexmonActive;
+        boolean preparedDisabled = s.moduleValid && "DISABLED".equals(s.moduleState);
+        boolean armed = s.moduleValid && "ARMED".equals(s.moduleState) && !s.nexmonActive;
+        boolean activeSafe = s.nexmonActive && ("DISABLED".equals(s.moduleState) || "REMOVE_PENDING".equals(s.moduleState));
+
+        preflightButton.setEnabled(true);
+        prepareButton.setEnabled(canPrepare);
+        armButton.setEnabled(preparedDisabled && s.stockNetwork);
+        disarmButton.setEnabled(s.moduleValid || s.nexmonActive || "ARMED".equals(s.moduleState));
+        collectButton.setEnabled(s.nexmonActive || new File("/data/adb/bcm4375_nexmon_oneshot_result.txt").exists());
+        saveButton.setEnabled(zipFile != null && zipFile.isFile());
+
+        if (armed) {
+            rebootButton.setText("4. REINICIAR PARA TESTAR NEXMON");
+            rebootButton.setEnabled(true);
+            status.setTextColor(0xFFFFD180);
+            status.setText("NEXMON ARMADO • próximo boot usará o patch one-shot");
+        } else if (s.nexmonActive) {
+            rebootButton.setText("6. REINICIAR PARA VOLTAR AO STOCK");
+            rebootButton.setEnabled(activeSafe);
+            status.setTextColor(activeSafe ? 0xFF81C784 : 0xFFEF9A9A);
+            status.setText(activeSafe ? "NEXMON ATIVO • one-shot já desarmado para o próximo boot" : "NEXMON ATIVO • DESARME antes de reiniciar");
+        } else if (preparedDisabled) {
+            rebootButton.setEnabled(false);
+            status.setTextColor(0xFF81C784);
+            status.setText("MÓDULO NEXMON PREPARADO E DESATIVADO • seguro");
+        } else if (canPrepare) {
+            rebootButton.setEnabled(false);
+            status.setTextColor(0xFF81C784);
+            status.setText("PREFLIGHT OK • pronto para baixar/preparar o módulo");
+        } else {
+            rebootButton.setEnabled(false);
+            status.setTextColor(0xFFFFD180);
+            status.setText("PREFLIGHT CONCLUÍDO • veja os itens abaixo antes de prosseguir");
+        }
+
+        stateView.setText(
+                "firmware=" + (s.nexmonActive ? "NEXMON" : (s.stockNetwork ? "STOCK" : "OUTRO")) +
+                "\nmodule=" + s.moduleState +
+                "\ncurrent_sha=" + s.currentSha +
+                "\nmodule_sha=" + s.moduleSha);
+        output.setText(report);
+    }
+
+    private void confirmPrepare() {
         new AlertDialog.Builder(this)
-                .setTitle("Teste Samsung Monitor")
-                .setMessage("O Wi-Fi será desligado temporariamente. O app carregará B1 Monitor, coletará uma sondagem de capacidades e depois restaurará B1 Network/STA. Não feche o app durante o teste.")
+                .setTitle("Preparar Nexmon one-shot")
+                .setMessage("O app baixará o firmware da release verificada, exigirá o SHA-256 exato e instalará um módulo Magisk DESATIVADO. O Wi-Fi e o boot atual não serão alterados.")
                 .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Executar teste", (d, w) -> runMonitorTest())
+                .setPositiveButton("Preparar", (d, w) -> prepareModule())
                 .show();
     }
 
-    private void runMonitorTest() {
+    private void prepareModule() {
         if (busy) return;
-        busy = true;
-        setButtons(false, false, false);
-        status.setTextColor(0xFFFFD180);
-        status.setText("Validando novamente antes da troca…");
-        output.setText("Nenhum arquivo de /vendor será alterado.");
-
+        setBusy("Baixando firmware Nexmon…");
         worker.execute(() -> {
-            StringBuilder report = new StringBuilder();
-            boolean wifiWasEnabled = false;
-            boolean monitorLoaded = false;
-            boolean rollbackOk = false;
             try {
-                Preflight pf = preflight();
-                report.append("BCM4375 Lab v2.1.0 - Samsung MON capability test\n\n").append(pf.summary()).append('\n');
-                if (!pf.ok) throw new Exception("Preflight ativo não passou. Nenhuma troca foi feita.");
-
-                String wifiState = RootReader.run("settings get global wifi_on", 4).output.trim();
-                wifiWasEnabled = "1".equals(wifiState) || "2".equals(wifiState);
-                report.append("wifi_on_before=").append(wifiState).append('\n');
-                report.append(MonitorController.snapshot("BEFORE"));
-
-                postStatus("Desligando Wi-Fi do Android…");
-                MonitorController.wifi(false);
-                Thread.sleep(1200);
-
-                postStatus("Selecionando vendor.wlandriver.mode=monitor…");
-                RootReader.Result modeResult = MonitorController.setMode("monitor");
-                if (modeResult.code != 0 || modeResult.timedOut) throw new Exception("Falha definindo modo monitor: " + modeResult.output);
-
-                postStatus("Iniciando mfgloader Samsung…");
-                RootReader.Result startResult = MonitorController.startSamsungLoader();
-                report.append("start_monitor_exit=").append(startResult.code).append(" timeout=").append(startResult.timedOut).append('\n');
-                if (startResult.code != 0 || startResult.timedOut) throw new Exception("init não aceitou iniciar mfgloader: " + startResult.output);
-
-                monitorLoaded = MonitorController.waitForFirmware("B1 Monitor", 12);
-                report.append(MonitorController.snapshot("MONITOR ATTEMPT"));
-                if (!monitorLoaded) throw new Exception("B1 Monitor não apareceu dentro de 12 s.");
-
-                postStatus("B1 MONITOR • coletando capacidades…");
-                report.append("\n=== MONITOR CAPABILITY PROBE ===\n");
-                report.append(RootReader.run(
-                        "echo net_type=$(cat /sys/class/net/wlan0/type 2>/dev/null); " +
-                        "echo net_flags=$(cat /sys/class/net/wlan0/flags 2>/dev/null); " +
-                        "echo '-- ip details --'; ip -details link show wlan0 2>&1; " +
-                        "echo '-- proc wireless --'; cat /proc/net/wireless 2>&1; " +
-                        "echo '-- tools --'; " +
-                        "for x in /system/bin/iw /vendor/bin/iw /system_ext/bin/iw /system/bin/wl /vendor/bin/wl /vendor/bin/hw/wl /system/bin/nexutil /vendor/bin/nexutil; do [ -e $x ] && ls -l $x; done; " +
-                        "echo '-- vendor driver props --'; getprop | grep -i 'vendor.wlandriver'; " +
-                        "echo '-- monitor log --'; dmesg | grep -iE 'monitor mode|radiotap|monitor|promisc' | tail -100",
-                        8).output);
-
-                for (int left = 5; left >= 1; left--) {
-                    final int sec = left;
-                    ui.post(() -> status.setText("B1 MONITOR ATIVO • rollback em " + sec + " s"));
-                    Thread.sleep(1000);
+                State before = readState();
+                if (!(before.root && before.model && before.hw && before.magisk && before.stockNetwork && !before.nexmonActive)) {
+                    throw new Exception("Estado mudou desde o preflight. Execute o preflight novamente.");
                 }
+                File firmware = NexmonOneShotController.downloadVerifiedFirmware(this, this::postStatus);
+                postStatus("Montando módulo Magisk one-shot…");
+                File moduleZip = NexmonOneShotController.buildModuleZip(this, firmware);
+                postStatus("Instalando módulo em estado DESATIVADO…");
+                RootReader.Result install = NexmonOneShotController.installDisabledModule(moduleZip);
+                if (install.timedOut || install.code != 0) throw new Exception("Falha no magisk --install-module: " + install.output);
+                State after = readState();
+                if (!after.moduleValid || !"DISABLED".equals(after.moduleState)) {
+                    NexmonOneShotController.disarmNextBoot();
+                    throw new Exception("Módulo não ficou validado/desativado após a instalação.");
+                }
+                String report = buildPreflightReport(after) + "\nMODULE_PREPARED=YES\nMODULE_ZIP_SHA256=" + NexmonOneShotController.sha256(moduleZip) + "\n";
+                createReportZip("BCM4375-Lab-S21-nexmon-module-prepared.zip", "bcm4375-nexmon-module-prepared.txt", report);
+                ui.post(() -> applyState(after, report));
             } catch (Exception e) {
-                report.append("\nTEST_EXCEPTION=").append(e.getClass().getSimpleName()).append(": ").append(e.getMessage()).append('\n');
-            } finally {
-                try {
-                    postStatus("ROLLBACK • apontando para Samsung STA…");
-                    MonitorController.setMode("normal");
-                    RootReader.Result restoreStart = MonitorController.startSamsungLoader();
-                    report.append("rollback_start_exit=").append(restoreStart.code).append(" timeout=").append(restoreStart.timedOut).append('\n');
-
-                    // No S21 testado, mfgloader coloca wlan0 DOWN e firmware_path=STA.
-                    // O STA é efetivamente carregado quando o framework Wi-Fi abre wlan0 novamente.
-                    if (wifiWasEnabled) {
-                        postStatus("ROLLBACK • religando Wi-Fi para carregar STA…");
-                        Thread.sleep(800);
-                        MonitorController.wifi(true);
-                    }
-
-                    postStatus("ROLLBACK • aguardando B1 Network…");
-                    rollbackOk = MonitorController.waitForFirmware("B1 Network", 20);
-                    report.append(MonitorController.snapshot("AFTER ROLLBACK"));
-                    report.append("wifi_on_after=").append(RootReader.run("settings get global wifi_on", 4).output.trim()).append('\n');
-                } catch (Exception rollbackError) {
-                    report.append("ROLLBACK_EXCEPTION=").append(rollbackError.getMessage()).append('\n');
-                }
-
-                report.append("\nmonitor_loaded=").append(monitorLoaded).append('\n');
-                report.append("rollback_network_ok=").append(rollbackOk).append('\n');
-                report.append("wifi_was_enabled=").append(wifiWasEnabled).append('\n');
-                report.append("\n=== DHD LOG AFTER TEST ===\n")
-                        .append(RootReader.run("dmesg | grep -iE 'dhd|bcmdhd|firmware|4375|mfgloader|wlandriver|monitor mode' | tail -280", 7).output);
-
-                try {
-                    createReportZip("BCM4375-Lab-S21-monitor-capability-test.zip", "bcm4375-monitor-capability-test.txt", report.toString());
-                } catch (Exception zipError) {
-                    report.append("ZIP_ERROR=").append(zipError.getMessage()).append('\n');
-                }
-
-                final boolean mon = monitorLoaded;
-                final boolean rb = rollbackOk;
-                final String finalReport = report.toString();
-                ui.post(() -> {
-                    busy = false;
-                    output.setText(finalReport + "\n\nSalve o ZIP e envie aqui.");
-                    save.setEnabled(zipFile != null && zipFile.isFile());
-                    analyze.setEnabled(true);
-                    monitorTest.setEnabled(rb);
-                    if (mon && rb) {
-                        status.setTextColor(0xFF81C784);
-                        status.setText("SUCESSO • B1 Monitor + capability probe + STA restaurado");
-                    } else if (rb) {
-                        status.setTextColor(0xFFFFD180);
-                        status.setText("MON não confirmado • STA restaurado com sucesso");
-                    } else {
-                        status.setTextColor(0xFFEF9A9A);
-                        status.setText("ROLLBACK NÃO CONFIRMADO • reinicie o telefone antes de novos testes");
-                        monitorTest.setEnabled(false);
-                    }
-                });
+                NexmonOneShotController.disarmNextBoot();
+                showFailure("Falha preparando módulo", e.getClass().getSimpleName() + ": " + e.getMessage());
             }
         });
     }
 
-    private Preflight preflight() {
-        String wifiver = MonitorController.wifiver();
-        String hashes = RootReader.run("sha256sum /vendor/firmware/bcmdhd_sta.bin_b1 /vendor/firmware/bcmdhd_mon.bin_b1 /vendor/firmware/bcmdhd_mfg.bin_b1 2>/dev/null", 8).output;
-        String loaderStatus = MonitorController.status();
+    private void confirmArm() {
+        new AlertDialog.Builder(this)
+                .setTitle("Armar próximo boot")
+                .setMessage("Depois de armar, o PRÓXIMO reboot usará o firmware Nexmon. O módulo se auto-desativa durante esse boot para que o reboot seguinte volte ao Samsung stock.")
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Armar", (d, w) -> arm())
+                .show();
+    }
 
-        boolean rootOk = RootReader.run("id", 5).output.contains("uid=0");
-        boolean modelOk = "SM-G991B".equalsIgnoreCase(Build.MODEL);
-        boolean hwOk = "exynos2100".equalsIgnoreCase(Build.HARDWARE);
-        boolean networkOk = wifiver.contains("18.41.117") && wifiver.contains("B1 Network");
-        boolean staHash = hashes.contains(MonitorController.STA_SHA);
-        boolean monHash = hashes.contains(MonitorController.MON_SHA);
-        boolean mfgHash = hashes.contains(MonitorController.MFG_SHA);
-        boolean pathOk = RootReader.run("test -w /sys/module/dhd/parameters/firmware_path", 3).code == 0;
-        boolean loaderOk = RootReader.run("test -x /vendor/bin/hw/mfgloader", 3).code == 0;
-        boolean serviceOk = RootReader.run("grep -q 'service mfgloader /vendor/bin/hw/mfgloader' /vendor/etc/wlan_common_rc /vendor/etc/init/wifi.rc 2>/dev/null", 4).code == 0;
-        boolean stateOk = !"ok".equalsIgnoreCase(loaderStatus);
+    private void arm() {
+        if (busy) return;
+        setBusy("Armando Nexmon one-shot…");
+        worker.execute(() -> {
+            try {
+                State before = readState();
+                if (!before.stockNetwork || !before.moduleValid || !"DISABLED".equals(before.moduleState)) {
+                    throw new Exception("Estado inseguro para armar. Execute o preflight novamente.");
+                }
+                RootReader.Result r = NexmonOneShotController.armNextBoot();
+                if (r.timedOut || r.code != 0) throw new Exception("Não foi possível remover o marcador disable: " + r.output);
+                State after = readState();
+                if (!"ARMED".equals(after.moduleState)) throw new Exception("O módulo não ficou ARMED.");
+                ui.post(() -> applyState(after, buildPreflightReport(after) + "\nONE_SHOT_ARMED=YES\n"));
+            } catch (Exception e) {
+                NexmonOneShotController.disarmNextBoot();
+                showFailure("Falha ao armar", e.getMessage());
+            }
+        });
+    }
 
-        return new Preflight(rootOk, modelOk, hwOk, networkOk, staHash, monHash, mfgHash, pathOk, loaderOk, serviceOk, stateOk, loaderStatus);
+    private void confirmReboot() {
+        if (busy) return;
+        State s = readState();
+        if (s.nexmonActive) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Voltar ao Samsung stock")
+                    .setMessage("O módulo será mantido desativado e o telefone reiniciará. O próximo boot deverá usar bcmdhd_sta.bin_b1 original.")
+                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton("Reiniciar stock", (d, w) -> rebootStock())
+                    .show();
+        } else {
+            new AlertDialog.Builder(this)
+                    .setTitle("Iniciar teste Nexmon")
+                    .setMessage("O telefone reiniciará. Este próximo boot usa Nexmon uma vez. Depois que iniciar, abra novamente o BCM4375 Lab e execute COLETAR RESULTADO NEXMON antes de reiniciar para stock.")
+                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton("Reiniciar para Nexmon", (d, w) -> rebootArmed())
+                    .show();
+        }
+    }
+
+    private void rebootArmed() {
+        worker.execute(() -> {
+            State s = readState();
+            if (!s.moduleValid || !"ARMED".equals(s.moduleState) || !s.stockNetwork) {
+                showFailure("Reboot bloqueado", "O módulo não está armado em um estado stock validado.");
+                return;
+            }
+            NexmonOneShotController.reboot();
+        });
+    }
+
+    private void rebootStock() {
+        worker.execute(() -> {
+            NexmonOneShotController.disarmNextBoot();
+            NexmonOneShotController.reboot();
+        });
+    }
+
+    private void disarm() {
+        if (busy) return;
+        setBusy("Desarmando módulo Nexmon…");
+        worker.execute(() -> {
+            RootReader.Result r = NexmonOneShotController.disarmNextBoot();
+            if (r.code != 0 && !"ABSENT".equals(NexmonOneShotController.moduleState())) {
+                showFailure("Falha ao desarmar", r.output);
+                return;
+            }
+            State s = readState();
+            ui.post(() -> applyState(s, buildPreflightReport(s) + "\nDISARM_REQUEST=YES\n"));
+        });
+    }
+
+    private void collectEvidence() {
+        if (busy) return;
+        setBusy("Coletando evidências Nexmon…");
+        worker.execute(() -> {
+            try {
+                String report = NexmonOneShotController.collectEvidence();
+                createReportZip("BCM4375-Lab-S21-nexmon-one-shot-result.zip", "bcm4375-nexmon-one-shot-result.txt", report);
+                State s = readState();
+                ui.post(() -> {
+                    applyState(s, report + "\n\nZIP pronto. Salve e envie aqui.");
+                    saveButton.setEnabled(true);
+                });
+            } catch (Exception e) {
+                showFailure("Falha coletando resultado", e.getMessage());
+            }
+        });
     }
 
     private void createReportZip(String zipName, String reportName, String body) throws Exception {
-        File work = new File(getCacheDir(), "bcm4375-v21");
+        File work = new File(getCacheDir(), "bcm4375-v3-report");
         ExportUtil.deleteRecursive(work);
         if (!work.mkdirs() && !work.isDirectory()) throw new Exception("Falha criando diretório de relatório");
         File reportFile = new File(work, reportName);
@@ -339,18 +399,36 @@ public class MainActivity extends Activity {
         zipFile = result;
     }
 
-    private void postProgress(int current, int total, String label) {
-        ui.post(() -> status.setText("Etapa " + current + "/" + total + " • " + label));
+    private void setBusy(String message) {
+        busy = true;
+        status.setTextColor(0xFFFFD180);
+        status.setText(message);
+        preflightButton.setEnabled(false);
+        prepareButton.setEnabled(false);
+        armButton.setEnabled(false);
+        rebootButton.setEnabled(false);
+        disarmButton.setEnabled(false);
+        collectButton.setEnabled(false);
+        saveButton.setEnabled(false);
     }
 
     private void postStatus(String value) {
         ui.post(() -> status.setText(value));
     }
 
-    private void setButtons(boolean analysis, boolean active, boolean canSave) {
-        analyze.setEnabled(analysis);
-        monitorTest.setEnabled(active);
-        save.setEnabled(canSave && zipFile != null && zipFile.isFile());
+    private void showFailure(String title, String details) {
+        ui.post(() -> {
+            busy = false;
+            status.setTextColor(0xFFEF9A9A);
+            status.setText(title);
+            output.setText(details == null ? "" : details);
+            preflightButton.setEnabled(true);
+            disarmButton.setEnabled(true);
+        });
+    }
+
+    private String check(String label, boolean ok) {
+        return (ok ? "[OK]   " : "[FAIL] ") + label + "\n";
     }
 
     private void saveZip() {
@@ -371,79 +449,62 @@ public class MainActivity extends Activity {
         worker.execute(() -> {
             try (InputStream in = new FileInputStream(zipFile); OutputStream out = getContentResolver().openOutputStream(uri, "w")) {
                 if (out == null) throw new Exception("Destino indisponível");
-                byte[] buf = new byte[65536];
+                byte[] buf = new byte[64 * 1024];
                 int n;
                 while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-                ui.post(() -> Toast.makeText(this, "ZIP salvo. Envie esse arquivo aqui.", Toast.LENGTH_LONG).show());
+                ui.post(() -> Toast.makeText(this, "ZIP salvo.", Toast.LENGTH_LONG).show());
             } catch (Exception e) {
                 ui.post(() -> Toast.makeText(this, "Falha ao salvar: " + e.getMessage(), Toast.LENGTH_LONG).show());
             }
         });
     }
 
-    private void showFailure(String title, String details) {
-        ui.post(() -> {
-            busy = false;
-            status.setTextColor(0xFFEF9A9A);
-            status.setText(title);
-            output.setText(details);
-            analyze.setEnabled(true);
-        });
+    private Button button(String label) {
+        Button b = new Button(this);
+        b.setText(label);
+        return b;
     }
 
     private TextView text(String value, int sp, int color, boolean bold) {
-        TextView view = new TextView(this);
-        view.setText(value);
-        view.setTextSize(sp);
-        view.setTextColor(color);
-        if (bold) view.setTypeface(Typeface.DEFAULT_BOLD);
-        return view;
+        TextView v = new TextView(this);
+        v.setText(value);
+        v.setTextSize(sp);
+        v.setTextColor(color);
+        if (bold) v.setTypeface(Typeface.DEFAULT_BOLD);
+        return v;
     }
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
-    private static final class Preflight {
-        final boolean ok;
-        final boolean rootOk, modelOk, hwOk, networkOk, staHash, monHash, mfgHash, pathOk, loaderOk, serviceOk, stateOk;
-        final String loaderStatus;
+    private static final class State {
+        final boolean root;
+        final boolean model;
+        final boolean hw;
+        final boolean magisk;
+        final boolean nexmonActive;
+        final boolean stockNetwork;
+        final String currentSha;
+        final String moduleState;
+        final String moduleSha;
+        final String wifiver;
+        final boolean moduleValid;
 
-        Preflight(boolean rootOk, boolean modelOk, boolean hwOk, boolean networkOk,
-                  boolean staHash, boolean monHash, boolean mfgHash, boolean pathOk,
-                  boolean loaderOk, boolean serviceOk, boolean stateOk, String loaderStatus) {
-            this.rootOk = rootOk;
-            this.modelOk = modelOk;
-            this.hwOk = hwOk;
-            this.networkOk = networkOk;
-            this.staHash = staHash;
-            this.monHash = monHash;
-            this.mfgHash = mfgHash;
-            this.pathOk = pathOk;
-            this.loaderOk = loaderOk;
-            this.serviceOk = serviceOk;
-            this.stateOk = stateOk;
-            this.loaderStatus = loaderStatus;
-            this.ok = rootOk && modelOk && hwOk && networkOk && staHash && monHash && mfgHash && pathOk && loaderOk && serviceOk && stateOk;
-        }
-
-        String summary() {
-            return checkLine("Root", rootOk) +
-                    checkLine("Modelo SM-G991B", modelOk) +
-                    checkLine("Hardware Exynos 2100", hwOk) +
-                    checkLine("Ativo: 18.41.117 B1 Network", networkOk) +
-                    checkLine("SHA STA exato", staHash) +
-                    checkLine("SHA MON exato", monHash) +
-                    checkLine("SHA MFG exato", mfgHash) +
-                    checkLine("firmware_path gravável", pathOk) +
-                    checkLine("mfgloader executável", loaderOk) +
-                    checkLine("serviço mfgloader Samsung presente", serviceOk) +
-                    checkLine("mfgloader não está em estado ok", stateOk) +
-                    "loader_status_before=" + loaderStatus + "\n";
-        }
-
-        private static String checkLine(String label, boolean ok) {
-            return (ok ? "[OK]   " : "[FAIL] ") + label + "\n";
+        State(boolean root, boolean model, boolean hw, boolean magisk, boolean nexmonActive,
+              boolean stockNetwork, String currentSha, String moduleState, String moduleSha,
+              String wifiver, boolean moduleValid) {
+            this.root = root;
+            this.model = model;
+            this.hw = hw;
+            this.magisk = magisk;
+            this.nexmonActive = nexmonActive;
+            this.stockNetwork = stockNetwork;
+            this.currentSha = currentSha;
+            this.moduleState = moduleState;
+            this.moduleSha = moduleSha;
+            this.wifiver = wifiver;
+            this.moduleValid = moduleValid;
         }
     }
 }
