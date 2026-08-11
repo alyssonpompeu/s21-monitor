@@ -101,21 +101,32 @@ final class NexmonOneShotController {
         String moduleProp =
                 "id=" + MODULE_ID + "\n" +
                 "name=BCM4375B1 Nexmon One-Shot\n" +
-                "version=18.41.117-pr663\n" +
-                "versionCode=300\n" +
+                "version=18.41.117-pr663-guard2\n" +
+                "versionCode=301\n" +
                 "author=BCM4375 Lab\n" +
-                "description=One-shot Nexmon BCM4375B1 firmware overlay for SM-G991B.\n";
+                "description=One-shot Nexmon BCM4375B1 firmware overlay with early reboot-loop guard.\n";
 
+        // Magisk runs module post-fs-data before module mounts. On the first armed boot,
+        // record that the one-shot has started but leave the module enabled so it can mount.
+        // If the device reboots before late_start/service.sh can create disable, the second
+        // post-fs-data sees the marker and disables the module before that second mount.
         String postFs =
                 "#!/system/bin/sh\n" +
-                "{ echo post_fs_data_reached=YES; date; } > " + STATE_PATH + " 2>&1\n";
+                "MODDIR=${0%/*}\n" +
+                "if grep -q '^armed_boot_started=YES' '" + STATE_PATH + "' 2>/dev/null; then\n" +
+                "  touch \"$MODDIR/disable\"\n" +
+                "  sync\n" +
+                "  { echo guard_disarmed_repeated_boot=YES; date; } >> '" + STATE_PATH + "' 2>&1\n" +
+                "else\n" +
+                "  { echo armed_boot_started=YES; date; } > '" + STATE_PATH + "' 2>&1\n" +
+                "fi\n";
 
         String service =
                 "#!/system/bin/sh\n" +
                 "MODDIR=${0%/*}\n" +
                 "touch \"$MODDIR/disable\"\n" +
                 "sync\n" +
-                "{ echo service_auto_disabled_next_boot=YES; date; } >> " + STATE_PATH + " 2>&1\n" +
+                "{ echo late_start_auto_disabled_next_boot=YES; date; } >> '" + STATE_PATH + "' 2>&1\n" +
                 "sleep 10\n" +
                 "{\n" +
                 "  echo 'BCM4375 Nexmon one-shot boot result'\n" +
@@ -134,7 +145,7 @@ final class NexmonOneShotController {
                 "  getenforce 2>&1\n" +
                 "  echo '-- dhd log --'\n" +
                 "  dmesg | grep -iE 'dhd|bcmdhd|nexmon|firmware|4375|monitor|radiotap' | tail -320\n" +
-                "} > " + RESULT_PATH + " 2>&1\n";
+                "} > '" + RESULT_PATH + "' 2>&1\n";
 
         try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zip))) {
             putText(zos, "module.prop", moduleProp);
@@ -166,6 +177,7 @@ final class NexmonOneShotController {
                 "[ -z \"$D\" ] && [ -d '" + ACTIVE_DIR + "' ] && D='" + ACTIVE_DIR + "'; " +
                 "test -n \"$D\" && " +
                 "test \"$(sha256sum \"$D/system/vendor/firmware/bcmdhd_sta.bin_b1\" 2>/dev/null | cut -d' ' -f1)\" = '" + NEXMON_SHA + "' && " +
+                "rm -f '" + RESULT_PATH + "' '" + STATE_PATH + "' && " +
                 "rm -f \"$D/remove\" \"$D/disable\" && sync && test ! -e \"$D/disable\"";
         return RootReader.run(cmd, 10);
     }
@@ -190,7 +202,7 @@ final class NexmonOneShotController {
 
     static String collectEvidence() {
         StringBuilder out = new StringBuilder();
-        out.append("BCM4375 Lab v3.0.0 - Nexmon one-shot evidence\n\n");
+        out.append("BCM4375 Lab v3.0.1 - Nexmon one-shot evidence\n\n");
         out.append("module_state=").append(moduleState()).append('\n');
         out.append("module_location=").append(moduleLocation()).append('\n');
         out.append("module_fw_sha=").append(moduleFirmwareSha()).append('\n');
@@ -202,7 +214,7 @@ final class NexmonOneShotController {
         out.append("\n=== SELINUX ===\n").append(RootReader.run("getenforce 2>&1", 3).output);
         out.append("\n=== ACTIVE MODULE ===\n").append(RootReader.run("ls -laZ '" + ACTIVE_DIR + "' '" + ACTIVE_DIR + "/system/vendor/firmware' 2>&1", 5).output);
         out.append("\n=== STAGED MODULE ===\n").append(RootReader.run("ls -laZ '" + STAGED_DIR + "' '" + STAGED_DIR + "/system/vendor/firmware' 2>&1", 5).output);
-        out.append("\n=== AUTO BOOT STATE ===\n").append(RootReader.run("cat '" + STATE_PATH + "' 2>&1", 4).output);
+        out.append("\n=== ONE-SHOT GUARD STATE ===\n").append(RootReader.run("cat '" + STATE_PATH + "' 2>&1", 4).output);
         out.append("\n=== AUTO BOOT RESULT ===\n").append(RootReader.run("cat '" + RESULT_PATH + "' 2>&1", 6).output);
         out.append("\n=== LIVE DHD LOG ===\n").append(RootReader.run("dmesg | grep -iE 'dhd|bcmdhd|nexmon|firmware|4375|monitor|radiotap' | tail -360", 8).output);
         return out.toString();
