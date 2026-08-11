@@ -93,4 +93,33 @@ text = text.replace(
 )
 
 path.write_text(text, encoding='utf-8')
-print('Workspace v3 MainActivity patch applied')
+
+# Kotlin 2.3 compatibility fixes discovered by the first Plugin v3 CI run.
+artifact = Path('offlineai/src/main/java/com/alysson/offlineai/ArtifactBuilder.kt')
+artifact_text = artifact.read_text(encoding='utf-8')
+old = '''        if (head < 0) return html.replaceFirst(Regex("(?i)<html[^>]*>")) { it.value + "<head>$policy</head>" }
+'''
+new = '''        if (head < 0) {
+            val match = Regex("(?i)<html[^>]*>").find(html) ?: return html
+            val insertion = match.range.last + 1
+            return html.substring(0, insertion) + "<head>$policy</head>" + html.substring(insertion)
+        }
+'''
+if old not in artifact_text:
+    raise SystemExit('ArtifactBuilder CSP compatibility point not found')
+artifact.write_text(artifact_text.replace(old, new, 1), encoding='utf-8')
+
+studio = Path('offlineai/src/main/java/com/alysson/offlineai/BuilderStudioActivity.kt')
+studio_text = studio.read_text(encoding='utf-8')
+old = '''        scroll.addView(sourceField, ScrollView.LayoutParams(ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT))
+'''
+new = '''        scroll.addView(sourceField, android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+        ))
+'''
+if old not in studio_text:
+    raise SystemExit('BuilderStudio ScrollView layout compatibility point not found')
+studio.write_text(studio_text.replace(old, new, 1), encoding='utf-8')
+
+print('Workspace v3 UI and Kotlin compatibility patches applied')
