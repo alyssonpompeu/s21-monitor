@@ -1,14 +1,24 @@
-run_id=31445047894
-head_sha=9ef92419792fd6bac50753afbe916bfa1a3a430d
+run_id=31447531239
+head_sha=2a31d7c713b1b45aac2a9367130a08fb0f67b2a6
 exit_code=0
 --- build log tail ---
+
+Welcome to Gradle 8.13!
+
+Here are the highlights of this release:
+ - Daemon JVM auto-provisioning
+ - Enhancements for Scala plugin and JUnit testing
+ - Improvements for build authors and plugin developers
+
+For more details see https://docs.gradle.org/8.13/release-notes.html
+
 Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :exynostuner:preBuild UP-TO-DATE
 > Task :exynostuner:preDebugBuild UP-TO-DATE
 > Task :exynostuner:mergeDebugNativeDebugMetadata NO-SOURCE
-> Task :exynostuner:generateDebugResValues
 > Task :exynostuner:javaPreCompileDebug
 > Task :exynostuner:checkDebugAarMetadata
+> Task :exynostuner:generateDebugResValues
 > Task :exynostuner:mapDebugSourceSetPaths
 > Task :exynostuner:generateDebugResources
 > Task :exynostuner:mergeDebugResources
@@ -19,20 +29,20 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :exynostuner:processDebugMainManifest
 > Task :exynostuner:processDebugManifest
 > Task :exynostuner:mergeDebugShaders
+> Task :exynostuner:processDebugManifestForPackage
 > Task :exynostuner:compileDebugShaders NO-SOURCE
 > Task :exynostuner:generateDebugAssets UP-TO-DATE
 > Task :exynostuner:mergeDebugAssets
 > Task :exynostuner:compressDebugAssets
 > Task :exynostuner:desugarDebugFileDependencies
 > Task :exynostuner:processDebugJavaRes NO-SOURCE
-> Task :exynostuner:processDebugManifestForPackage
 > Task :exynostuner:checkDebugDuplicateClasses
-> Task :exynostuner:mergeDebugJavaResource
 > Task :exynostuner:mergeDebugJniLibFolders
-> Task :exynostuner:mergeDebugNativeLibs NO-SOURCE
-> Task :exynostuner:stripDebugDebugSymbols NO-SOURCE
 > Task :exynostuner:mergeExtDexDebug
+> Task :exynostuner:mergeDebugNativeLibs NO-SOURCE
 > Task :exynostuner:mergeLibDexDebug
+> Task :exynostuner:stripDebugDebugSymbols NO-SOURCE
+> Task :exynostuner:mergeDebugJavaResource
 > Task :exynostuner:processDebugResources
 > Task :exynostuner:validateSigningDebug
 > Task :exynostuner:compileDebugJavaWithJavac
@@ -44,7 +54,7 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :exynostuner:packageDebug
 > Task :exynostuner:createDebugApkListingFileRedirect
 > Task :exynostuner:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786407006415.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786409615213.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
 
@@ -54,5 +64,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 17s
+BUILD SUCCESSFUL in 42s
 32 actionable tasks: 32 executed
