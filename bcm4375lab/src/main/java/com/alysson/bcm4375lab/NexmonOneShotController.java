@@ -53,14 +53,17 @@ final class NexmonOneShotController {
 
     static String moduleState() {
         String cmd =
-                "if [ -d '" + STAGED_DIR + "' ]; then " +
-                "  if [ -e '" + STAGED_DIR + "/remove' ]; then echo STAGED_REMOVE_PENDING; " +
-                "  elif [ -e '" + STAGED_DIR + "/disable' ]; then echo STAGED_DISABLED; else echo STAGED_ARMED; fi; " +
-                "elif [ -d '" + ACTIVE_DIR + "' ]; then " +
-                "  if [ -e '" + ACTIVE_DIR + "/remove' ]; then echo ACTIVE_REMOVE_PENDING; " +
-                "  elif [ -e '" + ACTIVE_DIR + "/disable' ]; then echo ACTIVE_DISABLED; else echo ACTIVE_ARMED; fi; " +
-                "else echo ABSENT; fi";
+                "D=''; [ -d '" + STAGED_DIR + "' ] && D='" + STAGED_DIR + "'; " +
+                "[ -z \"$D\" ] && [ -d '" + ACTIVE_DIR + "' ] && D='" + ACTIVE_DIR + "'; " +
+                "if [ -z \"$D\" ]; then echo ABSENT; " +
+                "elif [ -e \"$D/remove\" ]; then echo REMOVE_PENDING; " +
+                "elif [ -e \"$D/disable\" ]; then echo DISABLED; else echo ARMED; fi";
         return RootReader.run(cmd, 4).output.trim();
+    }
+
+    static String moduleLocation() {
+        return RootReader.run(
+                "if [ -d '" + STAGED_DIR + "' ]; then echo STAGED; elif [ -d '" + ACTIVE_DIR + "' ]; then echo ACTIVE; else echo NONE; fi", 4).output.trim();
     }
 
     static String moduleFirmwareSha() {
@@ -135,14 +138,10 @@ final class NexmonOneShotController {
                 "author=BCM4375 Lab\n" +
                 "description=One-shot Nexmon BCM4375B1 test with next-boot auto-disable.\n";
 
-        // Do NOT create disable here: Magisk recollects modules after post-fs-data scripts,
-        // so disabling here would prevent this boot's overlay from being applied.
         String postFs =
                 "#!/system/bin/sh\n" +
                 "{ echo post_fs_data_reached=YES; date; } > " + STATE_PATH + " 2>&1\n";
 
-        // service.sh runs after the module overlay has been applied. Creating disable here
-        // leaves this boot mounted while guaranteeing the following boot is stock.
         String service =
                 "#!/system/bin/sh\n" +
                 "MODDIR=${0%/*}\n" +
@@ -230,6 +229,7 @@ final class NexmonOneShotController {
         StringBuilder out = new StringBuilder();
         out.append("BCM4375 Lab v3.0.0 - Nexmon one-shot evidence\n\n");
         out.append("module_state=").append(moduleState()).append('\n');
+        out.append("module_location=").append(moduleLocation()).append('\n');
         out.append("module_fw_sha=").append(moduleFirmwareSha()).append('\n');
         out.append("current_vendor_fw_sha=").append(currentFirmwareSha()).append('\n');
         out.append("nexmon_active=").append(isNexmonActive()).append('\n');
