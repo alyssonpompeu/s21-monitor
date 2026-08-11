@@ -25,4 +25,4 @@ APK local: `rx42diag/build/outputs/apk/debug/rx42diag-debug.apk`.
 
 O workflow `build-rx42diag.yml` publica `RX42-S21-RF-Diagnostic.apk` como artifact e release `rx42diag-latest`.
 
-> Branch `verify-rx42diag-build`: alteração de documentação usada apenas para disparar a verificação de compilação em pull request.
+> Branch `verify-rx42diag-build`: alteração de documentação usada apenas para disparar a verificação de compilação em pull request. Retry após atualização do workflow para Gradle 8.13.
