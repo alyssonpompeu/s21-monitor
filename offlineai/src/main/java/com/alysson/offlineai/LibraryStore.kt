@@ -10,6 +10,7 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
     data class Section(val location: String, val text: String)
     data class Stats(val documents: Int, val chunks: Int, val characters: Long)
     data class Project(val id: Long, val name: String, val createdAt: Long)
+    data class SearchHistory(val query: String, val mode: String, val searchedAt: Long)
 
     override fun onCreate(db: SQLiteDatabase) {
         createSchema(db)
@@ -58,6 +59,23 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 )
             }
         }
+
+        if (oldVersion < 3) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS search_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    query TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    searched_at INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS search_history_project_idx ON search_history(project_id, searched_at DESC)"
+            )
+        }
     }
 
     private fun createSchema(db: SQLiteDatabase) {
@@ -89,6 +107,18 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         )
         db.execSQL("CREATE INDEX documents_project_idx ON documents(project_id)")
         db.execSQL("CREATE VIRTUAL TABLE project_chunks_fts USING fts4(project_id, doc_id, source, location, text)")
+        db.execSQL(
+            """
+            CREATE TABLE search_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                query TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                searched_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX search_history_project_idx ON search_history(project_id, searched_at DESC)")
     }
 
     fun ensureDefaultProject(): Long {
@@ -154,10 +184,106 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         )
     }
 
+    fun deleteProject(projectId: Long): Long {
+        require(projectExists(projectId)) { "Projeto local inválido." }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("project_chunks_fts", "project_id = ?", arrayOf(projectId.toString()))
+            db.delete("documents", "project_id = ?", arrayOf(projectId.toString()))
+            db.delete("search_history", "project_id = ?", arrayOf(projectId.toString()))
+            db.delete("projects", "id = ?", arrayOf(projectId.toString()))
+
+            var replacement = db.rawQuery(
+                "SELECT id FROM projects ORDER BY updated_at DESC, id DESC LIMIT 1",
+                null
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else -1L }
+
+            if (replacement <= 0L) {
+                val now = System.currentTimeMillis()
+                replacement = db.insertOrThrow(
+                    "projects",
+                    null,
+                    ContentValues().apply {
+                        put("name", "Geral")
+                        put("created_at", now)
+                        put("updated_at", now)
+                    }
+                )
+            }
+            db.setTransactionSuccessful()
+            return replacement
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     fun projectName(projectId: Long): String = readableDatabase.rawQuery(
         "SELECT name FROM projects WHERE id = ? LIMIT 1",
         arrayOf(projectId.toString())
     ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else "Geral" }
+
+    fun recordSearch(projectId: Long, query: String, mode: String) {
+        if (!projectExists(projectId)) return
+        val clean = query.replace(Regex("\\s+"), " ").trim().take(MAX_SEARCH_CHARS)
+        if (clean.isBlank()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete(
+                "search_history",
+                "project_id = ? AND mode = ? AND query = ?",
+                arrayOf(projectId.toString(), mode, clean)
+            )
+            db.insertOrThrow(
+                "search_history",
+                null,
+                ContentValues().apply {
+                    put("project_id", projectId)
+                    put("query", clean)
+                    put("mode", mode)
+                    put("searched_at", System.currentTimeMillis())
+                }
+            )
+            db.execSQL(
+                "DELETE FROM search_history WHERE project_id = ? AND id NOT IN " +
+                    "(SELECT id FROM search_history WHERE project_id = ? ORDER BY searched_at DESC LIMIT ?)",
+                arrayOf(projectId, projectId, MAX_SEARCH_HISTORY)
+            )
+            db.update(
+                "projects",
+                ContentValues().apply { put("updated_at", System.currentTimeMillis()) },
+                "id = ?",
+                arrayOf(projectId.toString())
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun recentSearches(projectId: Long, mode: String? = null, limit: Int = 12): List<SearchHistory> {
+        val result = mutableListOf<SearchHistory>()
+        val safeLimit = limit.coerceIn(1, 30)
+        val (where, args) = if (mode.isNullOrBlank()) {
+            "project_id = ?" to arrayOf(projectId.toString(), safeLimit.toString())
+        } else {
+            "project_id = ? AND mode = ?" to arrayOf(projectId.toString(), mode, safeLimit.toString())
+        }
+        readableDatabase.rawQuery(
+            "SELECT query, mode, searched_at FROM search_history WHERE $where ORDER BY searched_at DESC LIMIT ?",
+            args
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result += SearchHistory(cursor.getString(0), cursor.getString(1), cursor.getLong(2))
+            }
+        }
+        return result
+    }
+
+    fun clearSearchHistory(projectId: Long) {
+        writableDatabase.delete("search_history", "project_id = ?", arrayOf(projectId.toString()))
+    }
 
     fun addDocument(projectId: Long, name: String, mime: String, sections: List<Section>): Long {
         require(projectExists(projectId)) { "Projeto local inválido." }
@@ -294,8 +420,10 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
 
     companion object {
         private const val DB_NAME = "user_library_v1.db"
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
         private const val CHUNK_CHARS = 1400
         private const val CHUNK_OVERLAP = 180
+        private const val MAX_SEARCH_HISTORY = 60
+        private const val MAX_SEARCH_CHARS = 600
     }
 }
