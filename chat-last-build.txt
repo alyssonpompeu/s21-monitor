@@ -1,4 +1,4 @@
-run_id=31451313681
+run_id=31547839781
 exit_code=1
 --- build log tail ---
 	at org.gradle.launcher.daemon.server.exec.ResetDeprecationLogger.execute(ResetDeprecationLogger.java:29)
@@ -80,4 +80,4 @@ Try updating the 'distributionUrl' property in /home/runner/work/s21-monitor/s21
 	... 187 more
 
 
-BUILD FAILED in 8s
+BUILD FAILED in 7s
