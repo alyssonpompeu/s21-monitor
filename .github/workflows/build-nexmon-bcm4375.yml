@@ -65,7 +65,7 @@ jobs:
           stat -c '%n %s bytes' bcmdhd_sta.bin_b1
           strings -a bcmdhd_sta.bin_b1 | grep -E 'NEXMON|18\.41\.117|FW-TAG|^[A-Z][a-z]{2} [ 0-9][0-9] 20[0-9][0-9]$' | tail -n 30 || true
 
-      - name: Package build evidence
+      - name: Package and verify deterministic build
         run: |
           mkdir -p out
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/bcmdhd_sta.bin_b1 out/bcmdhd_sta_nexmon_18_41_117.bin
@@ -75,19 +75,20 @@ jobs:
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/patches.log out/ 2>/dev/null || true
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/flashpatches.log out/ 2>/dev/null || true
           sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin
+          test "$(sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin | cut -d' ' -f1)" = "4ecea63a782f8378d750a7257a9edbdd5d9b164bf1e97ac30a8ab0be5fd98e41"
 
       - uses: actions/upload-artifact@v4
         with:
           name: Nexmon-BCM4375B1-18.41.117-patched-firmware
           path: out/
 
-      - name: Publish reproducible Nexmon firmware release asset
+      - name: Publish verified reproducible Nexmon firmware release asset
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nexmon-bcm4375-18.41.117
           name: Nexmon BCM4375B1 18.41.117 - reproducible build
-          body: Reproducible build from seemoo-lab/nexmon PR 663 commit fd117f434e1c479f6819a0ba31f9ca82d75f8a3a for BCM4375B1 firmware 18.41.117. SOURCE_DATE_EPOCH is pinned to the PR commit timestamp. Stock base SHA-256 is 1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad. See patched-sha256.txt in the workflow artifact for the generated firmware digest.
+          body: Reproducible build from seemoo-lab/nexmon PR 663 commit fd117f434e1c479f6819a0ba31f9ca82d75f8a3a for BCM4375B1 firmware 18.41.117. SOURCE_DATE_EPOCH is pinned to the PR commit timestamp. Stock base SHA-256 1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad. Patched SHA-256 4ecea63a782f8378d750a7257a9edbdd5d9b164bf1e97ac30a8ab0be5fd98e41.
           files: out/bcmdhd_sta_nexmon_18_41_117.bin
           make_latest: false
           overwrite_files: true
