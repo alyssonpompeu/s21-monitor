@@ -8,12 +8,12 @@ android {
     compileSdk 36
 
     defaultConfig {
-        // Separate package so the 2B variant can be installed alongside the 0.8B build.
-        applicationId 'com.alysson.offlineai.qwen2b'
+        // Workspace edition stays installable beside both the 0.8B and Qwen 2B test builds.
+        applicationId 'com.alysson.offlineai.workspace'
         minSdk 31
         targetSdk 35
-        versionCode 3
-        versionName '2.0.0-qwen2b'
+        versionCode 4
+        versionName '3.0.0-workspace'
 
         ndk {
             abiFilters 'arm64-v8a'
