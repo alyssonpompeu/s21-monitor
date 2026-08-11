@@ -1,0 +1,51 @@
+name: Export Offline AI APK Chunks
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  export-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download compiled APK from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download offline-ai-v1 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'IA-Offline-PTBR-S21.apk' \
+            --clobber
+          test -s IA-Offline-PTBR-S21.apk
+          sha256sum IA-Offline-PTBR-S21.apk | tee IA-Offline-PTBR-S21.apk.sha256
+
+      - name: Split APK without modifying bytes
+        run: |
+          split -b 350M -d -a 1 IA-Offline-PTBR-S21.apk IA-Offline-PTBR-S21.apk.part-
+          test -f IA-Offline-PTBR-S21.apk.part-0
+          test -f IA-Offline-PTBR-S21.apk.part-1
+          ls -lh IA-Offline-PTBR-S21.apk.part-*
+
+      - name: Upload APK chunk 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-part-0
+          path: IA-Offline-PTBR-S21.apk.part-0
+          compression-level: 0
+
+      - name: Upload APK chunk 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-part-1
+          path: IA-Offline-PTBR-S21.apk.part-1
+          compression-level: 0
+
+      - name: Upload APK checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-checksum
+          path: IA-Offline-PTBR-S21.apk.sha256
