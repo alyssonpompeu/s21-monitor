@@ -1,0 +1,162 @@
+name: Build Offline PT-BR AI APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "feature/offline-ptbr-ai" ]
+    paths-ignore:
+      - 'offlineai-last-successful-build.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  build-offline-ai:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      LEXICON_SHA256: 2eb81afe3ea215dfea59890021e8cebb9f3b71a80fe6a56dfb29f84e2870b0db
+      DICTIONARY_PDF_SHA256: acf31020fd2b217d0fde0f47fc1f6d75d747ed224d173ade4539e35ff047caf7
+      MODEL_SHA256: bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Install native Android build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glslc libvulkan-dev poppler-utils
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Pin llama.cpp source
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+
+      - name: Enable conservative CPU plus Mali Vulkan offload
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          text = path.read_text(encoding='utf-8')
+          needle = 'llama_model_params model_params = llama_model_default_params();'
+          replacement = needle + '\n    // Hybrid mobile policy: keep most layers on CPU and offload a small tail to Vulkan.\n    // This avoids assuming that Mali Vulkan is always faster while still exercising CPU+GPU.\n    model_params.n_gpu_layers = 4;'
+          if needle not in text:
+              raise SystemExit('Pinned ai_chat.cpp no longer matches expected load-model code')
+          path.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
+          PY
+
+      - name: Download and verify attached linguistic sources
+        shell: bash
+        run: |
+          mkdir -p build/offline-sources offlineai/src/main/assets
+
+          curl -L --fail --retry 5 \
+            https://www.ime.usp.br/~pf/dicios/br-sem-acentos.txt \
+            -o build/offline-sources/br-sem-acentos.txt
+          echo "$LEXICON_SHA256  build/offline-sources/br-sem-acentos.txt" | sha256sum -c -
+
+          curl -L --fail --retry 5 \
+            https://www.gutenberg.org/files/31552/31552-pdf.pdf \
+            -o build/offline-sources/31552-pdf.pdf
+          echo "$DICTIONARY_PDF_SHA256  build/offline-sources/31552-pdf.pdf" | sha256sum -c -
+
+          pdftotext -layout -enc UTF-8 \
+            build/offline-sources/31552-pdf.pdf \
+            build/offline-sources/dicionario.txt
+
+          python3 scripts/build_ptbr_memory.py \
+            --lexicon build/offline-sources/br-sem-acentos.txt \
+            --dictionary build/offline-sources/dicionario.txt \
+            --output offlineai/src/main/assets/ptbr_memory.db
+
+      - name: Download and verify local neural model
+        shell: bash
+        run: |
+          curl -L --fail --retry 5 \
+            'https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf?download=true' \
+            -o offlineai/src/main/assets/model.gguf
+          echo "$MODEL_SHA256  offlineai/src/main/assets/model.gguf" | sha256sum -c -
+
+      - name: Record reproducible source manifest
+        shell: bash
+        run: |
+          cat > offlineai/src/main/assets/source_manifest.json <<EOF
+          {
+            "language": "pt-BR",
+            "runtime": "llama.cpp",
+            "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
+            "model": "Qwen3.5-0.8B-Q4_K_M.gguf",
+            "model_sha256": "$MODEL_SHA256",
+            "lexicon_url": "https://www.ime.usp.br/~pf/dicios/br-sem-acentos.txt",
+            "lexicon_sha256": "$LEXICON_SHA256",
+            "dictionary_title": "Novo Dicionário da Língua Portuguesa - Cândido de Figueiredo, 1913",
+            "dictionary_pdf_url": "https://www.gutenberg.org/files/31552/31552-pdf.pdf",
+            "dictionary_pdf_sha256": "$DICTIONARY_PDF_SHA256"
+          }
+          EOF
+          du -h offlineai/src/main/assets/*
+
+      - name: Build installable ARM64 debug APK
+        shell: bash
+        run: |
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk IA-Offline-PTBR-S21.apk
+          sha256sum IA-Offline-PTBR-S21.apk | tee IA-Offline-PTBR-S21.apk.sha256
+          ls -lh IA-Offline-PTBR-S21.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-APK
+          path: |
+            IA-Offline-PTBR-S21.apk
+            IA-Offline-PTBR-S21.apk.sha256
+          compression-level: 0
+
+      - name: Publish APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-v1
+          name: IA Offline PT-BR para Galaxy S21
+          body: |
+            APK ARM64 totalmente offline para o Galaxy S21/Exynos 2100.
+            Runtime llama.cpp fixado por commit, modelo Qwen3.5 0.8B Q4_K_M e memória lexical local construída a partir das fontes verificadas por SHA-256.
+          files: |
+            IA-Offline-PTBR-S21.apk
+            IA-Offline-PTBR-S21.apk.sha256
+          make_latest: false
+          overwrite_files: true
+
+      - name: Record successful workflow run
+        shell: bash
+        run: |
+          printf '%s\n' "${GITHUB_RUN_ID}" > offlineai-last-successful-build.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add offlineai-last-successful-build.txt
+          git commit -m "Record offline AI APK build [skip ci]" || exit 0
+          git push origin HEAD:${GITHUB_REF_NAME}
