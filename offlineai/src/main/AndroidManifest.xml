@@ -2,17 +2,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Remove any transitive Internet permission: projects, OCR and inference stay local. -->
+    <!-- Runtime stays offline. Generated APK shells also ship without INTERNET permission. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
 
     <application
         android:allowBackup="false"
         android:extractNativeLibs="true"
         android:hardwareAccelerated="true"
-        android:label="IA Offline Workspace v2"
+        android:label="IA Offline Plugin v3"
         android:largeHeap="true"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity
+            android:name=".BuilderStudioActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".PluginManagerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
