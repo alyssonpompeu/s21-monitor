@@ -40,6 +40,9 @@ public class Rx42PhyProbeV1Activity extends Activity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         setContentView(buildUi());
+        if (getIntent() != null && getIntent().getBooleanExtra("auto_run", false)) {
+            ui.postDelayed(this::execute, 300);
+        }
     }
 
     private View buildUi() {
@@ -81,6 +84,7 @@ public class Rx42PhyProbeV1Activity extends Activity {
     }
 
     private void execute() {
+        if (busy) return;
         busy = true; run.setEnabled(false); status.setText("Executando MARX V1.0…");
         worker.execute(() -> {
             StringBuilder tr = new StringBuilder();
@@ -186,7 +190,7 @@ public class Rx42PhyProbeV1Activity extends Activity {
             boolean ok = success;
             String shown = tr.toString();
             ui.post(() -> {
-                busy = false; run.setEnabled(false);
+                busy = false; run.setEnabled(true);
                 status.setTextColor(ok ? 0xFF81C784 : 0xFFEF9A9A);
                 status.setText(ok ? "MARX V1.0 • TEMPLATE RAM PASS • SEM TX" : "MARX V1.0 • PROVA NÃO CONFIRMADA • estado seguro restaurado");
                 log.setText(shown);
