@@ -3,12 +3,12 @@
 
     <application
         android:allowBackup="false"
-        android:label="BCM4375 Remote Lab 3"
+        android:label="RX42 Control Experimental"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false"
         android:extractNativeLibs="true">
         <activity
-            android:name=".RemoteLab3Activity"
+            android:name=".Rx42ControlActivity"
             android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
@@ -16,6 +16,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".RemoteLab3Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".RemoteLabActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".SelinuxStockProofV42Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".NexmonVendorWifiV41Activity" android:screenOrientation="portrait" android:exported="false" />
