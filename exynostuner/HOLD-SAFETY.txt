@@ -1,0 +1,1 @@
+Thermal throttling is intentionally never disabled. Performance Hold pauses on thermal pressure.
