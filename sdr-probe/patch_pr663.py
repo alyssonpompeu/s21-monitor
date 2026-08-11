@@ -11,7 +11,7 @@ marker = "        case 0x621:\n"
 if marker not in s:
     raise SystemExit("PR663 ioctl insertion point changed")
 
-block = r'''        case 0x630: // RX42/BCM4375 read-only SDR register probe
+block = r'''        case 0x630: // MARX/BCM4375 read-only SDR register probe
         {
             volatile struct d11regs *regs = wlc->regs;
             argprintf("RX42_SDR_PROBE=1\n");
@@ -34,10 +34,10 @@ block = r'''        case 0x630: // RX42/BCM4375 read-only SDR register probe
         }
         break;
 
-        case 0x631: // RX42 bounded template-RAM write/read/restore proof; never starts playback
+        case 0x631: // MARX V1.0 template-RAM write/read/restore; explicit pointer per word; no playback
         {
             volatile struct d11regs *regs = wlc->regs;
-            const uint32 scratch = 0x0003ffc0; // final 64-byte region inside 256 KiB template address space
+            const uint32 scratch = 0x0003ffc0;
             const uint32 pattern[4] = { 0x52483432, 0xa55a3cc3, 0x13579bdf, 0x2468ace0 };
             uint32 original[4] = {0,0,0,0};
             uint32 written[4] = {0,0,0,0};
@@ -46,9 +46,11 @@ block = r'''        case 0x630: // RX42/BCM4375 read-only SDR register probe
             int write_ok = 1;
             int restore_ok = 1;
 
+            argprintf("MARX_TPLRAM_PROBE=1\n");
             argprintf("RX42_TPLRAM_PROBE=1\n");
             argprintf("SCRATCH_OFFSET=0x%08x\n", scratch);
             argprintf("WORDS=4\n");
+            argprintf("ADDRESSING=EXPLICIT_PTR_PER_WORD\n");
             argprintf("TX_TRIGGERED=0\n");
 
             if (!regs) {
@@ -57,13 +59,6 @@ block = r'''        case 0x630: // RX42/BCM4375 read-only SDR register probe
                 break;
             }
 
-            /* 0x0026 was observed on the user's BCM4375B1 while the proven
-             * 0x630 path still had TX_ENABLED_BY_THIS_PROBE=0. Therefore a
-             * non-zero SampleCollectPlayCtrl is not treated as evidence of
-             * active playback. The safety invariant here is stronger and
-             * directly testable: this handler never writes that register and
-             * requires its value to be identical before and after the RAM
-             * round-trip. */
             volatile uint16 *r16 = (volatile uint16 *) regs;
             uint16 play_before = r16[0xb2e >> 1];
             argprintf("SAMPLE_PLAY_CTRL_BEFORE=0x%04x\n", play_before);
@@ -73,26 +68,36 @@ block = r'''        case 0x630: // RX42/BCM4375 read-only SDR register probe
             uint32 ptr_before = *wrptr;
             argprintf("TPLATEWRPTR_BEFORE=0x%08x\n", ptr_before);
 
-            *wrptr = scratch;
-            for (i = 0; i < 4; i++) original[i] = *wrdata;
+            /* BCM4375B1 did not auto-advance tplatewrptr in the user's first
+             * round-trip test. Address each 32-bit word explicitly. */
+            for (i = 0; i < 4; i++) {
+                *wrptr = scratch + (uint32)(i * 4);
+                original[i] = *wrdata;
+            }
 
-            *wrptr = scratch;
-            for (i = 0; i < 4; i++) *wrdata = pattern[i];
+            for (i = 0; i < 4; i++) {
+                *wrptr = scratch + (uint32)(i * 4);
+                *wrdata = pattern[i];
+            }
 
-            *wrptr = scratch;
-            for (i = 0; i < 4; i++) written[i] = *wrdata;
-            for (i = 0; i < 4; i++) if (written[i] != pattern[i]) write_ok = 0;
+            for (i = 0; i < 4; i++) {
+                *wrptr = scratch + (uint32)(i * 4);
+                written[i] = *wrdata;
+                if (written[i] != pattern[i]) write_ok = 0;
+            }
 
-            /* Restore regardless of write/readback result. */
-            *wrptr = scratch;
-            for (i = 0; i < 4; i++) *wrdata = original[i];
+            /* Restore every touched word regardless of the readback result. */
+            for (i = 0; i < 4; i++) {
+                *wrptr = scratch + (uint32)(i * 4);
+                *wrdata = original[i];
+            }
 
-            *wrptr = scratch;
-            for (i = 0; i < 4; i++) restored[i] = *wrdata;
-            for (i = 0; i < 4; i++) if (restored[i] != original[i]) restore_ok = 0;
+            for (i = 0; i < 4; i++) {
+                *wrptr = scratch + (uint32)(i * 4);
+                restored[i] = *wrdata;
+                if (restored[i] != original[i]) restore_ok = 0;
+            }
 
-            /* Restore pointer state as well. No sample-playback register is
-             * written anywhere in this command. */
             *wrptr = ptr_before;
             uint16 play_after = r16[0xb2e >> 1];
             int ctrl_unchanged = (play_after == play_before);
@@ -105,8 +110,6 @@ block = r'''        case 0x630: // RX42/BCM4375 read-only SDR register probe
             argprintf("RESTORE_OK=%d\n", restore_ok);
             argprintf("SAMPLE_PLAY_CTRL_AFTER=0x%04x\n", play_after);
             argprintf("PLAYBACK_CTRL_UNCHANGED=%d\n", ctrl_unchanged);
-            /* Legacy status key kept for the Android probe: means this
-             * command did not change/arm playback state. */
             argprintf("PLAYBACK_STAYED_OFF=%d\n", ctrl_unchanged);
             argprintf("TX_TRIGGERED=0\n");
             if (write_ok && restore_ok && ctrl_unchanged)
