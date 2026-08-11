@@ -1,5 +1,5 @@
-run_id=31451313630
-head_sha=4d0c238ae2bcdafb0060b8e0003f0db4c81907b5
+run_id=31547839808
+head_sha=4acefe0b44cd547555fd97e418ce2109813001b1
 lint_exit_code=0
 bundle_exit_code=0
 --- lint log tail ---
@@ -37,7 +37,7 @@ Note: Recompile with -Xlint:deprecation for details.
 Wrote HTML report to file:///home/runner/work/s21-monitor/s21-monitor/wifispectrum/build/reports/lint-results-release.html
 
 > Task :wifispectrum:lintRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/lint-1786413966934.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/lint-1786492105679.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
 
@@ -47,7 +47,7 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 13s
+BUILD SUCCESSFUL in 24s
 23 actionable tasks: 23 executed
 
 --- bundle log tail ---
@@ -105,7 +105,7 @@ BUILD SUCCESSFUL in 13s
 > Task :wifispectrum:produceReleaseBundleIdeListingFile
 > Task :wifispectrum:createReleaseBundleListingFileRedirect
 > Task :wifispectrum:bundleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/bundle-1786413979582.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/bundle-1786492126636.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
 
@@ -115,5 +115,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 2s
+BUILD SUCCESSFUL in 4s
 45 actionable tasks: 29 executed, 16 up-to-date
