@@ -28,7 +28,8 @@ android {
                         '-DGGML_BACKEND_DL=ON',
                         '-DGGML_CPU_ALL_VARIANTS=ON',
                         '-DGGML_LLAMAFILE=OFF',
-                        '-DGGML_VULKAN=ON'
+                        '-DGGML_VULKAN=ON',
+                        '-DSPIRV-Headers_DIR=/usr/share/cmake/SPIRV-Headers'
             }
         }
     }
