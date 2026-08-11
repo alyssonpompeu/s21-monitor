@@ -8,6 +8,12 @@ on:
       - 'rx42diag/**'
       - 'settings.gradle'
       - '.github/workflows/build-rx42diag.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'rx42diag/**'
+      - 'settings.gradle'
+      - '.github/workflows/build-rx42diag.yml'
 
 permissions:
   contents: write
@@ -39,6 +45,7 @@ jobs:
           path: RX42-S21-RF-Diagnostic.apk
 
       - name: Publish latest diagnostic APK release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: rx42diag-latest
@@ -49,6 +56,7 @@ jobs:
           overwrite_files: true
 
       - name: Record successful diagnostic build
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
           printf '%s\n' "${GITHUB_RUN_ID}" > rx42diag-last-successful-build.txt
           git config user.name "github-actions[bot]"
