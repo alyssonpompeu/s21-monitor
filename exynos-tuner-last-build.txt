@@ -1,14 +1,14 @@
-run_id=31447993842
-head_sha=6edfda33cc749613229a95dbe5df390f4834340e
+run_id=31451313617
+head_sha=4d0c238ae2bcdafb0060b8e0003f0db4c81907b5
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :exynostuner:preBuild UP-TO-DATE
 > Task :exynostuner:preDebugBuild UP-TO-DATE
 > Task :exynostuner:mergeDebugNativeDebugMetadata NO-SOURCE
-> Task :exynostuner:javaPreCompileDebug
-> Task :exynostuner:checkDebugAarMetadata
 > Task :exynostuner:generateDebugResValues
+> Task :exynostuner:checkDebugAarMetadata
+> Task :exynostuner:javaPreCompileDebug
 > Task :exynostuner:mapDebugSourceSetPaths
 > Task :exynostuner:generateDebugResources
 > Task :exynostuner:mergeDebugResources
@@ -25,14 +25,14 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :exynostuner:compressDebugAssets
 > Task :exynostuner:desugarDebugFileDependencies
 > Task :exynostuner:processDebugJavaRes NO-SOURCE
-> Task :exynostuner:processDebugManifestForPackage
 > Task :exynostuner:checkDebugDuplicateClasses
 > Task :exynostuner:mergeDebugJniLibFolders
+> Task :exynostuner:processDebugManifestForPackage
+> Task :exynostuner:mergeExtDexDebug
+> Task :exynostuner:mergeLibDexDebug
 > Task :exynostuner:mergeDebugJavaResource
 > Task :exynostuner:mergeDebugNativeLibs NO-SOURCE
 > Task :exynostuner:stripDebugDebugSymbols NO-SOURCE
-> Task :exynostuner:mergeExtDexDebug
-> Task :exynostuner:mergeLibDexDebug
 > Task :exynostuner:processDebugResources
 > Task :exynostuner:validateSigningDebug
 > Task :exynostuner:compileDebugJavaWithJavac
@@ -44,7 +44,7 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :exynostuner:packageDebug
 > Task :exynostuner:createDebugApkListingFileRedirect
 > Task :exynostuner:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786410130062.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786413965811.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
 
@@ -54,5 +54,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 20s
+BUILD SUCCESSFUL in 17s
 32 actionable tasks: 32 executed
