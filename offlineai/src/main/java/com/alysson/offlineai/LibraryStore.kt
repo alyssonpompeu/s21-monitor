@@ -248,7 +248,7 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
             db.execSQL(
                 "DELETE FROM search_history WHERE project_id = ? AND id NOT IN " +
                     "(SELECT id FROM search_history WHERE project_id = ? ORDER BY searched_at DESC LIMIT ?)",
-                arrayOf(projectId, projectId, MAX_SEARCH_HISTORY)
+                arrayOf<Any>(projectId, projectId, MAX_SEARCH_HISTORY)
             )
             db.update(
                 "projects",
