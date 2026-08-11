@@ -7,6 +7,11 @@ on:
     paths:
       - 'hdrboost/**'
       - '.github/workflows/build-hdrboost-root.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'hdrboost/**'
+      - '.github/workflows/build-hdrboost-root.yml'
 
 permissions:
   contents: write
@@ -24,7 +29,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.13'
 
       - name: Build HDR Boost Root APK
         run: gradle :hdrboost:assembleDebug --stacktrace
@@ -38,6 +43,7 @@ jobs:
           path: HDR-Boost-S21-ROOT.apk
 
       - name: Publish latest root APK release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: hdrboost-root-latest
@@ -48,6 +54,7 @@ jobs:
           overwrite_files: true
 
       - name: Record successful HDR Boost build
+        if: github.event_name != 'pull_request'
         run: |
           printf '%s\n' "${GITHUB_RUN_ID}" > last-hdrboost-build.txt
           git config user.name "github-actions[bot]"
