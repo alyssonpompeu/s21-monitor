@@ -16,6 +16,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".MarxScenarioLabActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".Rx42PhyProbeV1Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".RemoteLab3Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".RemoteLabActivity" android:screenOrientation="portrait" android:exported="false" />
