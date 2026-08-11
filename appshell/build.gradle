@@ -1,0 +1,36 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.alysson.generatedshell'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 31
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+
+    flavorDimensions 'slot'
+    productFlavors {
+        slot1 { dimension 'slot'; applicationId 'com.alysson.generated.slot1'; resValue 'string', 'app_name', 'IA App Slot 1' }
+        slot2 { dimension 'slot'; applicationId 'com.alysson.generated.slot2'; resValue 'string', 'app_name', 'IA App Slot 2' }
+        slot3 { dimension 'slot'; applicationId 'com.alysson.generated.slot3'; resValue 'string', 'app_name', 'IA App Slot 3' }
+        slot4 { dimension 'slot'; applicationId 'com.alysson.generated.slot4'; resValue 'string', 'app_name', 'IA App Slot 4' }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

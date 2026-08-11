@@ -8,12 +8,12 @@ android {
     compileSdk 36
 
     defaultConfig {
-        // V2 stays installable beside the previous Workspace so rollback is immediate.
-        applicationId 'com.alysson.offlineai.workspacev2'
+        // V3 is a separate package so Workspace v2 remains an immediate rollback target.
+        applicationId 'com.alysson.offlineai.pluginv3'
         minSdk 31
         targetSdk 35
-        versionCode 5
-        versionName '3.1.0-workspace-v2'
+        versionCode 6
+        versionName '4.0.0-plugin-v3'
 
         ndk {
             abiFilters 'arm64-v8a'
@@ -41,7 +41,7 @@ android {
     }
 
     androidResources {
-        noCompress += ['gguf']
+        noCompress += ['gguf', 'iapack']
     }
 
     packaging {
@@ -54,6 +54,7 @@ android {
 dependencies {
     implementation project(':llamalib')
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
-    // Bundled Latin OCR model: works locally without downloading a model at runtime.
     implementation 'com.google.mlkit:text-recognition:16.0.1'
+    // Pure Java Android APK signing/verifying engine used by the local Builder Core.
+    implementation 'com.android.tools.build:apksig:8.13.2'
 }
