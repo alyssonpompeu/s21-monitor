@@ -22,7 +22,7 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** MARX V1.0 controller using AFHDS2A plus constants recovered from FS-i6 firmware 2.0.17. */
+/** AFHDS2A packet laboratory. This screen never enables GFSK/sample-playback TX. */
 public class Rx42ControlActivity extends Activity {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final Handler ui=new Handler(Looper.getMainLooper());
@@ -41,6 +41,7 @@ public class Rx42ControlActivity extends Activity {
         engine=new Afhds2aEngine(stableId);
         setContentView(buildUi());
         updatePacket();
+        MarxLabLogStore.append(this,"CENARIO_5_AFHDS2A_SESSION","AFHDS2A_LAB_STARTED=1\n"+engine.describeIds()+"\nHOPS="+engine.describeHops()+"\nTX_ENABLED=0\n");
     }
 
     @Override protected void onDestroy(){worker.shutdownNow();super.onDestroy();}
@@ -49,8 +50,8 @@ public class Rx42ControlActivity extends Activity {
         ScrollView scroll=new ScrollView(this);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(18),dp(16),dp(18),dp(36));root.setBackgroundColor(0xFF080B0E);scroll.addView(root);
 
-        root.addView(txt("MARX V1.0",30,Color.WHITE,true));
-        root.addView(txt("MA-RX42-A/W • AFHDS2A • FS-i6 2.0.17 • BCM4375B1",13,0xFF80CBC4,false));
+        root.addView(txt("MARX V1.0 — AFHDS2A LAB",30,Color.WHITE,true));
+        root.addView(txt("MA-RX42-A/W • AFHDS2A • FS-i6 2.0.17 • BCM4375B1 • log automático",13,0xFF80CBC4,false));
         root.addView(txt("Samsung "+Build.MODEL+" • "+Build.HARDWARE+" • Android "+Build.VERSION.RELEASE,12,0xFFB0BEC5,false));
 
         status=txt("Perfil FS-i6 carregado. Verifique primeiro o Nexmon.",15,0xFFFFD180,true);status.setPadding(0,dp(16),0,dp(8));root.addView(status);
@@ -58,7 +59,8 @@ public class Rx42ControlActivity extends Activity {
 
         diagnose=button("1. VERIFICAR NEXMON / BACKEND RF");diagnose.setOnClickListener(v->diagnoseRf());root.addView(diagnose);
         phyProbe=button("2. TESTAR TEMPLATE RAM 0x631 (SEM TX)");phyProbe.setOnClickListener(v->startActivity(new Intent(this,Rx42PhyProbeV1Activity.class)));root.addView(phyProbe);
-        bind=button("3. PREPARAR / BIND RX42");bind.setOnClickListener(v->attemptBind());root.addView(bind);
+        bind=button("3. PREPARAR / BIND RX42 (SÓ PREVIEW)");bind.setOnClickListener(v->attemptBind());root.addView(bind);
+        Button saveSnapshot=button("SALVAR SNAPSHOT AFHDS2A NO LOG");saveSnapshot.setOnClickListener(v->saveScenario5Snapshot("MANUAL_SNAPSHOT"));root.addView(saveSnapshot);
 
         root.addView(section("PERFIL ORIGINAL FS-i6 2.0.17"));
         profileView=mono(FsI6ReverseProfile.summary()+"\n\nREGISTROS A7105 EXTRAÍDOS:\n"+FsI6ReverseProfile.compactRegisterDump(),10,0xFFB2DFDB);profileView.setTextIsSelectable(true);root.addView(profileView);
@@ -76,7 +78,7 @@ public class Rx42ControlActivity extends Activity {
         root.addView(section("PACOTE 0x58 — 38 BYTES"));
         packetView=mono("",11,0xFFE0E0E0);packetView.setTextIsSelectable(true);root.addView(packetView);
 
-        TextView note=txt("Segurança: motor inicia em 1000 µs. Remova hélice/motor durante testes. O teste 0x631 valida apenas escrita/leitura/restauração da Template RAM, com endereçamento explícito por word. Ele NÃO transmite RF. O bind permanece bloqueado até o backend GFSK ser validado.",12,0xFFFFAB91,false);note.setPadding(0,dp(18),0,0);root.addView(note);
+        TextView note=txt("Segurança: esta tela salva IDs, hopping, frames e diagnóstico no histórico do MARX LAB. Ela NÃO chama sample playback e NÃO transmite GFSK. O botão BIND apenas gera a sequência reconstruída para análise.",12,0xFFFFAB91,false);note.setPadding(0,dp(18),0,0);root.addView(note);
         return scroll;
     }
 
@@ -88,13 +90,15 @@ public class Rx42ControlActivity extends Activity {
             boolean nex=out.contains("NEXPROBE_PR663_600=true")||out.contains("TRIAGE_RESULT=NEXMON_PRESENT");
             nexmonPresent=nex;
             String se=RootReader.run("getenforce 2>&1",3).output.trim();
+            String record="=== AFHDS2A LAB / BACKEND ===\nroot="+root+"\nnexmon="+nex+"\nSELinux="+se+"\n"+MonitorController.snapshot("AFHDS2A_BACKEND")+"\nprobe=\n"+out+"\n"+engine.describeIds()+"\nHOPS="+engine.describeHops()+"\nTX_ENABLED=0\n";
+            MarxLabLogStore.append(this,"CENARIO_5_AFHDS2A_BACKEND",record);
             ui.post(()->{
                 diagnose.setEnabled(true);bind.setEnabled(true);
                 if(root&&nex){
-                    status.setTextColor(0xFF81C784);status.setText("Nexmon confirmado. AFHDS2A + perfil FS-i6 prontos.");
+                    status.setTextColor(0xFF81C784);status.setText("Nexmon confirmado. Resultado salvo no log.");
                     rfState.setText("NEXMON: PRESENTE (PR663 0x600)\nSELinux: "+se+"\nFS-i6 RF profile: CARREGADO NO APP\nPHY GFSK TX: AINDA NÃO VALIDADO\nLINK: NÃO CONECTADO\n"+engine.describeIds());
                 }else{
-                    status.setTextColor(0xFFEF9A9A);status.setText("Backend Nexmon não confirmado.");
+                    status.setTextColor(0xFFEF9A9A);status.setText("Backend Nexmon não confirmado. Resultado salvo no log.");
                     rfState.setText("root="+root+" nexmon="+nex+" SELinux="+se+"\n\n"+out);
                 }
             });
@@ -102,14 +106,29 @@ public class Rx42ControlActivity extends Activity {
     }
 
     private void attemptBind(){
-        if(!nexmonPresent){new AlertDialog.Builder(this).setTitle("Verifique o RF primeiro").setMessage("Toque em 'VERIFICAR NEXMON / BACKEND RF' antes.").setPositiveButton("OK",null).show();return;}
+        if(!nexmonPresent){
+            String msg="BIND_PREVIEW_BLOCKED=1\nreason=NEXMON_NOT_CONFIRMED\nTX_ENABLED=0\n";
+            MarxLabLogStore.append(this,"CENARIO_5_BIND_PREVIEW",msg);
+            new AlertDialog.Builder(this).setTitle("Verifique o RF primeiro").setMessage("Toque em 'VERIFICAR NEXMON / BACKEND RF' antes. O bloqueio foi salvo no log.").setPositiveButton("OK",null).show();return;
+        }
         byte[] b1=engine.buildBindPacket(1),b2=engine.buildBindPacket(2),b3=engine.buildBindPacket(3),b4=engine.buildBindPacket(4);
         String preview="FS-i6 A7105 ID: 0x"+Long.toHexString(FsI6ReverseProfile.A7105_ID).toUpperCase(Locale.US)+
                 "\nBind RF alterna canais: 0x8C / 0x0D\nPeríodo de referência: "+Afhds2aEngine.PERIOD_US+" µs\n\nBIND1:\n"+Afhds2aEngine.hex(b1)+
                 "\n\nBIND2:\n"+Afhds2aEngine.hex(b2)+"\n\nBIND3:\n"+Afhds2aEngine.hex(b3)+"\n\nBIND4 (RX ID ainda não aprendido):\n"+Afhds2aEngine.hex(b4)+
                 "\n\nDATA 0x58:\n"+Afhds2aEngine.hex(engine.buildSticksPacket(currentChannels()));
-        new AlertDialog.Builder(this).setTitle("Bind AFHDS2A reconstruído").setMessage("A engenharia reversa do FS-i6 está incorporada, mas o MARX V1.0 ainda NÃO aciona sample playback nem transmite GFSK. Primeiro precisamos confirmar o round-trip 0x631 da Template RAM.\n\n"+preview).setPositiveButton("OK",null).show();
-        status.setTextColor(0xFFFFD180);status.setText("Bind pronto; aguardando validação da Template RAM / PHY GFSK.");
+        MarxLabLogStore.append(this,"CENARIO_5_BIND_PREVIEW","=== BIND AFHDS2A PREVIEW ===\n"+preview+"\nTX_ENABLED=0\nLINK_CONNECTED=0\n");
+        new AlertDialog.Builder(this).setTitle("Bind AFHDS2A reconstruído").setMessage("Preview salvo no log acumulado. Esta versão ainda NÃO aciona sample playback nem transmite GFSK.\n\n"+preview).setPositiveButton("OK",null).show();
+        status.setTextColor(0xFFFFD180);status.setText("Bind preview salvo; transmissão continua bloqueada.");
+    }
+
+    private void saveScenario5Snapshot(String reason){
+        int[] c=currentChannels();
+        String record="=== AFHDS2A SNAPSHOT ===\nreason="+reason+"\n"+engine.describeIds()+"\nHOPS="+engine.describeHops()+
+                "\nCH1="+c[0]+"\nCH2="+c[1]+"\nCH3="+c[2]+"\nCH4="+c[3]+
+                "\nDATA_0x58="+Afhds2aEngine.hex(engine.buildSticksPacket(c))+"\nPROFILE=\n"+FsI6ReverseProfile.summary()+
+                "\nREGS=\n"+FsI6ReverseProfile.compactRegisterDump()+"\nTX_ENABLED=0\n";
+        MarxLabLogStore.append(this,"CENARIO_5_AFHDS2A_SNAPSHOT",record);
+        status.setTextColor(0xFF81C784);status.setText("Snapshot AFHDS2A salvo no log acumulado.");
     }
 
     private SeekBar slider(LinearLayout root,String label,int initial){
