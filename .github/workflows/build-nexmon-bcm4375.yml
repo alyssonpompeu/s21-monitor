@@ -55,7 +55,9 @@ jobs:
           cd nexmon
           source setup_env.sh
           cd patches/bcm4375b1/18_41_117_sta/nexmon
-          make -j2
+          # This target Makefile creates obj/gen/log in its init prerequisite and is not parallel-safe.
+          make init
+          make -j1
           sha256sum bcmdhd_sta.bin_b1 | tee patched-sha256.txt
           stat -c '%n %s bytes' bcmdhd_sta.bin_b1
           strings -a bcmdhd_sta.bin_b1 | grep -E 'NEXMON|18\.41\.117|FW-TAG' | tail -n 30 || true
