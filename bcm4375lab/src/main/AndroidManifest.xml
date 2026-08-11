@@ -3,7 +3,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="BCM4375 Lab"
+        android:label="BCM4375 Scout v3.9"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false"
         android:extractNativeLibs="true">
