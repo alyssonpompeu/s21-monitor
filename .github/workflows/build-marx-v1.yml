@@ -1,4 +1,4 @@
-name: Build MARX LAB V1.1
+name: Build MARX LAB V1.1 LOGS
 
 on:
   workflow_dispatch:
@@ -125,41 +125,43 @@ jobs:
           gradle :bcm4375lab:clean :bcm4375lab:assembleDebug --stacktrace
           test -s bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
 
-      - name: Verify APK signature and metadata
+      - name: Verify APK signature metadata and cumulative-log code
         shell: bash
         run: |
           APK=bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
           mkdir -p out
           "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee out/APKSIGNER.txt
           "$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK" | tee out/APK-BADGING.txt
-          grep -F "package: name='com.alysson.marx.lab'" out/APK-BADGING.txt
-          grep -F "versionName='1.1.0'" out/APK-BADGING.txt
-          grep -F "MARX LAB V1.1" out/APK-BADGING.txt || echo "Label representation differs; non-blocking"
-          cp "$APK" "out/MARX-LAB-V1.1.apk"
-          sha256sum "out/MARX-LAB-V1.1.apk" > out/APK-SHA256.txt
+          grep -F "package: name='com.alysson.marx.lab.logs'" out/APK-BADGING.txt
+          grep -F "versionName='1.1.1-logs'" out/APK-BADGING.txt
+          grep -F "MARX LAB V1.1 LOGS" out/APK-BADGING.txt || echo "Label representation differs; non-blocking"
+          grep -R -F 'MarxLabLogStore.append' bcm4375lab/src/main/java/com/alysson/bcm4375lab/MarxScenarioLabActivity.java bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42ControlActivity.java bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java
+          grep -F 'waitForFirmware("B1 Monitor", 15)' bcm4375lab/src/main/java/com/alysson/bcm4375lab/MarxScenarioLabActivity.java bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java
+          cp "$APK" "out/MARX-LAB-V1.1-LOGS.apk"
+          sha256sum "out/MARX-LAB-V1.1-LOGS.apk" > out/APK-SHA256.txt
           cat out/APK-SHA256.txt
           cp marx-firmware-sha256.txt out/FIRMWARE-SHA256.txt
 
-      - name: Upload MARX LAB V1.1 artifact
+      - name: Upload MARX LAB V1.1 LOGS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MARX-LAB-V1.1
+          name: MARX-LAB-V1.1-LOGS
           path: out/
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish MARX LAB V1.1 GitHub release
+      - name: Publish MARX LAB V1.1 LOGS GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: marx-lab-v1.1-github-latest
-          name: MARX LAB V1.1
+          tag_name: marx-lab-v1.1-logs-github-latest
+          name: MARX LAB V1.1 LOGS
           body: |
-            Multi-scenario laboratory APK for Galaxy S21 SM-G991B / BCM4375B1 18.41.117.
-            One APK contains preflight, backend diagnostics, 0x630 read-only probe, 0x631 Template RAM write/read/restore, a complete safe sequence, AFHDS2A packet lab and emergency stock restore.
-            Scenarios 0-4 never invoke sample playback and keep TX_TRIGGERED=0.
-            Experimental scenarios restore firmware_class, SELinux Enforcing and normal Wi-Fi in finally.
+            Cumulative-log laboratory APK for Galaxy S21 SM-G991B / BCM4375B1 18.41.117.
+            Every execution of scenarios 0-4, AFHDS2A lab actions, detailed 0x631 and stock/SELinux restore is appended to a persistent local transcript that can be copied as one block.
+            B1 Monitor entry uses a 15-second polling gate and preserves the partial transcript on failure.
+            Scenarios 0-4 and detailed 0x631 do not invoke sample playback or RF TX; AFHDS2A remains packet-analysis only.
           files: |
-            out/MARX-LAB-V1.1.apk
+            out/MARX-LAB-V1.1-LOGS.apk
             out/APK-SHA256.txt
             out/FIRMWARE-SHA256.txt
           make_latest: false
