@@ -22,7 +22,7 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** RX42 controller using AFHDS2A plus constants recovered from FS-i6 firmware 2.0.17. */
+/** MARX V1.0 controller using AFHDS2A plus constants recovered from FS-i6 firmware 2.0.17. */
 public class Rx42ControlActivity extends Activity {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final Handler ui=new Handler(Looper.getMainLooper());
@@ -49,8 +49,8 @@ public class Rx42ControlActivity extends Activity {
         ScrollView scroll=new ScrollView(this);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(18),dp(16),dp(18),dp(36));root.setBackgroundColor(0xFF080B0E);scroll.addView(root);
 
-        root.addView(txt("RX42 Control FS-i6 RE v3",28,Color.WHITE,true));
-        root.addView(txt("MA-RX42-A/W • AFHDS2A • perfil RF FS-i6 2.0.17 • Template RAM probe",13,0xFF80CBC4,false));
+        root.addView(txt("MARX V1.0",30,Color.WHITE,true));
+        root.addView(txt("MA-RX42-A/W • AFHDS2A • FS-i6 2.0.17 • BCM4375B1",13,0xFF80CBC4,false));
         root.addView(txt("Samsung "+Build.MODEL+" • "+Build.HARDWARE+" • Android "+Build.VERSION.RELEASE,12,0xFFB0BEC5,false));
 
         status=txt("Perfil FS-i6 carregado. Verifique primeiro o Nexmon.",15,0xFFFFD180,true);status.setPadding(0,dp(16),0,dp(8));root.addView(status);
@@ -76,7 +76,7 @@ public class Rx42ControlActivity extends Activity {
         root.addView(section("PACOTE 0x58 — 38 BYTES"));
         packetView=mono("",11,0xFFE0E0E0);packetView.setTextIsSelectable(true);root.addView(packetView);
 
-        TextView note=txt("Segurança: motor inicia em 1000 µs. Remova hélice/motor durante testes. A etapa 0x631 só valida escrita/leitura/restauração da Template RAM com sample playback desligado; ela NÃO transmite RF. O bind permanece bloqueado até o backend GFSK ser validado.",12,0xFFFFAB91,false);note.setPadding(0,dp(18),0,0);root.addView(note);
+        TextView note=txt("Segurança: motor inicia em 1000 µs. Remova hélice/motor durante testes. O teste 0x631 valida apenas escrita/leitura/restauração da Template RAM, com endereçamento explícito por word. Ele NÃO transmite RF. O bind permanece bloqueado até o backend GFSK ser validado.",12,0xFFFFAB91,false);note.setPadding(0,dp(18),0,0);root.addView(note);
         return scroll;
     }
 
@@ -108,7 +108,7 @@ public class Rx42ControlActivity extends Activity {
                 "\nBind RF alterna canais: 0x8C / 0x0D\nPeríodo de referência: "+Afhds2aEngine.PERIOD_US+" µs\n\nBIND1:\n"+Afhds2aEngine.hex(b1)+
                 "\n\nBIND2:\n"+Afhds2aEngine.hex(b2)+"\n\nBIND3:\n"+Afhds2aEngine.hex(b3)+"\n\nBIND4 (RX ID ainda não aprendido):\n"+Afhds2aEngine.hex(b4)+
                 "\n\nDATA 0x58:\n"+Afhds2aEngine.hex(engine.buildSticksPacket(currentChannels()));
-        new AlertDialog.Builder(this).setTitle("Bind AFHDS2A reconstruído").setMessage("A engenharia reversa do FS-i6 está incorporada, mas esta v3 ainda NÃO aciona sample playback nem transmite GFSK. Primeiro precisamos confirmar o round-trip 0x631 da Template RAM.\n\n"+preview).setPositiveButton("OK",null).show();
+        new AlertDialog.Builder(this).setTitle("Bind AFHDS2A reconstruído").setMessage("A engenharia reversa do FS-i6 está incorporada, mas o MARX V1.0 ainda NÃO aciona sample playback nem transmite GFSK. Primeiro precisamos confirmar o round-trip 0x631 da Template RAM.\n\n"+preview).setPositiveButton("OK",null).show();
         status.setTextColor(0xFFFFD180);status.setText("Bind pronto; aguardando validação da Template RAM / PHY GFSK.");
     }
 
