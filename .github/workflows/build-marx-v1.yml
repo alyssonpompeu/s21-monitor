@@ -127,10 +127,12 @@ jobs:
           APK=bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           BADGING=$("$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK")
-          echo "$BADGING" | head -15
-          echo "$BADGING" | grep "package: name='com.alysson.marx.v1'"
-          echo "$BADGING" | grep "versionName='1.0.0'"
-          echo "$BADGING" | grep "application-label:'MARX V1.0'"
+          printf '%s\n' "$BADGING" | head -15
+          printf '%s\n' "$BADGING" | grep -Fq "package: name='com.alysson.marx.v1'"
+          printf '%s\n' "$BADGING" | grep -Fq "versionName='1.0.0'"
+          LABEL=$(printf '%s\n' "$BADGING" | sed -n "s/^application-label:'\(.*\)'$/\1/p" | head -1)
+          echo "APPLICATION_LABEL=$LABEL"
+          test "$LABEL" = "MARX V1.0"
           mkdir -p out
           cp "$APK" "out/MARX-V1.0.apk"
           sha256sum "out/MARX-V1.0.apk" | tee out/APK-SHA256.txt
