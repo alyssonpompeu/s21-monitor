@@ -21,8 +21,12 @@ public class HdrTileService extends TileService {
     @Override
     public void onClick() {
         super.onClick();
-        if (!Settings.System.canWrite(this)) {
-            Toast.makeText(this, "Autorize HDR Boost a modificar configurações do sistema.", Toast.LENGTH_LONG).show();
+
+        HdrController.ToggleResult result = HdrController.toggle(this);
+        Toast.makeText(this, result.message, Toast.LENGTH_LONG).show();
+        updateTile();
+
+        if (!result.enabled && !Settings.System.canWrite(this)) {
             Intent intent = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
                     Uri.parse("package:" + getPackageName()));
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -33,12 +37,7 @@ public class HdrTileService extends TileService {
             } else {
                 startActivityAndCollapse(intent);
             }
-            return;
         }
-
-        boolean enabled = HdrController.toggle(this);
-        Toast.makeText(this, enabled ? "HDR Boost ativado" : "HDR Boost desativado", Toast.LENGTH_SHORT).show();
-        updateTile();
     }
 
     private void updateTile() {
@@ -46,7 +45,7 @@ public class HdrTileService extends TileService {
         if (tile == null) return;
         boolean enabled = HdrController.isEnabled(this);
         tile.setState(enabled ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
-        tile.setLabel(enabled ? "HDR Boost ON" : "HDR Boost");
+        tile.setLabel(enabled ? "HDR Boost ROOT ON" : "HDR Boost ROOT");
         tile.updateTile();
     }
 
