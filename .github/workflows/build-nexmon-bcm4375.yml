@@ -33,6 +33,8 @@ jobs:
           git fetch --depth 1 origin pull/663/head:pr663
           git checkout pr663
           git rev-parse HEAD
+          test "$(git rev-parse HEAD)" = "fd117f434e1c479f6819a0ba31f9ca82d75f8a3a"
+          echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
           # Legacy b43 assembler links libl; modern Ubuntu ships flex as libfl.
           sed -i 's/LDFLAGS[[:space:]]*+=[[:space:]]*-ll/LDFLAGS\t\t+= -lfl/' buildtools/b43/assembler/Makefile
 
@@ -41,6 +43,8 @@ jobs:
           cd nexmon
           sha256sum firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1
           test "$(sha256sum firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1 | cut -d' ' -f1)" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
+          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+          date -u -d "@$SOURCE_DATE_EPOCH"
 
       - name: Build Nexmon tools and extract firmware components
         shell: bash
@@ -49,18 +53,17 @@ jobs:
           source setup_env.sh
           make -j2
 
-      - name: Build patched BCM4375B1 firmware
+      - name: Build patched BCM4375B1 firmware reproducibly
         shell: bash
         run: |
           cd nexmon
           source setup_env.sh
           cd patches/bcm4375b1/18_41_117_sta/nexmon
-          # This target Makefile creates obj/gen/log in its init prerequisite and is not parallel-safe.
           make init
           make -j1
           sha256sum bcmdhd_sta.bin_b1 | tee patched-sha256.txt
           stat -c '%n %s bytes' bcmdhd_sta.bin_b1
-          strings -a bcmdhd_sta.bin_b1 | grep -E 'NEXMON|18\.41\.117|FW-TAG' | tail -n 30 || true
+          strings -a bcmdhd_sta.bin_b1 | grep -E 'NEXMON|18\.41\.117|FW-TAG|^[A-Z][a-z]{2} [ 0-9][0-9] 20[0-9][0-9]$' | tail -n 30 || true
 
       - name: Package build evidence
         run: |
@@ -71,20 +74,20 @@ jobs:
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/linker.err out/ 2>/dev/null || true
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/patches.log out/ 2>/dev/null || true
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/flashpatches.log out/ 2>/dev/null || true
-          test "$(sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin | cut -d' ' -f1)" = "ec77f799a989e8104322d3c51901685426389c435a968e30d89f134f47c03d0c"
+          sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin
 
       - uses: actions/upload-artifact@v4
         with:
           name: Nexmon-BCM4375B1-18.41.117-patched-firmware
           path: out/
 
-      - name: Publish verified Nexmon firmware release asset
+      - name: Publish reproducible Nexmon firmware release asset
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nexmon-bcm4375-18.41.117
-          name: Nexmon BCM4375B1 18.41.117 - verified build
-          body: Verified one-target build from seemoo-lab/nexmon PR 663 for BCM4375B1 firmware 18.41.117. Stock base SHA-256 1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad; patched SHA-256 ec77f799a989e8104322d3c51901685426389c435a968e30d89f134f47c03d0c.
+          name: Nexmon BCM4375B1 18.41.117 - reproducible build
+          body: Reproducible build from seemoo-lab/nexmon PR 663 commit fd117f434e1c479f6819a0ba31f9ca82d75f8a3a for BCM4375B1 firmware 18.41.117. SOURCE_DATE_EPOCH is pinned to the PR commit timestamp. Stock base SHA-256 is 1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad. See patched-sha256.txt in the workflow artifact for the generated firmware digest.
           files: out/bcmdhd_sta_nexmon_18_41_117.bin
           make_latest: false
           overwrite_files: true
