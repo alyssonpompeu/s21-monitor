@@ -1,0 +1,69 @@
+name: Build Nexmon BCM4375B1 18.41.117
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - '.github/workflows/build-nexmon-bcm4375.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install Nexmon build dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y git gawk qpdf flex bison xxd make patch python3 zlib1g-dev \
+            libc6:i386 libstdc++6:i386 zlib1g:i386 libncurses5:i386
+
+      - name: Clone Nexmon and checkout BCM4375B1 18.41.117 PR
+        run: |
+          git clone --depth 1 https://github.com/seemoo-lab/nexmon.git nexmon
+          cd nexmon
+          git fetch --depth 1 origin pull/663/head:pr663
+          git checkout pr663
+          git rev-parse HEAD
+
+      - name: Verify original firmware identity
+        run: |
+          cd nexmon
+          sha256sum firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1
+          test "$(sha256sum firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1 | cut -d' ' -f1)" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
+
+      - name: Build Nexmon tools and extract firmware components
+        shell: bash
+        run: |
+          cd nexmon
+          source setup_env.sh
+          make -j2
+
+      - name: Build patched BCM4375B1 firmware
+        shell: bash
+        run: |
+          cd nexmon
+          source setup_env.sh
+          cd patches/bcm4375b1/18_41_117_sta/nexmon
+          make -j2
+          sha256sum bcmdhd_sta.bin_b1 | tee patched-sha256.txt
+          stat -c '%n %s bytes' bcmdhd_sta.bin_b1
+          strings -a bcmdhd_sta.bin_b1 | grep -E 'NEXMON|18\.41\.117|FW-TAG' | tail -n 30 || true
+
+      - name: Package build evidence
+        run: |
+          mkdir -p out
+          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/bcmdhd_sta.bin_b1 out/bcmdhd_sta_nexmon_18_41_117.bin
+          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/patched-sha256.txt out/
+          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/compiler.log out/ 2>/dev/null || true
+          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/linker.err out/ 2>/dev/null || true
+          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/patches.log out/ 2>/dev/null || true
+          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/flashpatches.log out/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nexmon-BCM4375B1-18.41.117-patched-firmware
+          path: out/
