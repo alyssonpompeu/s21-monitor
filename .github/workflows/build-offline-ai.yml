@@ -6,6 +6,8 @@ on:
     branches: [ "feature/offline-ptbr-ai" ]
     paths-ignore:
       - 'offlineai-last-successful-build.txt'
+  pull_request:
+    branches: [ "main" ]
 
 permissions:
   contents: write
@@ -138,6 +140,7 @@ jobs:
           compression-level: 0
 
       - name: Publish APK release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: offline-ai-v1
@@ -152,6 +155,7 @@ jobs:
           overwrite_files: true
 
       - name: Record successful workflow run
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           printf '%s\n' "${GITHUB_RUN_ID}" > offlineai-last-successful-build.txt
