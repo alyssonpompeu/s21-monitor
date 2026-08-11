@@ -45,7 +45,9 @@ jobs:
           sudo apt-get install -y glslc libvulkan-dev spirv-headers spirv-tools glslang-tools poppler-utils
           mkdir -p build/vulkan-headers/include
           cp -a /usr/include/vulkan build/vulkan-headers/include/
+          cp -a /usr/include/spirv build/vulkan-headers/include/
           test -f build/vulkan-headers/include/vulkan/vulkan.hpp
+          test -f build/vulkan-headers/include/spirv/unified1/spirv.hpp
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           set +o pipefail
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
