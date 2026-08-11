@@ -42,12 +42,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y glslc libvulkan-dev spirv-headers spirv-tools glslang-tools poppler-utils
-          mkdir -p build/vulkan-headers/include
-          cp -a /usr/include/vulkan build/vulkan-headers/include/
-          cp -a /usr/include/spirv build/vulkan-headers/include/
-          test -f build/vulkan-headers/include/vulkan/vulkan.hpp
-          test -f build/vulkan-headers/include/spirv/unified1/spirv.hpp
+          sudo apt-get install -y poppler-utils
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           set +o pipefail
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
@@ -66,18 +61,22 @@ jobs:
           git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
           git -C vendor/llama.cpp submodule update --init --recursive
 
-      - name: Enable conservative CPU plus Mali Vulkan offload
+      - name: Tune runtime for Galaxy S21 stability
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           path = Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
           text = path.read_text(encoding='utf-8')
-          needle = 'llama_model_params model_params = llama_model_default_params();'
-          replacement = needle + '\n    // Hybrid mobile policy: keep most layers on CPU and offload a small tail to Vulkan.\n    // This avoids assuming that Mali Vulkan is always faster while still exercising CPU+GPU.\n    model_params.n_gpu_layers = 4;'
-          if needle not in text:
-              raise SystemExit('Pinned ai_chat.cpp no longer matches expected load-model code')
-          path.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
+          replacements = {
+              'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;': 'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
+              'constexpr int   BATCH_SIZE              = 512;': 'constexpr int   BATCH_SIZE              = 256;',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Pinned ai_chat.cpp no longer matches expected tuning point: {old}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
           PY
 
       - name: Download and verify attached linguistic sources
@@ -120,6 +119,7 @@ jobs:
             "language": "pt-BR",
             "runtime": "llama.cpp",
             "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
+            "runtime_policy": "CPU-only ARM64; Vulkan disabled for Galaxy S21 Mali-G78 stability; context 4096; batch 256",
             "model": "Qwen3.5-0.8B-Q4_K_M.gguf",
             "model_sha256": "$MODEL_SHA256",
             "lexicon_url": "https://www.ime.usp.br/~pf/dicios/br-sem-acentos.txt",
@@ -193,6 +193,7 @@ jobs:
           body: |
             APK ARM64 totalmente offline para o Galaxy S21/Exynos 2100.
             Runtime llama.cpp fixado por commit, modelo Qwen3.5 0.8B Q4_K_M e memória lexical local construída a partir das fontes verificadas por SHA-256.
+            Revisão de estabilidade: CPU-only no Mali-G78, Vulkan desativado, contexto 4096 e batch 256 para reduzir risco de crash nativo durante a inicialização.
           files: |
             IA-Offline-PTBR-S21.apk
             IA-Offline-PTBR-S21.apk.sha256
