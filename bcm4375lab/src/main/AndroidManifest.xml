@@ -3,12 +3,12 @@
 
     <application
         android:allowBackup="false"
-        android:label="BCM4375 PathProof v4.0"
+        android:label="BCM4375 NexStage v4.1"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false"
         android:extractNativeLibs="true">
         <activity
-            android:name=".FirmwarePathProofV40Activity"
+            android:name=".NexmonVendorWifiV41Activity"
             android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
@@ -16,6 +16,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".FirmwarePathProofV40Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".FirmwarePathScoutV39Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".NexmonFirmwareClassV38Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".NexmonExactLoaderV37Activity" android:screenOrientation="portrait" android:exported="false" />
