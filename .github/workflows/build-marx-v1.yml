@@ -1,9 +1,9 @@
-name: Build MARX V1.0
+name: Build MARX LAB V1.1
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "marx-v1.0" ]
+    branches: [ "marx-lab-v1.1" ]
     paths:
       - '.github/workflows/build-marx-v1.yml'
       - 'bcm4375lab/**'
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
-      - name: Checkout MARX V1.0 branch
+      - name: Checkout MARX LAB branch
         uses: actions/checkout@v4
 
       - name: Set up Java 17
@@ -69,7 +69,7 @@ jobs:
           test "$ACTUAL" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
           echo "STOCK_SHA256=$ACTUAL"
 
-      - name: Apply MARX 0x630 + 0x631 explicit-pointer TX-OFF patch
+      - name: Apply MARX 0x630 plus 0x631 TX-OFF patch
         shell: bash
         run: |
           python3 sdr-probe/patch_pr663.py nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
@@ -92,13 +92,16 @@ jobs:
           sha256sum bcmdhd_sta.bin_b1 > "$GITHUB_WORKSPACE/marx-firmware-sha256.txt"
           cat "$GITHUB_WORKSPACE/marx-firmware-sha256.txt"
 
-      - name: Pin generated firmware SHA in MARX app
+      - name: Pin generated firmware SHA in all MARX LAB scenarios
         shell: bash
         run: |
           SHA=$(awk '{print $1}' marx-firmware-sha256.txt)
           test -n "$SHA"
-          sed -i "s/MARX_TPLRAM_V1_SHA/$SHA/g" bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java
-          grep -n 'EXPECTED_SHA' bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java
+          FILES=$(grep -RIl 'MARX_TPLRAM_V1_SHA' bcm4375lab/src/main/java || true)
+          test -n "$FILES"
+          while IFS= read -r f; do sed -i "s/MARX_TPLRAM_V1_SHA/$SHA/g" "$f"; done <<< "$FILES"
+          ! grep -R 'MARX_TPLRAM_V1_SHA' bcm4375lab/src/main/java
+          grep -R -n 'EXPECTED_SHA' bcm4375lab/src/main/java/com/alysson/bcm4375lab/MarxScenarioLabActivity.java bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java
 
       - name: Build ARM64 root probes with Android NDK
         shell: bash
@@ -116,44 +119,48 @@ jobs:
           test -x "$OUT/libsdrrx42probe.so"
           test -x "$OUT/libmonrx.so"
 
-      - name: Build installable MARX APK with Gradle
+      - name: Build installable MARX LAB APK with Gradle
         shell: bash
         run: |
           gradle :bcm4375lab:clean :bcm4375lab:assembleDebug --stacktrace
           test -s bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
 
-      - name: Verify APK signature and record metadata
+      - name: Verify APK signature and metadata
         shell: bash
         run: |
           APK=bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK"
+          BADGING=$("$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK")
+          echo "$BADGING"
+          [[ "$BADGING" == *"package: name='com.alysson.marx.lab'"* ]] || { echo "package mismatch"; exit 1; }
+          [[ "$BADGING" == *"versionName='1.1.0'"* ]] || { echo "version mismatch"; exit 1; }
+          [[ "$BADGING" == *"application-label:'MARX LAB V1.1'"* ]] || { echo "label mismatch"; exit 1; }
           mkdir -p out
-          cp "$APK" "out/MARX-V1.0.apk"
-          sha256sum "out/MARX-V1.0.apk" > out/APK-SHA256.txt
+          cp "$APK" "out/MARX-LAB-V1.1.apk"
+          sha256sum "out/MARX-LAB-V1.1.apk" > out/APK-SHA256.txt
           cat out/APK-SHA256.txt
           cp marx-firmware-sha256.txt out/FIRMWARE-SHA256.txt
 
-      - name: Upload MARX V1.0 artifact
+      - name: Upload MARX LAB V1.1 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MARX-V1.0
+          name: MARX-LAB-V1.1
           path: out/
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish MARX V1.0 GitHub release
+      - name: Publish MARX LAB V1.1 GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: marx-v1.0-github-latest
-          name: MARX V1.0
+          tag_name: marx-lab-v1.1-github-latest
+          name: MARX LAB V1.1
           body: |
-            MARX V1.0 for Galaxy S21 SM-G991B / BCM4375B1 18.41.117.
-            Built with GitHub Actions from Nexmon PR663.
-            IOCTL 0x631 uses explicit Template RAM pointer addressing for each 32-bit word.
-            It performs bounded write/read/restore only. Sample playback is not invoked and TX_TRIGGERED remains 0.
+            Multi-scenario laboratory APK for Galaxy S21 SM-G991B / BCM4375B1 18.41.117.
+            One APK contains preflight, backend diagnostics, 0x630 read-only probe, 0x631 Template RAM write/read/restore, a complete safe sequence, AFHDS2A packet lab and emergency stock restore.
+            Scenarios 0-4 never invoke sample playback and keep TX_TRIGGERED=0.
+            Experimental scenarios restore firmware_class, SELinux Enforcing and normal Wi-Fi in finally.
           files: |
-            out/MARX-V1.0.apk
+            out/MARX-LAB-V1.1.apk
             out/APK-SHA256.txt
             out/FIRMWARE-SHA256.txt
           make_latest: false
