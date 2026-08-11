@@ -1,14 +1,14 @@
-run_id=31427666980
-head_sha=827bd71231befa1e53c6ae97489710c10646422f
+run_id=31447390900
+head_sha=46e78780ddb82ba24b12fd2bcee79d7d0e8764bb
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :wifiradar:preBuild UP-TO-DATE
 > Task :wifiradar:preDebugBuild UP-TO-DATE
 > Task :wifiradar:mergeDebugNativeDebugMetadata NO-SOURCE
-> Task :wifiradar:javaPreCompileDebug
-> Task :wifiradar:generateDebugResValues
 > Task :wifiradar:checkDebugAarMetadata
+> Task :wifiradar:generateDebugResValues
+> Task :wifiradar:javaPreCompileDebug
 > Task :wifiradar:mapDebugSourceSetPaths
 > Task :wifiradar:generateDebugResources
 > Task :wifiradar:mergeDebugResources
@@ -26,13 +26,13 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :wifiradar:desugarDebugFileDependencies
 > Task :wifiradar:processDebugJavaRes NO-SOURCE
 > Task :wifiradar:processDebugManifestForPackage
-> Task :wifiradar:mergeDebugJniLibFolders
 > Task :wifiradar:checkDebugDuplicateClasses
-> Task :wifiradar:mergeDebugNativeLibs NO-SOURCE
-> Task :wifiradar:mergeExtDexDebug
-> Task :wifiradar:stripDebugDebugSymbols NO-SOURCE
-> Task :wifiradar:mergeLibDexDebug
+> Task :wifiradar:mergeDebugJniLibFolders
 > Task :wifiradar:mergeDebugJavaResource
+> Task :wifiradar:mergeDebugNativeLibs NO-SOURCE
+> Task :wifiradar:stripDebugDebugSymbols NO-SOURCE
+> Task :wifiradar:mergeExtDexDebug
+> Task :wifiradar:mergeLibDexDebug
 > Task :wifiradar:processDebugResources
 > Task :wifiradar:validateSigningDebug
 
@@ -48,7 +48,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :wifiradar:packageDebug
 > Task :wifiradar:createDebugApkListingFileRedirect
 > Task :wifiradar:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/radarbuild-1786392611378.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/radarbuild-1786409442322.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
 
@@ -58,5 +58,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 17s
+BUILD SUCCESSFUL in 18s
 32 actionable tasks: 32 executed
