@@ -3,7 +3,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="MARX LAB V1.1"
+        android:label="MARX LAB V1.1 LOGS"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false"
         android:extractNativeLibs="true">
