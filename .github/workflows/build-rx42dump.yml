@@ -65,8 +65,13 @@ jobs:
           make -j1
           mkdir -p "$GITHUB_WORKSPACE/sdr-probe-out" "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon"
           cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/sdr-probe-out/bcmdhd_sta_rx42_sdr_probe_v1.bin"
-          test "$(sha256sum bcmdhd_sta.bin_b1 | cut -d' ' -f1)" = "a5d0d5c68daedebeef5f12f0c97892711751506fab587ffe51b23f1dfaffbdd7"
+          EXP_SHA="$(sha256sum bcmdhd_sta.bin_b1 | cut -d' ' -f1)"
+          echo "Experimental firmware SHA=$EXP_SHA"
+          test "$(stat -c %s bcmdhd_sta.bin_b1)" = "1297036"
+          strings -a bcmdhd_sta.bin_b1 | grep -q 'RX42_SDR_PROBE' || true
           cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_rx42_sdr_probe_v1.bin"
+          sed -i "s/a5d0d5c68daedebeef5f12f0c97892711751506fab587ffe51b23f1dfaffbdd7/$EXP_SHA/" "$GITHUB_WORKSPACE/bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java"
+          grep 'EXPECTED_SHA' "$GITHUB_WORKSPACE/bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java"
           sha256sum bcmdhd_sta.bin_b1 | tee "$GITHUB_WORKSPACE/sdr-probe-out/sha256.txt"
           cp log/compiler.log "$GITHUB_WORKSPACE/sdr-probe-out/" 2>/dev/null || true
           cp log/linker.err "$GITHUB_WORKSPACE/sdr-probe-out/" 2>/dev/null || true
