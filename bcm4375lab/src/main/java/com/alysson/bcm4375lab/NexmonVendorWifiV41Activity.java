@@ -28,11 +28,6 @@ import java.util.concurrent.Executors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-/**
- * v4.1 stages the verified Nexmon image under /data/vendor/wifi, then uses
- * firmware_class.path for one controlled Monitor -> STA reload. Success is
- * defined only by Nexmon IOCTL 413, not by wifiver strings.
- */
 public class NexmonVendorWifiV41Activity extends Activity {
     private static final int SAVE_ZIP = 4410;
     private static final String FWCLASS = "/sys/module/firmware_class/parameters/path";
@@ -119,9 +114,7 @@ public class NexmonVendorWifiV41Activity extends Activity {
                 && wv.contains("18.41.117") && wv.contains("B1 Network/rsdb");
     }
 
-    private RootReader.Result triage() {
-        return RootReader.run(q(probePath()) + " wlan0", 6);
-    }
+    private RootReader.Result triage() { return RootReader.run(q(probePath()) + " wlan0", 6); }
 
     private Snapshot snapshot() {
         RootReader.Result id = RootReader.run("id", 5);
@@ -211,8 +204,6 @@ public class NexmonVendorWifiV41Activity extends Activity {
         worker.execute(() -> {
             StringBuilder tr = new StringBuilder();
             String originalPath = "";
-            boolean monitorConfirmed = false;
-            boolean customPathSet = false;
             boolean nexmonDetected = false;
             try {
                 Snapshot before = snapshot();
@@ -226,7 +217,7 @@ public class NexmonVendorWifiV41Activity extends Activity {
                         + "cp " + q(CLM) + " " + q(STAGE + "/bcmdhd_clm.blob") + " 2>/dev/null || true; "
                         + "chown -R wifi:wifi " + q(STAGE) + "; chmod 0755 " + q(STAGE) + "; chmod 0644 " + q(STAGE) + "/*; "
                         + "restorecon -RF " + q(STAGE) + " 2>&1; "
-                        + "ls -ldZ " + q(STAGE) + "; ls -lZ " + q(STAGE) + "; sha256sum " + q(STAGE + "/bcmdhd_sta.bin_b1");";
+                        + "ls -ldZ " + q(STAGE) + "; ls -lZ " + q(STAGE) + "; sha256sum " + q(STAGE + "/bcmdhd_sta.bin_b1") + ";";
                 RootReader.Result prepR = RootReader.run(prep, 10);
                 tr.append("\n=== STAGE NEXMON ===\ncode=").append(prepR.code).append(" timeout=").append(prepR.timedOut).append('\n').append(prepR.output);
                 if (prepR.code != 0 || prepR.timedOut || !prepR.output.toLowerCase().contains(NexmonOneShotController.NEXMON_SHA.toLowerCase()))
@@ -239,14 +230,14 @@ public class NexmonVendorWifiV41Activity extends Activity {
                 postStatus("3/7 • Carregando Samsung B1 Monitor…");
                 tr.append("\n=== MODE MONITOR ===\n").append(MonitorController.setMode("monitor").output);
                 tr.append("\n=== START MONITOR ===\n").append(MonitorController.startSamsungLoader().output);
-                monitorConfirmed = MonitorController.waitForFirmware("B1 Monitor", 12);
+                boolean monitorConfirmed = MonitorController.waitForFirmware("B1 Monitor", 12);
                 tr.append("\n").append(MonitorController.snapshot("MONITOR"));
                 tr.append("MONITOR_CONFIRMED=").append(monitorConfirmed).append('\n');
                 if (!monitorConfirmed) throw new Exception("B1 Monitor não confirmado.");
 
                 postStatus("4/7 • firmware_class.path → Nexmon staging…");
                 RootReader.Result set = RootReader.run("printf %s " + q(STAGE) + " > " + FWCLASS + "; cat " + FWCLASS + " 2>&1", 5);
-                customPathSet = set.code == 0 && !set.timedOut && STAGE.equals(set.output.trim());
+                boolean customPathSet = set.code == 0 && !set.timedOut && STAGE.equals(set.output.trim());
                 tr.append("\n=== SET FWCLASS ===\ncode=").append(set.code).append(" timeout=").append(set.timedOut).append('\n').append(set.output);
                 tr.append("CUSTOM_PATH_SET=").append(customPathSet).append('\n');
                 if (!customPathSet) throw new Exception("firmware_class.path não aceitou staging.");
