@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y git gawk qpdf flex bison xxd make patch python3 zlib1g-dev \
+          sudo apt-get install -y git gawk qpdf flex libfl-dev bison xxd make patch python3 zlib1g-dev \
             libc6:i386 libstdc++6:i386 zlib1g:i386 libncurses5:i386
 
       - name: Clone Nexmon and checkout BCM4375B1 18.41.117 PR
@@ -33,6 +33,8 @@ jobs:
           git fetch --depth 1 origin pull/663/head:pr663
           git checkout pr663
           git rev-parse HEAD
+          # Legacy b43 assembler links libl; modern Ubuntu ships flex as libfl.
+          sed -i 's/LDFLAGS[[:space:]]*+=[[:space:]]*-ll/LDFLAGS\t\t+= -lfl/' buildtools/b43/assembler/Makefile
 
       - name: Verify original firmware identity
         run: |
