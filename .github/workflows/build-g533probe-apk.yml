@@ -1,0 +1,49 @@
+name: Build G533 Probe APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'g533probe/**'
+      - 'settings.gradle'
+      - '.github/workflows/build-g533probe-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build G533 Probe debug APK
+        run: gradle :g533probe:assembleDebug --stacktrace
+
+      - name: Rename APK
+        run: cp g533probe/build/outputs/apk/debug/g533probe-debug.apk G533-Probe-S21.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: G533-Probe-S21-APK
+          path: G533-Probe-S21.apk
+
+      - name: Publish latest APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: g533-probe-latest
+          name: G533 Probe S21 - Latest
+          body: Scanner experimental Bluetooth/BLE/Wi-Fi Direct/USB e laboratório de sample rate PCM para investigar Logitech G533 no Galaxy S21.
+          files: G533-Probe-S21.apk
+          make_latest: false
+          overwrite_files: true
