@@ -1,5 +1,5 @@
-run_id=31451313614
-head_sha=4d0c238ae2bcdafb0060b8e0003f0db4c81907b5
+run_id=31547839832
+head_sha=4acefe0b44cd547555fd97e418ce2109813001b1
 exit_code=1
 --- build log tail ---
 	at org.gradle.internal.model.StateTransitionController.doTransition(StateTransitionController.java:266)
@@ -181,4 +181,4 @@ Try updating the 'distributionUrl' property in /home/runner/work/s21-monitor/s21
 	... 187 more
 
 
-BUILD FAILED in 6s
+BUILD FAILED in 8s
