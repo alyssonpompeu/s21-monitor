@@ -1,5 +1,5 @@
-run_id=31395706659
-head_sha=93e07df802a7e75834e9b62d1b0004620ae82f0d
+run_id=31447446672
+head_sha=db60aaee08e044c621dad73602809266a0ad511e
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
@@ -7,8 +7,8 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :hdrboost:preDebugBuild UP-TO-DATE
 > Task :hdrboost:mergeDebugNativeDebugMetadata NO-SOURCE
 > Task :hdrboost:javaPreCompileDebug
-> Task :hdrboost:generateDebugResValues
 > Task :hdrboost:checkDebugAarMetadata
+> Task :hdrboost:generateDebugResValues
 > Task :hdrboost:mapDebugSourceSetPaths
 > Task :hdrboost:generateDebugResources
 > Task :hdrboost:packageDebugResources
@@ -19,20 +19,20 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :hdrboost:processDebugMainManifest
 > Task :hdrboost:processDebugManifest
 > Task :hdrboost:mergeDebugShaders
+> Task :hdrboost:processDebugManifestForPackage
 > Task :hdrboost:compileDebugShaders NO-SOURCE
 > Task :hdrboost:generateDebugAssets UP-TO-DATE
 > Task :hdrboost:mergeDebugAssets
 > Task :hdrboost:compressDebugAssets
 > Task :hdrboost:desugarDebugFileDependencies
 > Task :hdrboost:processDebugJavaRes NO-SOURCE
-> Task :hdrboost:processDebugManifestForPackage
-> Task :hdrboost:checkDebugDuplicateClasses
 > Task :hdrboost:mergeDebugJniLibFolders
-> Task :hdrboost:mergeDebugJavaResource
+> Task :hdrboost:checkDebugDuplicateClasses
 > Task :hdrboost:mergeDebugNativeLibs NO-SOURCE
-> Task :hdrboost:stripDebugDebugSymbols NO-SOURCE
 > Task :hdrboost:mergeExtDexDebug
 > Task :hdrboost:mergeLibDexDebug
+> Task :hdrboost:stripDebugDebugSymbols NO-SOURCE
+> Task :hdrboost:mergeDebugJavaResource
 > Task :hdrboost:processDebugResources
 > Task :hdrboost:validateSigningDebug
 
@@ -48,7 +48,15 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :hdrboost:packageDebug
 > Task :hdrboost:createDebugApkListingFileRedirect
 > Task :hdrboost:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/hdrbuild-1786370373337.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/hdrbuild-1786409510202.json
 
-BUILD SUCCESSFUL in 14s
+[Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 11s
 32 actionable tasks: 32 executed
