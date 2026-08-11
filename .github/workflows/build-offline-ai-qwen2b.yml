@@ -1,0 +1,230 @@
+name: Build Offline PT-BR AI Qwen 2B APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "feature/offline-ptbr-ai-qwen2b" ]
+    paths-ignore:
+      - 'offlineai-qwen2b-last-successful-build.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  build-offline-ai-qwen2b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      LEXICON_SHA256: 2eb81afe3ea215dfea59890021e8cebb9f3b71a80fe6a56dfb29f84e2870b0db
+      DICTIONARY_PDF_SHA256: acf31020fd2b217d0fde0f47fc1f6d75d747ed224d173ade4539e35ff047caf7
+      MODEL_REVISION: 31e04817b38d226cdd13454bcc3982ebaa5a386b
+      MODEL_SHA256: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
+      MODEL_FILE: Qwen3.5-2B-Q4_K_M.gguf
+
+    steps:
+      - name: Checkout Qwen 2B variant
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          "$SDKMANAGER" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Pin llama.cpp source
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+
+      - name: Tune 2B runtime for Galaxy S21 stability and conversation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          native = Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          text = native.read_text(encoding='utf-8')
+          replacements = {
+              'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;': 'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
+              'constexpr int   BATCH_SIZE              = 512;': 'constexpr int   BATCH_SIZE              = 128;',
+              'constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;': 'constexpr float DEFAULT_SAMPLER_TEMP    = 0.75f;',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Pinned ai_chat.cpp no longer matches expected tuning point: {old}')
+              text = text.replace(old, new, 1)
+          native.write_text(text, encoding='utf-8')
+
+          activity = Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
+          app = activity.read_text(encoding='utf-8')
+          app_replacements = {
+              'Qwen3.5-0.8B-Q4_K_M.gguf': 'Qwen3.5-2B-Q4_K_M.gguf',
+              'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517': 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
+          }
+          for old, new in app_replacements.items():
+              if old not in app:
+                  raise SystemExit(f'MainActivity no longer matches expected 0.8B variant marker: {old}')
+              app = app.replace(old, new, 1)
+          activity.write_text(app, encoding='utf-8')
+          PY
+
+      - name: Download and verify linguistic sources
+        shell: bash
+        run: |
+          mkdir -p build/offline-sources offlineai/src/main/assets
+
+          curl -L --fail --retry 5 \
+            https://www.ime.usp.br/~pf/dicios/br-sem-acentos.txt \
+            -o build/offline-sources/br-sem-acentos.txt
+          echo "$LEXICON_SHA256  build/offline-sources/br-sem-acentos.txt" | sha256sum -c -
+
+          curl -L --fail --retry 5 \
+            https://www.gutenberg.org/files/31552/31552-pdf.pdf \
+            -o build/offline-sources/31552-pdf.pdf
+          echo "$DICTIONARY_PDF_SHA256  build/offline-sources/31552-pdf.pdf" | sha256sum -c -
+
+          pdftotext -layout -enc UTF-8 \
+            build/offline-sources/31552-pdf.pdf \
+            build/offline-sources/dicionario.txt
+
+          python3 scripts/build_ptbr_memory.py \
+            --lexicon build/offline-sources/br-sem-acentos.txt \
+            --dictionary build/offline-sources/dicionario.txt \
+            --output offlineai/src/main/assets/ptbr_memory.db
+
+      - name: Download and verify Qwen3.5 2B Q4_K_M
+        shell: bash
+        run: |
+          curl -L --fail --retry 5 --retry-delay 5 \
+            "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/${MODEL_REVISION}/${MODEL_FILE}?download=true" \
+            -o offlineai/src/main/assets/model.gguf
+          echo "$MODEL_SHA256  offlineai/src/main/assets/model.gguf" | sha256sum -c -
+          ls -lh offlineai/src/main/assets/model.gguf
+
+      - name: Record reproducible source manifest
+        shell: bash
+        run: |
+          cat > offlineai/src/main/assets/source_manifest.json <<EOF
+          {
+            "variant": "qwen3.5-2b",
+            "language": "pt-BR",
+            "runtime": "llama.cpp",
+            "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
+            "runtime_policy": "CPU-only ARM64; Vulkan disabled; context 4096; batch 128; sampler temperature 0.75",
+            "base_model": "Qwen/Qwen3.5-2B",
+            "quantization_repo": "unsloth/Qwen3.5-2B-GGUF",
+            "quantization_revision": "$MODEL_REVISION",
+            "model": "$MODEL_FILE",
+            "model_sha256": "$MODEL_SHA256",
+            "lexicon_url": "https://www.ime.usp.br/~pf/dicios/br-sem-acentos.txt",
+            "lexicon_sha256": "$LEXICON_SHA256",
+            "dictionary_title": "Novo Dicionário da Língua Portuguesa - Cândido de Figueiredo, 1913",
+            "dictionary_pdf_url": "https://www.gutenberg.org/files/31552/31552-pdf.pdf",
+            "dictionary_pdf_sha256": "$DICTIONARY_PDF_SHA256"
+          }
+          EOF
+          du -h offlineai/src/main/assets/*
+
+      - name: Build installable Qwen 2B ARM64 debug APK
+        id: build_apk
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee offlineai-qwen2b-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$STATUS" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          src = Path('offlineai-qwen2b-build.log').read_text(encoding='utf-8', errors='replace').splitlines()
+          patterns = re.compile(r'(error:|fatal error:|CMake Error|FAILED:|ninja:|Execution failed|BUILD FAILED|What went wrong|Caused by:)')
+          hits = [i for i, line in enumerate(src) if patterns.search(line)]
+          selected = set()
+          for i in hits:
+              selected.update(range(max(0, i - 10), min(len(src), i + 31)))
+          lines = [src[i] for i in sorted(selected)]
+          if not lines:
+              lines = src[-500:]
+          Path('offlineai-qwen2b-last-build-error.txt').write_text('\n'.join(lines[-900:]) + '\n', encoding='utf-8')
+          PY
+            cat offlineai-qwen2b-last-build-error.txt
+            exit "$STATUS"
+          fi
+
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk IA-Offline-PTBR-S21-Qwen2B.apk
+          sha256sum IA-Offline-PTBR-S21-Qwen2B.apk | tee IA-Offline-PTBR-S21-Qwen2B.apk.sha256
+          ls -lh IA-Offline-PTBR-S21-Qwen2B.apk
+
+      - name: Upload Qwen 2B build diagnostics
+        if: failure() && steps.build_apk.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-ai-qwen2b-build-diagnostics
+          path: |
+            offlineai-qwen2b-last-build-error.txt
+            offlineai-qwen2b-build.log
+          retention-days: 7
+
+      - name: Upload Qwen 2B APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-Qwen2B-APK
+          path: |
+            IA-Offline-PTBR-S21-Qwen2B.apk
+            IA-Offline-PTBR-S21-Qwen2B.apk.sha256
+          compression-level: 0
+
+      - name: Publish Qwen 2B release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-qwen2b-v1
+          name: IA Offline PT-BR Qwen3.5 2B para Galaxy S21
+          body: |
+            Variante avançada e reversível da IA offline PT-BR.
+            Usa Qwen3.5 2B Q4_K_M, diálogo contextual, biblioteca local com PDF/imagem/OCR e monitor CPU/GPU/RAM.
+            Mantém CPU-only ARM64 e Vulkan desativado para priorizar estabilidade no Galaxy S21 Exynos 2100.
+            Esta variante possui applicationId separado e pode coexistir com a versão 0.8B.
+          files: |
+            IA-Offline-PTBR-S21-Qwen2B.apk
+            IA-Offline-PTBR-S21-Qwen2B.apk.sha256
+          make_latest: false
+          overwrite_files: true
+
+      - name: Record successful Qwen 2B workflow run
+        shell: bash
+        run: |
+          printf '%s\n' "${GITHUB_RUN_ID}" > offlineai-qwen2b-last-successful-build.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add offlineai-qwen2b-last-successful-build.txt
+          git commit -m "Record Qwen 2B APK build [skip ci]" || exit 0
+          git push origin HEAD:${GITHUB_REF_NAME}
