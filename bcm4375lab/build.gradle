@@ -7,10 +7,10 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.alysson.bcm4375lab'
+        applicationId 'com.alysson.bcm4375lab.v39'
         minSdk 26
         targetSdk 35
-        versionCode 17
+        versionCode 1
         versionName '3.9.0'
     }
 
