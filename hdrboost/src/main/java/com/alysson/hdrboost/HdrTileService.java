@@ -26,7 +26,7 @@ public class HdrTileService extends TileService {
         Toast.makeText(this, result.message, Toast.LENGTH_LONG).show();
         updateTile();
 
-        if (!result.enabled && !HdrController.hasRoot() && !Settings.System.canWrite(this)) {
+        if (!result.enabled && !Settings.System.canWrite(this)) {
             Intent intent = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
                     Uri.parse("package:" + getPackageName()));
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
