@@ -43,7 +43,7 @@ jobs:
           sudo apt-get install -y git gawk qpdf flex libfl-dev bison xxd make patch python3 zlib1g-dev \
             libc6:i386 libstdc++6:i386 zlib1g:i386 libncurses5:i386
 
-      - name: Clone exact PR663 and add read-only IOCTL 0x630
+      - name: Clone exact PR663 and add no-TX IOCTLs 0x630/0x631
         run: |
           git clone --depth 1 https://github.com/seemoo-lab/nexmon.git /tmp/nexmon-sdr
           cd /tmp/nexmon-sdr
@@ -53,8 +53,11 @@ jobs:
           sed -i 's/LDFLAGS[[:space:]]*+=[[:space:]]*-ll/LDFLAGS\t\t+= -lfl/' buildtools/b43/assembler/Makefile
           test "$(sha256sum firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1 | cut -d' ' -f1)" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
           python3 "$GITHUB_WORKSPACE/sdr-probe/patch_pr663.py" patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
+          grep -q 'case 0x630' patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
+          grep -q 'case 0x631' patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
+          grep -q 'TX_TRIGGERED=0' patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
 
-      - name: Build and bundle read-only BCM4375 SDR probe firmware
+      - name: Build and bundle BCM4375 Template RAM probe firmware
         shell: bash
         run: |
           cd /tmp/nexmon-sdr
@@ -64,13 +67,12 @@ jobs:
           make init
           make -j1
           mkdir -p "$GITHUB_WORKSPACE/sdr-probe-out" "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon"
-          cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/sdr-probe-out/bcmdhd_sta_rx42_sdr_probe_v1.bin"
+          cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/sdr-probe-out/bcmdhd_sta_rx42_tplram_probe_v2.bin"
           EXP_SHA="$(sha256sum bcmdhd_sta.bin_b1 | cut -d' ' -f1)"
           echo "Experimental firmware SHA=$EXP_SHA"
           test "$(stat -c %s bcmdhd_sta.bin_b1)" = "1297036"
-          strings -a bcmdhd_sta.bin_b1 | grep -q 'RX42_SDR_PROBE' || true
-          cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_rx42_sdr_probe_v1.bin"
-          sed -i "s/a5d0d5c68daedebeef5f12f0c97892711751506fab587ffe51b23f1dfaffbdd7/$EXP_SHA/" "$GITHUB_WORKSPACE/bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java"
+          cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_rx42_tplram_probe_v2.bin"
+          sed -i "s/TPLRAM_PROBE_V2_SHA/$EXP_SHA/" "$GITHUB_WORKSPACE/bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java"
           grep 'EXPECTED_SHA' "$GITHUB_WORKSPACE/bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java"
           sha256sum bcmdhd_sta.bin_b1 | tee "$GITHUB_WORKSPACE/sdr-probe-out/sha256.txt"
           cp log/compiler.log "$GITHUB_WORKSPACE/sdr-probe-out/" 2>/dev/null || true
@@ -78,7 +80,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BCM4375-RX42-SDR-Probe-v1
+          name: BCM4375-RX42-TemplateRAM-Probe-v2
           path: sdr-probe-out/
 
       - name: Bundle verified standard Nexmon firmware
@@ -103,15 +105,15 @@ jobs:
           "$CC" -O2 -fPIE -pie -Wall -Wextra bcm4375lab/native/monrx.c -o bcm4375lab/src/main/jniLibs/arm64-v8a/libmonrx.so
           "$CC" -O2 -fPIE -pie -Wall -Wextra bcm4375lab/native/sdrrx42probe.c -o bcm4375lab/src/main/jniLibs/arm64-v8a/libsdrrx42probe.so
 
-      - name: Build RX42 FS-i6 RE v2 APK
+      - name: Build RX42 FS-i6 RE v3 APK
         run: gradle :bcm4375lab:assembleDebug --stacktrace
 
       - name: Package APK
         run: |
-          cp bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk RX42-Control-FSi6-RE-v2.apk
-          sha256sum RX42-Control-FSi6-RE-v2.apk
+          cp bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk RX42-Control-FSi6-RE-v3.apk
+          sha256sum RX42-Control-FSi6-RE-v3.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: RX42-Control-FSi6-RE-v2-APK
-          path: RX42-Control-FSi6-RE-v2.apk
+          name: RX42-Control-FSi6-RE-v3-APK
+          path: RX42-Control-FSi6-RE-v3.apk
