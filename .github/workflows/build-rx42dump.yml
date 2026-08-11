@@ -47,6 +47,24 @@ jobs:
           test "$(sha256sum /tmp/nexmon-artifact/bcmdhd_sta_nexmon_18_41_117.bin | cut -d' ' -f1)" = "ec77f799a989e8104322d3c51901685426389c435a968e30d89f134f47c03d0c"
           cp /tmp/nexmon-artifact/bcmdhd_sta_nexmon_18_41_117.bin bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_nexmon_18_41_117.bin
 
+      - name: Build arm64 Nexmon IOCTL 413 probe
+        shell: bash
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-}"
+          if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
+            NDK="$(find "${ANDROID_SDK_ROOT}/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n1)"
+          fi
+          echo "NDK=$NDK"
+          test -d "$NDK"
+          CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
+          test -x "$CC"
+          mkdir -p bcm4375lab/src/main/jniLibs/arm64-v8a
+          "$CC" -O2 -fPIE -pie -Wall -Wextra \
+            bcm4375lab/native/nexprobe.c \
+            -o bcm4375lab/src/main/jniLibs/arm64-v8a/libnexprobe.so
+          file bcm4375lab/src/main/jniLibs/arm64-v8a/libnexprobe.so
+          sha256sum bcm4375lab/src/main/jniLibs/arm64-v8a/libnexprobe.so
+
       - name: Build RX42 firmware dump APK
         run: gradle :rx42dump:assembleDebug --stacktrace
 
@@ -74,7 +92,7 @@ jobs:
         with:
           tag_name: rx42dump-latest
           name: RX42 / BCM4375 Diagnostics - Latest
-          body: BCM4375 Lab v3 inclui preflight Nexmon BCM4375B1 18.41.117 e preparação reversível de módulo Magisk. O módulo é criado desativado por padrão.
+          body: BCM4375 Lab inclui Nexmon BCM4375B1 18.41.117, one-shot Magisk e probe nativo IOCTL 413.
           files: |
             RX42-S21-Firmware-Dump.apk
             BCM4375-Lab-S21.apk
