@@ -89,7 +89,8 @@ jobs:
           test -s bcmdhd_sta.bin_b1
           mkdir -p "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon"
           cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_marx_tplram_v1.bin"
-          sha256sum bcmdhd_sta.bin_b1 | tee "$GITHUB_WORKSPACE/marx-firmware-sha256.txt"
+          sha256sum bcmdhd_sta.bin_b1 > "$GITHUB_WORKSPACE/marx-firmware-sha256.txt"
+          cat "$GITHUB_WORKSPACE/marx-firmware-sha256.txt"
 
       - name: Pin generated firmware SHA in MARX app
         shell: bash
@@ -127,15 +128,14 @@ jobs:
           APK=bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           BADGING=$("$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK")
-          printf '%s\n' "$BADGING" | head -15
-          printf '%s\n' "$BADGING" | grep -Fq "package: name='com.alysson.marx.v1'"
-          printf '%s\n' "$BADGING" | grep -Fq "versionName='1.0.0'"
-          LABEL=$(printf '%s\n' "$BADGING" | sed -n "s/^application-label:'\(.*\)'$/\1/p" | head -1)
-          echo "APPLICATION_LABEL=$LABEL"
-          test "$LABEL" = "MARX V1.0"
+          echo "$BADGING"
+          [[ "$BADGING" == *"package: name='com.alysson.marx.v1'"* ]] || { echo "package mismatch"; exit 1; }
+          [[ "$BADGING" == *"versionName='1.0.0'"* ]] || { echo "version mismatch"; exit 1; }
+          [[ "$BADGING" == *"application-label:'MARX V1.0'"* ]] || { echo "label mismatch"; exit 1; }
           mkdir -p out
           cp "$APK" "out/MARX-V1.0.apk"
-          sha256sum "out/MARX-V1.0.apk" | tee out/APK-SHA256.txt
+          sha256sum "out/MARX-V1.0.apk" > out/APK-SHA256.txt
+          cat out/APK-SHA256.txt
           cp marx-firmware-sha256.txt out/FIRMWARE-SHA256.txt
 
       - name: Upload MARX V1.0 artifact
