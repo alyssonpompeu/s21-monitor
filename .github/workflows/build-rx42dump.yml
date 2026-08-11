@@ -1,0 +1,56 @@
+name: Build RX42 S21 Firmware Dump APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'rx42dump/**'
+      - 'settings.gradle'
+      - '.github/workflows/build-rx42dump.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'rx42dump/**'
+      - 'settings.gradle'
+      - '.github/workflows/build-rx42dump.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build RX42 firmware dump APK
+        run: gradle :rx42dump:assembleDebug --stacktrace
+
+      - name: Rename APK
+        run: cp rx42dump/build/outputs/apk/debug/rx42dump-debug.apk RX42-S21-Firmware-Dump.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RX42-S21-Firmware-Dump-APK
+          path: RX42-S21-Firmware-Dump.apk
+
+      - name: Publish latest firmware dump APK release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rx42dump-latest
+          name: RX42 S21 Firmware Dump - Latest
+          body: Aplicativo root somente leitura para copiar firmware/configuração Broadcom BCM4375B1 do Galaxy S21, calcular SHA-256 e gerar ZIP para análise Nexmon.
+          files: RX42-S21-Firmware-Dump.apk
+          make_latest: false
+          overwrite_files: true
