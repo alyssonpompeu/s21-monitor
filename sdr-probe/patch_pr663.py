@@ -19,11 +19,12 @@ block = r'''        case 0x630: // RX42/BCM4375 read-only SDR register probe
             argprintf("CHANSPEC=0x%04x\n", wlc->chanspec);
             argprintf("MONITOR=0x%08x\n", wlc->monitor);
             if (regs) {
-                argprintf("SMPL_CLCT_STRPTR=0x%04x\n", regs->u.d11acregs.smpl_clct_strptr);
-                argprintf("SMPL_CLCT_STPPTR=0x%04x\n", regs->u.d11acregs.smpl_clct_stpptr);
-                argprintf("SMPL_CLCT_CURPTR=0x%04x\n", regs->u.d11acregs.smpl_clct_curptr);
-                argprintf("SAMPLE_PLAY_CTRL=0x%04x\n", regs->u.d11acregs.SampleCollectPlayCtrl);
-                argprintf("XMT_TEMPLATE_PTR=0x%04x\n", regs->u.d11acregs.xmttplateptr);
+                volatile uint16 *r16 = (volatile uint16 *) regs;
+                argprintf("XMT_TEMPLATE_PTR=0x%04x\n", r16[0x550 >> 1]);
+                argprintf("SMPL_CLCT_STRPTR=0x%04x\n", r16[0x552 >> 1]);
+                argprintf("SMPL_CLCT_STPPTR=0x%04x\n", r16[0x554 >> 1]);
+                argprintf("SMPL_CLCT_CURPTR=0x%04x\n", r16[0x556 >> 1]);
+                argprintf("SAMPLE_PLAY_CTRL=0x%04x\n", r16[0xb2e >> 1]);
                 argprintf("SDR_REGISTER_BLOCK=ACCESSIBLE\n");
             } else {
                 argprintf("SDR_REGISTER_BLOCK=NULL\n");
