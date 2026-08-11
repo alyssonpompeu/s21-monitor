@@ -108,7 +108,6 @@ final class HdrController {
         List<String> sysfsRecords = new ArrayList<>();
         int panelNodesChanged = 0;
 
-        // Samsung/AOSP display settings. Root bypasses WRITE_SETTINGS restrictions.
         putRootSystem(Settings.System.SCREEN_BRIGHTNESS_MODE, "0");
         putRootSystem(Settings.System.SCREEN_BRIGHTNESS, "255");
         putRootSystem("screen_brightness_float", "1.0");
@@ -121,10 +120,8 @@ final class HdrController {
             putRootSystem("blue_light_filter_adaptive_mode", "0");
         }
 
-        // Ask Android's display service for full user brightness as well.
         root("cmd display set-brightness 1.0 >/dev/null 2>&1 || true");
 
-        // Enable known Samsung HBM controls only when the kernel actually exposes them.
         for (String path : HBM_NODES) {
             String old = rootRead(path);
             if (old == null) continue;
@@ -136,7 +133,6 @@ final class HdrController {
             }
         }
 
-        // Force every exposed backlight device to its own reported maximum.
         ShellResult backlights = root(
                 "for d in /sys/class/backlight/*; do " +
                 "if [ -r \"$d/brightness\" ] && [ -r \"$d/max_brightness\" ]; then " +
@@ -178,7 +174,12 @@ final class HdrController {
         boolean wasRoot = p.getBoolean(ROOT_MODE, false);
         int restored = 0;
 
-        if (wasRoot && hasRoot()) {
+        if (wasRoot) {
+            if (!hasRoot()) {
+                return new ToggleResult(true, true, 0,
+                        "Root é necessário para restaurar os controles do painel. Conceda acesso root e toque novamente para desativar com segurança.");
+            }
+
             restoreRootSettings(p);
             String records = p.getString(SYSFS_RECORDS, "");
             if (records != null && !records.isEmpty()) {
@@ -188,7 +189,6 @@ final class HdrController {
                     if (rootWrite(parts[0], parts[1])) restored++;
                 }
             }
-            root("cmd display reset-brightness-configuration >/dev/null 2>&1 || true");
         } else {
             restoreLegacy(context);
         }
