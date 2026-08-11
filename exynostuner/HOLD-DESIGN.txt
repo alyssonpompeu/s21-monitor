@@ -1,0 +1,1 @@
+Performance Hold: governors + reapply only below safe temperature. Thermal protection remains enabled.
