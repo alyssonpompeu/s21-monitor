@@ -7,7 +7,7 @@
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity
-            android:name=".NexmonActivity"
+            android:name=".NexmonActivity303"
             android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
@@ -15,5 +15,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".NexmonActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
     </application>
 </manifest>
