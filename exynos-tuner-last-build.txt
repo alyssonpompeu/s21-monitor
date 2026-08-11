@@ -1,5 +1,5 @@
-run_id=31451313617
-head_sha=4d0c238ae2bcdafb0060b8e0003f0db4c81907b5
+run_id=31547839814
+head_sha=4acefe0b44cd547555fd97e418ce2109813001b1
 exit_code=0
 --- build log tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
@@ -19,6 +19,7 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :exynostuner:processDebugMainManifest
 > Task :exynostuner:processDebugManifest
 > Task :exynostuner:mergeDebugShaders
+> Task :exynostuner:processDebugManifestForPackage
 > Task :exynostuner:compileDebugShaders NO-SOURCE
 > Task :exynostuner:generateDebugAssets UP-TO-DATE
 > Task :exynostuner:mergeDebugAssets
@@ -27,7 +28,6 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :exynostuner:processDebugJavaRes NO-SOURCE
 > Task :exynostuner:checkDebugDuplicateClasses
 > Task :exynostuner:mergeDebugJniLibFolders
-> Task :exynostuner:processDebugManifestForPackage
 > Task :exynostuner:mergeExtDexDebug
 > Task :exynostuner:mergeLibDexDebug
 > Task :exynostuner:mergeDebugJavaResource
@@ -44,7 +44,7 @@ Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :exynostuner:packageDebug
 > Task :exynostuner:createDebugApkListingFileRedirect
 > Task :exynostuner:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786413965811.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/build-1786492109369.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
 
@@ -54,5 +54,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 17s
+BUILD SUCCESSFUL in 20s
 32 actionable tasks: 32 executed
