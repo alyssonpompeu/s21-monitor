@@ -8,7 +8,7 @@
         android:usesCleartextTraffic="false"
         android:extractNativeLibs="true">
         <activity
-            android:name=".NexmonExactLoaderV37Activity"
+            android:name=".NexmonFirmwareClassV38Activity"
             android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
@@ -16,6 +16,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".NexmonExactLoaderV37Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".NexmonMonitorBounceV36Activity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".NexmonMonitorBounceActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".NexmonRuntimeReloadActivity" android:screenOrientation="portrait" android:exported="false" />
