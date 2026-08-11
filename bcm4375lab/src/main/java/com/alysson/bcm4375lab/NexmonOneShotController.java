@@ -17,13 +17,14 @@ import java.util.zip.ZipOutputStream;
 
 final class NexmonOneShotController {
     static final String MODULE_ID = "bcm4375_nexmon_oneshot";
-    static final String MODULE_DIR = "/data/adb/modules/" + MODULE_ID;
+    static final String ACTIVE_DIR = "/data/adb/modules/" + MODULE_ID;
+    static final String STAGED_DIR = "/data/adb/modules_update/" + MODULE_ID;
     static final String STOCK_SHA = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad";
-    static final String NEXMON_SHA = "ec77f799a989e8104322d3c51901685426389c435a968e30d89f134f47c03d0c";
+    static final String NEXMON_SHA = "4ecea63a782f8378d750a7257a9edbdd5d9b164bf1e97ac30a8ab0be5fd98e41";
     static final String RELEASE_URL = "https://github.com/alyssonpompeu/s21-monitor/releases/download/nexmon-bcm4375-18.41.117/bcmdhd_sta_nexmon_18_41_117.bin";
-
     static final String STOCK_PATH = "/vendor/firmware/bcmdhd_sta.bin_b1";
-    static final String MODULE_FW_PATH = MODULE_DIR + "/system/vendor/firmware/bcmdhd_sta.bin_b1";
+    static final String RESULT_PATH = "/data/adb/bcm4375_nexmon_oneshot_result.txt";
+    static final String STATE_PATH = "/data/adb/bcm4375_nexmon_oneshot_state.txt";
 
     static String wifiver() {
         return RootReader.run("cat /sys/wifi/wifiver 2>/dev/null", 5).output;
@@ -43,20 +44,34 @@ final class NexmonOneShotController {
     }
 
     static boolean magiskReady() {
-        RootReader.Result r = RootReader.run("command -v magisk >/dev/null 2>&1 && test -d /data/adb/modules && test -w /data/adb/modules", 5);
+        RootReader.Result r = RootReader.run(
+                "command -v magisk >/dev/null 2>&1 && " +
+                "test -d /data/adb/modules && test -w /data/adb && " +
+                "test -f /data/adb/magisk/util_functions.sh", 5);
         return r.code == 0 && !r.timedOut;
     }
 
     static String moduleState() {
-        return RootReader.run(
-                "if [ ! -d '" + MODULE_DIR + "' ]; then echo ABSENT; " +
-                "elif [ -e '" + MODULE_DIR + "/remove' ]; then echo REMOVE_PENDING; " +
-                "elif [ -e '" + MODULE_DIR + "/disable' ]; then echo DISABLED; " +
-                "else echo ARMED; fi", 4).output.trim();
+        String cmd =
+                "if [ -d '" + STAGED_DIR + "' ]; then " +
+                "  if [ -e '" + STAGED_DIR + "/remove' ]; then echo STAGED_REMOVE_PENDING; " +
+                "  elif [ -e '" + STAGED_DIR + "/disable' ]; then echo STAGED_DISABLED; else echo STAGED_ARMED; fi; " +
+                "elif [ -d '" + ACTIVE_DIR + "' ]; then " +
+                "  if [ -e '" + ACTIVE_DIR + "/remove' ]; then echo ACTIVE_REMOVE_PENDING; " +
+                "  elif [ -e '" + ACTIVE_DIR + "/disable' ]; then echo ACTIVE_DISABLED; else echo ACTIVE_ARMED; fi; " +
+                "else echo ABSENT; fi";
+        return RootReader.run(cmd, 4).output.trim();
     }
 
     static String moduleFirmwareSha() {
-        return RootReader.run("sha256sum '" + MODULE_FW_PATH + "' 2>/dev/null | cut -d' ' -f1", 8).output.trim();
+        String cmd =
+                "D='" + ACTIVE_DIR + "'; [ -d '" + STAGED_DIR + "' ] && D='" + STAGED_DIR + "'; " +
+                "sha256sum \"$D/system/vendor/firmware/bcmdhd_sta.bin_b1\" 2>/dev/null | cut -d' ' -f1";
+        return RootReader.run(cmd, 8).output.trim();
+    }
+
+    static boolean resultExists() {
+        return RootReader.run("test -f '" + RESULT_PATH + "'", 3).code == 0;
     }
 
     static File downloadVerifiedFirmware(Context context, Progress progress) throws Exception {
@@ -67,7 +82,7 @@ final class NexmonOneShotController {
         }
         if (out.exists()) out.delete();
 
-        if (progress != null) progress.onProgress("Baixando firmware Nexmon verificado do GitHub…");
+        if (progress != null) progress.onProgress("Baixando firmware Nexmon reprodutível verificado…");
         HttpURLConnection conn = (HttpURLConnection) new URL(RELEASE_URL).openConnection();
         conn.setConnectTimeout(15000);
         conn.setReadTimeout(30000);
@@ -115,23 +130,32 @@ final class NexmonOneShotController {
         String moduleProp =
                 "id=" + MODULE_ID + "\n" +
                 "name=BCM4375B1 Nexmon One-Shot\n" +
-                "version=18.41.117-pr663\n" +
-                "versionCode=1\n" +
+                "version=18.41.117-pr663-repro\n" +
+                "versionCode=2\n" +
                 "author=BCM4375 Lab\n" +
-                "description=One-shot Nexmon BCM4375B1 test; auto-disables itself for the next boot.\n";
+                "description=One-shot Nexmon BCM4375B1 test with next-boot auto-disable.\n";
 
+        // Do NOT create disable here: Magisk recollects modules after post-fs-data scripts,
+        // so disabling here would prevent this boot's overlay from being applied.
         String postFs =
+                "#!/system/bin/sh\n" +
+                "{ echo post_fs_data_reached=YES; date; } > " + STATE_PATH + " 2>&1\n";
+
+        // service.sh runs after the module overlay has been applied. Creating disable here
+        // leaves this boot mounted while guaranteeing the following boot is stock.
+        String service =
                 "#!/system/bin/sh\n" +
                 "MODDIR=${0%/*}\n" +
                 "touch \"$MODDIR/disable\"\n" +
-                "{ echo one_shot_auto_disabled=YES; date; } > /data/adb/bcm4375_nexmon_oneshot_state.txt 2>&1\n";
-
-        String service =
-                "#!/system/bin/sh\n" +
+                "sync\n" +
+                "{ echo service_auto_disabled_next_boot=YES; date; } >> " + STATE_PATH + " 2>&1\n" +
                 "sleep 8\n" +
                 "{\n" +
                 "  echo 'BCM4375 Nexmon one-shot boot result'\n" +
                 "  date\n" +
+                "  echo '-- module dir --'\n" +
+                "  echo \"$MODDIR\"\n" +
+                "  ls -laZ \"$MODDIR\" 2>&1\n" +
                 "  echo '-- wifiver --'\n" +
                 "  cat /sys/wifi/wifiver 2>&1\n" +
                 "  echo '-- firmware sha --'\n" +
@@ -143,8 +167,8 @@ final class NexmonOneShotController {
                 "  echo '-- selinux --'\n" +
                 "  getenforce 2>&1\n" +
                 "  echo '-- dhd log --'\n" +
-                "  dmesg | grep -iE 'dhd|bcmdhd|nexmon|firmware|4375|monitor|radiotap' | tail -260\n" +
-                "} > /data/adb/bcm4375_nexmon_oneshot_result.txt 2>&1\n";
+                "  dmesg | grep -iE 'dhd|bcmdhd|nexmon|firmware|4375|monitor|radiotap' | tail -280\n" +
+                "} > " + RESULT_PATH + " 2>&1\n";
 
         try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zip))) {
             putText(zos, "module.prop", moduleProp);
@@ -158,29 +182,44 @@ final class NexmonOneShotController {
     static RootReader.Result installDisabledModule(File moduleZip) {
         String path = shellQuote(moduleZip.getAbsolutePath());
         String cmd =
+                "rm -f '" + RESULT_PATH + "' '" + STATE_PATH + "'; " +
                 "magisk --install-module " + path + " && " +
-                "test -d '" + MODULE_DIR + "' && " +
-                "chmod 0755 '" + MODULE_DIR + "/post-fs-data.sh' '" + MODULE_DIR + "/service.sh' && " +
-                "chmod 0644 '" + MODULE_FW_PATH + "' && " +
-                "touch '" + MODULE_DIR + "/disable' && sync";
+                "D=''; [ -d '" + STAGED_DIR + "' ] && D='" + STAGED_DIR + "'; " +
+                "[ -z \"$D\" ] && [ -d '" + ACTIVE_DIR + "' ] && D='" + ACTIVE_DIR + "'; " +
+                "test -n \"$D\" && " +
+                "chmod 0755 \"$D/post-fs-data.sh\" \"$D/service.sh\" && " +
+                "chmod 0644 \"$D/system/vendor/firmware/bcmdhd_sta.bin_b1\" && " +
+                "test \"$(sha256sum \"$D/system/vendor/firmware/bcmdhd_sta.bin_b1\" | cut -d' ' -f1)\" = '" + NEXMON_SHA + "' && " +
+                "rm -f \"$D/remove\" && touch \"$D/disable\" && sync";
         return RootReader.run(cmd, 45);
     }
 
     static RootReader.Result armNextBoot() {
         String cmd =
-                "test -d '" + MODULE_DIR + "' && " +
-                "test \"$(sha256sum '" + MODULE_FW_PATH + "' 2>/dev/null | cut -d' ' -f1)\" = '" + NEXMON_SHA + "' && " +
-                "rm -f '" + MODULE_DIR + "/remove' '" + MODULE_DIR + "/disable' && sync && " +
-                "test ! -e '" + MODULE_DIR + "/disable'";
+                "D=''; [ -d '" + STAGED_DIR + "' ] && D='" + STAGED_DIR + "'; " +
+                "[ -z \"$D\" ] && [ -d '" + ACTIVE_DIR + "' ] && D='" + ACTIVE_DIR + "'; " +
+                "test -n \"$D\" && " +
+                "test \"$(sha256sum \"$D/system/vendor/firmware/bcmdhd_sta.bin_b1\" 2>/dev/null | cut -d' ' -f1)\" = '" + NEXMON_SHA + "' && " +
+                "rm -f \"$D/remove\" \"$D/disable\" && sync && test ! -e \"$D/disable\"";
         return RootReader.run(cmd, 10);
     }
 
     static RootReader.Result disarmNextBoot() {
-        return RootReader.run("test -d '" + MODULE_DIR + "' && touch '" + MODULE_DIR + "/disable' && sync", 8);
+        String cmd =
+                "FOUND=0; " +
+                "for D in '" + STAGED_DIR + "' '" + ACTIVE_DIR + "'; do " +
+                "  if [ -d \"$D\" ]; then touch \"$D/disable\"; FOUND=1; fi; " +
+                "done; sync; [ $FOUND -eq 1 ]";
+        return RootReader.run(cmd, 8);
     }
 
     static RootReader.Result scheduleRemoval() {
-        return RootReader.run("test -d '" + MODULE_DIR + "' && touch '" + MODULE_DIR + "/disable' '" + MODULE_DIR + "/remove' && sync", 8);
+        String cmd =
+                "FOUND=0; " +
+                "for D in '" + STAGED_DIR + "' '" + ACTIVE_DIR + "'; do " +
+                "  if [ -d \"$D\" ]; then touch \"$D/disable\" \"$D/remove\"; FOUND=1; fi; " +
+                "done; sync; [ $FOUND -eq 1 ]";
+        return RootReader.run(cmd, 8);
     }
 
     static RootReader.Result reboot() {
@@ -194,13 +233,15 @@ final class NexmonOneShotController {
         out.append("module_fw_sha=").append(moduleFirmwareSha()).append('\n');
         out.append("current_vendor_fw_sha=").append(currentFirmwareSha()).append('\n');
         out.append("nexmon_active=").append(isNexmonActive()).append('\n');
+        out.append("result_exists=").append(resultExists()).append('\n');
         out.append("\n=== WIFIVER ===\n").append(wifiver());
         out.append("\n=== MAGISK ===\n").append(magiskInfo());
         out.append("\n=== SELINUX ===\n").append(RootReader.run("getenforce 2>&1", 3).output);
-        out.append("\n=== MODULE FILES ===\n").append(RootReader.run("ls -laZ '" + MODULE_DIR + "' '" + MODULE_DIR + "/system/vendor/firmware' 2>&1", 5).output);
-        out.append("\n=== AUTO BOOT STATE ===\n").append(RootReader.run("cat /data/adb/bcm4375_nexmon_oneshot_state.txt 2>&1", 4).output);
-        out.append("\n=== AUTO BOOT RESULT ===\n").append(RootReader.run("cat /data/adb/bcm4375_nexmon_oneshot_result.txt 2>&1", 6).output);
-        out.append("\n=== LIVE DHD LOG ===\n").append(RootReader.run("dmesg | grep -iE 'dhd|bcmdhd|nexmon|firmware|4375|monitor|radiotap' | tail -320", 8).output);
+        out.append("\n=== ACTIVE MODULE ===\n").append(RootReader.run("ls -laZ '" + ACTIVE_DIR + "' '" + ACTIVE_DIR + "/system/vendor/firmware' 2>&1", 5).output);
+        out.append("\n=== STAGED MODULE ===\n").append(RootReader.run("ls -laZ '" + STAGED_DIR + "' '" + STAGED_DIR + "/system/vendor/firmware' 2>&1", 5).output);
+        out.append("\n=== AUTO BOOT STATE ===\n").append(RootReader.run("cat '" + STATE_PATH + "' 2>&1", 4).output);
+        out.append("\n=== AUTO BOOT RESULT ===\n").append(RootReader.run("cat '" + RESULT_PATH + "' 2>&1", 6).output);
+        out.append("\n=== LIVE DHD LOG ===\n").append(RootReader.run("dmesg | grep -iE 'dhd|bcmdhd|nexmon|firmware|4375|monitor|radiotap' | tail -340", 8).output);
         return out.toString();
     }
 
