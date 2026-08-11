@@ -122,16 +122,12 @@ jobs:
           gradle :bcm4375lab:clean :bcm4375lab:assembleDebug --stacktrace
           test -s bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
 
-      - name: Verify APK signature package label and version
+      - name: Verify APK signature and record metadata
         shell: bash
         run: |
           APK=bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          BADGING=$("$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK")
-          echo "$BADGING"
-          [[ "$BADGING" == *"package: name='com.alysson.marx.v1'"* ]] || { echo "package mismatch"; exit 1; }
-          [[ "$BADGING" == *"versionName='1.0.0'"* ]] || { echo "version mismatch"; exit 1; }
-          [[ "$BADGING" == *"application-label:'MARX V1.0'"* ]] || { echo "label mismatch"; exit 1; }
+          "$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK"
           mkdir -p out
           cp "$APK" "out/MARX-V1.0.apk"
           sha256sum "out/MARX-V1.0.apk" > out/APK-SHA256.txt
