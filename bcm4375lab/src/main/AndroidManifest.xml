@@ -8,7 +8,7 @@
         android:usesCleartextTraffic="false"
         android:extractNativeLibs="true">
         <activity
-            android:name=".NexmonTransportTriageActivity"
+            android:name=".NexmonRuntimeReloadActivity"
             android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
@@ -16,8 +16,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".NexmonTransportTriageActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".NexmonProbeActivity" android:screenOrientation="portrait" android:exported="false" />
-        <activity android:name=".NexmonRuntimeReloadActivity" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".NexmonActivity303" android:screenOrientation="portrait" android:exported="false" />
         <activity android:name=".NexmonActivity" android:screenOrientation="portrait" android:exported="false" />
     </application>
