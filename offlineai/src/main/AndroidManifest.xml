@@ -2,14 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Remove any transitive Internet permission: attachments, OCR and inference stay local. -->
+    <!-- Remove any transitive Internet permission: projects, OCR and inference stay local. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
 
     <application
         android:allowBackup="false"
         android:extractNativeLibs="true"
         android:hardwareAccelerated="true"
-        android:label="IA Offline PT-BR 2B"
+        android:label="IA Offline Workspace"
         android:largeHeap="true"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
