@@ -1,19 +1,16 @@
-name: Build Nexmon BCM4375B1 18.41.117
+name: Build Nexmon BCM4375B1 18.41.117 SDR Probe
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [ "main" ]
-    paths:
-      - '.github/workflows/build-nexmon-bcm4375.yml'
   pull_request:
     branches: [ "main" ]
     paths:
       - '.github/workflows/build-nexmon-bcm4375.yml'
       - 'nexmon-build-check.txt'
+      - 'sdr-probe/**'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -26,37 +23,54 @@ jobs:
           sudo apt-get install -y git gawk qpdf flex libfl-dev bison xxd make patch python3 zlib1g-dev \
             libc6:i386 libstdc++6:i386 zlib1g:i386 libncurses5:i386
 
-      - name: Clone exact Nexmon BCM4375B1 18.41.117 patch
+      - name: Clone exact Nexmon BCM4375B1 18.41.117 PR663
         run: |
           git clone --depth 1 https://github.com/seemoo-lab/nexmon.git nexmon
           cd nexmon
           git fetch --depth 1 origin pull/663/head:pr663
           git checkout pr663
           test "$(git rev-parse HEAD)" = "fd117f434e1c479f6819a0ba31f9ca82d75f8a3a"
-
-          # Legacy b43 assembler links libl; modern Ubuntu ships flex as libfl.
           sed -i 's/LDFLAGS[[:space:]]*+=[[:space:]]*-ll/LDFLAGS\t\t+= -lfl/' buildtools/b43/assembler/Makefile
-
-          # PR 663 embeds __DATE__/__TIME__ in the firmware. Pin only those
-          # metadata strings to obtain a byte-for-byte reproducible image.
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("patches/bcm4375b1/18_41_117_sta/nexmon/src/version.c")
-          s = p.read_text()
-          old_date = "char date[] = __DATE__;"
-          old_time = "char time[] = __TIME__;"
-          assert old_date in s and old_time in s
-          s = s.replace(old_date, 'char date[] = "Jun  6 2025";')
-          s = s.replace(old_time, 'char time[] = "19:18:40";')
-          p.write_text(s)
-          PY
-          grep -nE 'char (date|time)' patches/bcm4375b1/18_41_117_sta/nexmon/src/version.c
 
       - name: Verify stock firmware identity
         run: |
+          test "$(sha256sum nexmon/firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1 | cut -d' ' -f1)" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
+
+      - name: Add read-only IOCTL 0x630 sample-playback register probe
+        run: |
           cd nexmon
-          sha256sum firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1
-          test "$(sha256sum firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1 | cut -d' ' -f1)" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c')
+          s = p.read_text()
+          marker = '        case 0x621:\n'
+          assert marker in s, 'PR663 ioctl insertion point changed'
+          block = r'''        case 0x630: // RX42/BCM4375 read-only SDR register probe
+        {
+            volatile struct d11regs *regs = wlc->regs;
+            argprintf("RX42_SDR_PROBE=1\n");
+            argprintf("COREREV=%u\n", wlc->hw ? wlc->hw->corerev : 0xffffffff);
+            argprintf("CHANSPEC=0x%04x\n", wlc->chanspec);
+            argprintf("MONITOR=0x%08x\n", wlc->monitor);
+            if (regs) {
+                argprintf("SMPL_CLCT_STRPTR=0x%04x\n", regs->u.d11acregs.smpl_clct_strptr);
+                argprintf("SMPL_CLCT_STPPTR=0x%04x\n", regs->u.d11acregs.smpl_clct_stpptr);
+                argprintf("SMPL_CLCT_CURPTR=0x%04x\n", regs->u.d11acregs.smpl_clct_curptr);
+                argprintf("SAMPLE_PLAY_CTRL=0x%04x\n", regs->u.d11acregs.SampleCollectPlayCtrl);
+                argprintf("XMT_TEMPLATE_PTR=0x%04x\n", regs->u.d11acregs.xmttplateptr);
+                argprintf("SDR_REGISTER_BLOCK=ACCESSIBLE\n");
+            } else {
+                argprintf("SDR_REGISTER_BLOCK=NULL\n");
+            }
+            argprintf("TX_ENABLED_BY_THIS_PROBE=0\n");
+            ret = IOCTL_SUCCESS;
+        }
+        break;
+
+'''
+          p.write_text(s.replace(marker, block + marker, 1))
+          PY
+          grep -n -A28 -B2 'case 0x630' patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
 
       - name: Build Nexmon tools and extract firmware components
         shell: bash
@@ -65,7 +79,7 @@ jobs:
           source setup_env.sh
           make -j2
 
-      - name: Build patched BCM4375B1 firmware
+      - name: Build BCM4375B1 SDR probe firmware
         shell: bash
         run: |
           cd nexmon
@@ -73,34 +87,17 @@ jobs:
           cd patches/bcm4375b1/18_41_117_sta/nexmon
           make init
           make -j1
-          sha256sum bcmdhd_sta.bin_b1 | tee patched-sha256.txt
-          stat -c '%n %s bytes' bcmdhd_sta.bin_b1
-          strings -a bcmdhd_sta.bin_b1 | grep -E 'NEXMON|18\.41\.117|FW-TAG|Jun  6 2025|19:18:40' | tail -n 30 || true
-
-      - name: Verify deterministic firmware SHA-256
-        run: |
-          mkdir -p out
-          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/bcmdhd_sta.bin_b1 out/bcmdhd_sta_nexmon_18_41_117.bin
-          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/patched-sha256.txt out/
-          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/compiler.log out/ 2>/dev/null || true
-          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/linker.err out/ 2>/dev/null || true
-          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/patches.log out/ 2>/dev/null || true
-          cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/flashpatches.log out/ 2>/dev/null || true
-          sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin
-          test "$(sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin | cut -d' ' -f1)" = "e46d2dfc7293b7d84577527d31b93334dcf6d318b270f4e53e137d48689395c0"
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/out/bcmdhd_sta_rx42_sdr_probe_v1.bin"
+          sha256sum bcmdhd_sta.bin_b1 | tee "$GITHUB_WORKSPACE/out/sha256.txt"
+          stat -c '%n %s bytes' bcmdhd_sta.bin_b1 | tee "$GITHUB_WORKSPACE/out/stat.txt"
+          cp log/compiler.log "$GITHUB_WORKSPACE/out/" 2>/dev/null || true
+          cp log/linker.err "$GITHUB_WORKSPACE/out/" 2>/dev/null || true
+          cp log/patches.log "$GITHUB_WORKSPACE/out/" 2>/dev/null || true
+          cp log/flashpatches.log "$GITHUB_WORKSPACE/out/" 2>/dev/null || true
+          strings -a bcmdhd_sta.bin_b1 | grep -E '18\.41\.117|nexmon.org' | tail -20 > "$GITHUB_WORKSPACE/out/strings.txt" || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Nexmon-BCM4375B1-18.41.117-deterministic
+          name: BCM4375-RX42-SDR-Probe-v1
           path: out/
-
-      - name: Publish deterministic Nexmon firmware release asset
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: nexmon-bcm4375-18.41.117
-          name: Nexmon BCM4375B1 18.41.117 - deterministic verified build
-          body: Built from seemoo-lab/nexmon PR 663 commit fd117f434e1c479f6819a0ba31f9ca82d75f8a3a for BCM4375B1 firmware 18.41.117. Stock base SHA-256 1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad. Patched deterministic SHA-256 e46d2dfc7293b7d84577527d31b93334dcf6d318b270f4e53e137d48689395c0. Only version.c build date/time metadata is pinned for reproducibility.
-          files: out/bcmdhd_sta_nexmon_18_41_117.bin
-          make_latest: false
-          overwrite_files: true
