@@ -26,25 +26,38 @@ jobs:
           sudo apt-get install -y git gawk qpdf flex libfl-dev bison xxd make patch python3 zlib1g-dev \
             libc6:i386 libstdc++6:i386 zlib1g:i386 libncurses5:i386
 
-      - name: Clone Nexmon and checkout BCM4375B1 18.41.117 PR
+      - name: Clone exact Nexmon BCM4375B1 18.41.117 patch
         run: |
           git clone --depth 1 https://github.com/seemoo-lab/nexmon.git nexmon
           cd nexmon
           git fetch --depth 1 origin pull/663/head:pr663
           git checkout pr663
-          git rev-parse HEAD
           test "$(git rev-parse HEAD)" = "fd117f434e1c479f6819a0ba31f9ca82d75f8a3a"
-          echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+
           # Legacy b43 assembler links libl; modern Ubuntu ships flex as libfl.
           sed -i 's/LDFLAGS[[:space:]]*+=[[:space:]]*-ll/LDFLAGS\t\t+= -lfl/' buildtools/b43/assembler/Makefile
 
-      - name: Verify original firmware identity
+          # PR 663 embeds __DATE__/__TIME__ in the patched firmware. The ARM toolchain
+          # does not honor SOURCE_DATE_EPOCH for those macros, so pin only these
+          # build-metadata strings to make independent builds byte-for-byte reproducible.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("patches/bcm4375b1/18_41_117_sta/nexmon/src/version.c")
+          s = p.read_text()
+          old_date = "char date[] = __DATE__;"
+          old_time = "char time[] = __TIME__;"
+          assert old_date in s and old_time in s
+          s = s.replace(old_date, 'char date[] = "Jun  6 2025";')
+          s = s.replace(old_time, 'char time[] = "19:18:40";')
+          p.write_text(s)
+          PY
+          grep -nE 'char (date|time)' patches/bcm4375b1/18_41_117_sta/nexmon/src/version.c
+
+      - name: Verify stock firmware identity
         run: |
           cd nexmon
           sha256sum firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1
           test "$(sha256sum firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1 | cut -d' ' -f1)" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
-          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
-          date -u -d "@$SOURCE_DATE_EPOCH"
 
       - name: Build Nexmon tools and extract firmware components
         shell: bash
@@ -53,7 +66,7 @@ jobs:
           source setup_env.sh
           make -j2
 
-      - name: Build patched BCM4375B1 firmware reproducibly
+      - name: Build patched BCM4375B1 firmware
         shell: bash
         run: |
           cd nexmon
@@ -63,9 +76,9 @@ jobs:
           make -j1
           sha256sum bcmdhd_sta.bin_b1 | tee patched-sha256.txt
           stat -c '%n %s bytes' bcmdhd_sta.bin_b1
-          strings -a bcmdhd_sta.bin_b1 | grep -E 'NEXMON|18\.41\.117|FW-TAG|^[A-Z][a-z]{2} [ 0-9][0-9] 20[0-9][0-9]$' | tail -n 30 || true
+          strings -a bcmdhd_sta.bin_b1 | grep -E 'NEXMON|18\.41\.117|FW-TAG|Jun  6 2025|19:18:40' | tail -n 30 || true
 
-      - name: Package and verify deterministic build
+      - name: Package deterministic build candidate
         run: |
           mkdir -p out
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/bcmdhd_sta.bin_b1 out/bcmdhd_sta_nexmon_18_41_117.bin
@@ -75,20 +88,8 @@ jobs:
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/patches.log out/ 2>/dev/null || true
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/flashpatches.log out/ 2>/dev/null || true
           sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin
-          test "$(sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin | cut -d' ' -f1)" = "4ecea63a782f8378d750a7257a9edbdd5d9b164bf1e97ac30a8ab0be5fd98e41"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Nexmon-BCM4375B1-18.41.117-patched-firmware
+          name: Nexmon-BCM4375B1-18.41.117-deterministic-candidate
           path: out/
-
-      - name: Publish verified reproducible Nexmon firmware release asset
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: nexmon-bcm4375-18.41.117
-          name: Nexmon BCM4375B1 18.41.117 - reproducible build
-          body: Reproducible build from seemoo-lab/nexmon PR 663 commit fd117f434e1c479f6819a0ba31f9ca82d75f8a3a for BCM4375B1 firmware 18.41.117. SOURCE_DATE_EPOCH is pinned to the PR commit timestamp. Stock base SHA-256 1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad. Patched SHA-256 4ecea63a782f8378d750a7257a9edbdd5d9b164bf1e97ac30a8ab0be5fd98e41.
-          files: out/bcmdhd_sta_nexmon_18_41_117.bin
-          make_latest: false
-          overwrite_files: true
