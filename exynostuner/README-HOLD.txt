@@ -1,0 +1,1 @@
+Performance Hold seguro: mantém limites/governors enquanto não houver thermal throttling relevante. Nunca desativa proteção térmica.
