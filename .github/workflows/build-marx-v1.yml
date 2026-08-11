@@ -1,0 +1,162 @@
+name: Build MARX V1.0
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "marx-v1.0" ]
+    paths:
+      - '.github/workflows/build-marx-v1.yml'
+      - 'bcm4375lab/**'
+      - 'sdr-probe/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout MARX V1.0 branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android NDK and build tools
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+
+      - name: Install Nexmon build dependencies
+        shell: bash
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y git gawk qpdf flex libfl-dev bison xxd make patch python3 zlib1g-dev \
+            libc6:i386 libstdc++6:i386 zlib1g:i386 libncurses5:i386
+
+      - name: Clone exact Nexmon PR663 for BCM4375B1 18.41.117
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/seemoo-lab/nexmon.git nexmon
+          cd nexmon
+          git fetch --depth 1 origin pull/663/head:pr663
+          git checkout pr663
+          test "$(git rev-parse HEAD)" = "fd117f434e1c479f6819a0ba31f9ca82d75f8a3a"
+          sed -i 's/LDFLAGS[[:space:]]*+=[[:space:]]*-ll/LDFLAGS\t\t+= -lfl/' buildtools/b43/assembler/Makefile
+
+      - name: Verify stock Samsung BCM4375B1 firmware identity
+        shell: bash
+        run: |
+          FW=nexmon/firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1
+          ACTUAL=$(sha256sum "$FW" | awk '{print $1}')
+          test "$ACTUAL" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
+          echo "STOCK_SHA256=$ACTUAL"
+
+      - name: Apply MARX 0x630 + 0x631 explicit-pointer TX-OFF patch
+        shell: bash
+        run: |
+          python3 sdr-probe/patch_pr663.py nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
+          grep -n -A120 -B3 'case 0x631' nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
+          grep -A120 'case 0x631' nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c | grep 'ADDRESSING=EXPLICIT_PTR_PER_WORD'
+          ! grep -A120 'case 0x631' nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c | grep -E 'runsamples|stopplayback|SampleCollectPlayCtrl[^A-Z_].*='
+
+      - name: Build patched Nexmon firmware
+        shell: bash
+        run: |
+          cd nexmon
+          source setup_env.sh
+          make -j2
+          cd patches/bcm4375b1/18_41_117_sta/nexmon
+          make init
+          make -j1
+          test -s bcmdhd_sta.bin_b1
+          mkdir -p "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon"
+          cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_marx_tplram_v1.bin"
+          sha256sum bcmdhd_sta.bin_b1 | tee "$GITHUB_WORKSPACE/marx-firmware-sha256.txt"
+
+      - name: Pin generated firmware SHA in MARX app
+        shell: bash
+        run: |
+          SHA=$(awk '{print $1}' marx-firmware-sha256.txt)
+          test -n "$SHA"
+          sed -i "s/MARX_TPLRAM_V1_SHA/$SHA/g" bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java
+          grep -n 'EXPECTED_SHA' bcm4375lab/src/main/java/com/alysson/bcm4375lab/Rx42PhyProbeV1Activity.java
+
+      - name: Build ARM64 root probes with Android NDK
+        shell: bash
+        run: |
+          NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
+          test -x "$CC"
+          OUT=bcm4375lab/src/main/jniLibs/arm64-v8a
+          mkdir -p "$OUT"
+          "$CC" -O2 -fPIE -pie bcm4375lab/native/nexprobe.c -o "$OUT/libnexprobe.so"
+          "$CC" -O2 -fPIE -pie bcm4375lab/native/sdrrx42probe.c -o "$OUT/libsdrrx42probe.so"
+          "$CC" -O2 -fPIE -pie bcm4375lab/native/monrx.c -o "$OUT/libmonrx.so"
+          file "$OUT"/*.so
+          test -x "$OUT/libnexprobe.so"
+          test -x "$OUT/libsdrrx42probe.so"
+          test -x "$OUT/libmonrx.so"
+
+      - name: Build installable MARX APK with Gradle
+        shell: bash
+        run: |
+          gradle :bcm4375lab:clean :bcm4375lab:assembleDebug --stacktrace
+          test -s bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
+
+      - name: Verify APK signature package label and version
+        shell: bash
+        run: |
+          APK=bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
+          "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          BADGING=$("$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK")
+          echo "$BADGING" | head -15
+          echo "$BADGING" | grep "package: name='com.alysson.marx.v1'"
+          echo "$BADGING" | grep "versionName='1.0.0'"
+          echo "$BADGING" | grep "application-label:'MARX V1.0'"
+          mkdir -p out
+          cp "$APK" "out/MARX-V1.0.apk"
+          sha256sum "out/MARX-V1.0.apk" | tee out/APK-SHA256.txt
+          cp marx-firmware-sha256.txt out/FIRMWARE-SHA256.txt
+
+      - name: Upload MARX V1.0 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MARX-V1.0
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish MARX V1.0 GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: marx-v1.0-github-latest
+          name: MARX V1.0
+          body: |
+            MARX V1.0 for Galaxy S21 SM-G991B / BCM4375B1 18.41.117.
+            Built with GitHub Actions from Nexmon PR663.
+            IOCTL 0x631 uses explicit Template RAM pointer addressing for each 32-bit word.
+            It performs bounded write/read/restore only. Sample playback is not invoked and TX_TRIGGERED remains 0.
+          files: |
+            out/MARX-V1.0.apk
+            out/APK-SHA256.txt
+            out/FIRMWARE-SHA256.txt
+          make_latest: false
+          overwrite_files: true
