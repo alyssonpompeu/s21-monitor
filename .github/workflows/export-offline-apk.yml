@@ -1,0 +1,79 @@
+name: Export Offline AI APK Chunks
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  export-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download compiled APK from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download offline-ai-v1 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'IA-Offline-PTBR-S21.apk' \
+            --clobber
+          test -s IA-Offline-PTBR-S21.apk
+          sha256sum IA-Offline-PTBR-S21.apk | tee IA-Offline-PTBR-S21.apk.sha256
+
+      - name: Split APK into Drive-compatible chunks
+        run: |
+          split -b 90M -d -a 1 IA-Offline-PTBR-S21.apk IA-Offline-PTBR-S21.apk.part-
+          for n in 0 1 2 3 4 5 6; do test -f "IA-Offline-PTBR-S21.apk.part-$n"; done
+          ls -lh IA-Offline-PTBR-S21.apk.part-*
+
+      - name: Upload APK chunk 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-drive-part-0
+          path: IA-Offline-PTBR-S21.apk.part-0
+          compression-level: 0
+      - name: Upload APK chunk 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-drive-part-1
+          path: IA-Offline-PTBR-S21.apk.part-1
+          compression-level: 0
+      - name: Upload APK chunk 2
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-drive-part-2
+          path: IA-Offline-PTBR-S21.apk.part-2
+          compression-level: 0
+      - name: Upload APK chunk 3
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-drive-part-3
+          path: IA-Offline-PTBR-S21.apk.part-3
+          compression-level: 0
+      - name: Upload APK chunk 4
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-drive-part-4
+          path: IA-Offline-PTBR-S21.apk.part-4
+          compression-level: 0
+      - name: Upload APK chunk 5
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-drive-part-5
+          path: IA-Offline-PTBR-S21.apk.part-5
+          compression-level: 0
+      - name: Upload APK chunk 6
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-drive-part-6
+          path: IA-Offline-PTBR-S21.apk.part-6
+          compression-level: 0
+
+      - name: Upload APK checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-PTBR-S21-checksum
+          path: IA-Offline-PTBR-S21.apk.sha256
