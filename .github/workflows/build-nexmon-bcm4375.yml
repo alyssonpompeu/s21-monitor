@@ -13,7 +13,7 @@ on:
       - 'nexmon-build-check.txt'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -71,8 +71,20 @@ jobs:
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/linker.err out/ 2>/dev/null || true
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/patches.log out/ 2>/dev/null || true
           cp nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/log/flashpatches.log out/ 2>/dev/null || true
+          test "$(sha256sum out/bcmdhd_sta_nexmon_18_41_117.bin | cut -d' ' -f1)" = "ec77f799a989e8104322d3c51901685426389c435a968e30d89f134f47c03d0c"
 
       - uses: actions/upload-artifact@v4
         with:
           name: Nexmon-BCM4375B1-18.41.117-patched-firmware
           path: out/
+
+      - name: Publish verified Nexmon firmware release asset
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nexmon-bcm4375-18.41.117
+          name: Nexmon BCM4375B1 18.41.117 - verified build
+          body: Verified one-target build from seemoo-lab/nexmon PR 663 for BCM4375B1 firmware 18.41.117. Stock base SHA-256 1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad; patched SHA-256 ec77f799a989e8104322d3c51901685426389c435a968e30d89f134f47c03d0c.
+          files: out/bcmdhd_sta_nexmon_18_41_117.bin
+          make_latest: false
+          overwrite_files: true
