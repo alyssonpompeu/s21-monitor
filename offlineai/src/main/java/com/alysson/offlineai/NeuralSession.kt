@@ -72,7 +72,7 @@ object NeuralSession {
         current
     }
 
-    fun applySystemPrompt(systemPrompt: String) {
+    suspend fun applySystemPrompt(systemPrompt: String) {
         engine?.setSystemPrompt(systemPrompt)
     }
 
