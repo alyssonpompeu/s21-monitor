@@ -2,14 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Runtime stays offline. Generated APK shells also ship without INTERNET permission. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
 
     <application
         android:allowBackup="false"
         android:extractNativeLibs="true"
         android:hardwareAccelerated="true"
-        android:label="IA Offline Plugin v3"
+        android:label="IA Offline Plugin v4"
         android:largeHeap="true"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
