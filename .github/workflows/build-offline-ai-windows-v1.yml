@@ -1,0 +1,151 @@
+name: Build Offline AI Windows v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "feature/offline-ai-windows-v1" ]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-v1:
+    runs-on: windows-latest
+    timeout-minutes: 180
+
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      SD_CPP_COMMIT: bcc7e29568b94a25f78e99d34a8fa048d77536b1
+      QWEN_MODEL_REVISION: 31e04817b38d226cdd13454bcc3982ebaa5a386b
+      QWEN_MODEL_FILE: Qwen3.5-2B-Q4_K_M.gguf
+      QWEN_MODEL_SHA256: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
+      TINY_SD_FILE: segmind_tiny-sd-q4_K.gguf
+      TINY_SD_SHA256: 69fe70e0b72f3ea22830b12ddabeb55ee8fe55a28ccc0b763ace4cf39af346d6
+
+    steps:
+      - name: Checkout Windows v1
+        uses: actions/checkout@v4
+
+      - name: Pin llama.cpp
+        shell: pwsh
+        run: |
+          if (Test-Path vendor/llama.cpp) { Remove-Item vendor/llama.cpp -Recurse -Force }
+          git clone https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout $env:LLAMA_CPP_COMMIT
+
+      - name: Build llama.cpp CPU runtime x64
+        shell: pwsh
+        run: |
+          cmake -S vendor/llama.cpp -B build/llama -G "Visual Studio 17 2022" -A x64 `
+            -DGGML_OPENMP=OFF `
+            -DGGML_VULKAN=OFF `
+            -DLLAMA_CURL=OFF `
+            -DLLAMA_BUILD_SERVER=OFF `
+            -DLLAMA_BUILD_EXAMPLES=ON `
+            -DLLAMA_BUILD_TESTS=OFF `
+            -DLLAMA_BUILD_TOOLS=OFF `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          cmake --build build/llama --config Release --target llama-cli -- /m:2
+          $llama = Get-ChildItem build/llama -Recurse -Filter llama-cli.exe | Select-Object -First 1
+          if (-not $llama) { throw "llama-cli.exe not found" }
+          New-Item -ItemType Directory -Force dist/runtime | Out-Null
+          Copy-Item $llama.FullName dist/runtime/llama-cli.exe
+
+      - name: Pin stable-diffusion.cpp
+        shell: pwsh
+        run: |
+          if (Test-Path vendor/stable-diffusion.cpp) { Remove-Item vendor/stable-diffusion.cpp -Recurse -Force }
+          git clone https://github.com/leejet/stable-diffusion.cpp.git vendor/stable-diffusion.cpp
+          git -C vendor/stable-diffusion.cpp checkout $env:SD_CPP_COMMIT
+          git -C vendor/stable-diffusion.cpp submodule update --init --recursive
+
+      - name: Build Tiny-SD CPU runtime x64
+        shell: pwsh
+        run: |
+          cmake -S vendor/stable-diffusion.cpp -B build/sd -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DSD_BUILD_EXAMPLES=ON `
+            -DSD_WEBP=OFF -DSD_WEBM=OFF `
+            -DSD_CUDA=OFF -DSD_HIPBLAS=OFF -DSD_METAL=OFF `
+            -DSD_VULKAN=OFF -DSD_OPENCL=OFF -DSD_SYCL=OFF `
+            -DSD_BUILD_SHARED_LIBS=OFF -DSD_BUILD_SHARED_GGML_LIB=OFF `
+            -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          cmake --build build/sd --config Release --target sd-cli -- /m:2
+          $sd = Get-ChildItem build/sd -Recurse -Filter sd-cli.exe | Select-Object -First 1
+          if (-not $sd) { throw "sd-cli.exe not found" }
+          Copy-Item $sd.FullName dist/runtime/sd-cli.exe
+
+      - name: Build native Win32 interface
+        shell: pwsh
+        run: |
+          cmake -S windows-desktop -B build/windows-ui -G "Visual Studio 17 2022" -A x64
+          cmake --build build/windows-ui --config Release -- /m:2
+          $app = Get-ChildItem build/windows-ui -Recurse -Filter IA-Offline-Windows-x64.exe | Select-Object -First 1
+          if (-not $app) { throw "IA-Offline-Windows-x64.exe not found" }
+          Copy-Item $app.FullName dist/IA-Offline-Windows-x64.exe
+          Get-FileHash dist/IA-Offline-Windows-x64.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  IA-Offline-Windows-x64.exe" } | Set-Content dist/IA-Offline-Windows-x64.exe.sha256
+
+      - name: Prepare portable runtime package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/models, dist/plugins/tiny-sd, dist/plugins/coder, dist/output | Out-Null
+          Copy-Item windows-desktop/README.md dist/LEIA-ME.txt
+          Compress-Archive -Path dist/runtime -DestinationPath IA-Offline-Windows-Runtime-x64.zip -CompressionLevel Optimal
+          Get-FileHash IA-Offline-Windows-Runtime-x64.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  IA-Offline-Windows-Runtime-x64.zip" } | Set-Content IA-Offline-Windows-Runtime-x64.zip.sha256
+
+      - name: Download Qwen3.5 2B model
+        shell: pwsh
+        run: |
+          curl.exe -L --fail --retry 5 --retry-delay 5 "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/$env:QWEN_MODEL_REVISION/$env:QWEN_MODEL_FILE?download=true" -o $env:QWEN_MODEL_FILE
+          $hash = (Get-FileHash $env:QWEN_MODEL_FILE -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:QWEN_MODEL_SHA256) { throw "Qwen SHA256 mismatch: $hash" }
+          "$hash  $env:QWEN_MODEL_FILE" | Set-Content "$env:QWEN_MODEL_FILE.sha256"
+
+      - name: Download Tiny-SD model
+        shell: pwsh
+        run: |
+          curl.exe -L --fail --retry 5 --retry-delay 5 "https://huggingface.co/turingevo/tiny-sd-gguf/resolve/main/$env:TINY_SD_FILE?download=true" -o $env:TINY_SD_FILE
+          $hash = (Get-FileHash $env:TINY_SD_FILE -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:TINY_SD_SHA256) { throw "Tiny-SD SHA256 mismatch: $hash" }
+          "$hash  $env:TINY_SD_FILE" | Set-Content "$env:TINY_SD_FILE.sha256"
+
+      - name: Upload Windows executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-Windows-v1-x64
+          path: |
+            dist/IA-Offline-Windows-x64.exe
+            dist/IA-Offline-Windows-x64.exe.sha256
+            IA-Offline-Windows-Runtime-x64.zip
+            IA-Offline-Windows-Runtime-x64.zip.sha256
+          compression-level: 0
+
+      - name: Publish Windows v1 release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-windows-v1
+          name: IA Offline Workspace Windows v1 x64
+          body: |
+            Primeira versão nativa Windows da IA Offline.
+
+            - Interface Win32 leve, sem Electron/WebView.
+            - Qwen3.5 2B local por llama.cpp.
+            - Tiny-SD local por stable-diffusion.cpp.
+            - CPU 25–90%, GPU/orçamento 0–90% e RAM 35–75%.
+            - Proteção conservadora de RAM antes de iniciar tarefas pesadas.
+            - Backend Automático/CPU/Vulkan; este primeiro pacote publica runtimes CPU. A interface já reconhece runtimes Vulkan separados quando disponíveis.
+            - Modelos ficam externos ao EXE para evitar recompilar a interface e para facilitar plugins.
+
+            Instalação: baixe IA-Offline-Windows-x64.exe, extraia IA-Offline-Windows-Runtime-x64.zip ao lado do EXE, crie models/ e plugins/tiny-sd/, coloque os modelos nos caminhos descritos em LEIA-ME.txt.
+          files: |
+            dist/IA-Offline-Windows-x64.exe
+            dist/IA-Offline-Windows-x64.exe.sha256
+            IA-Offline-Windows-Runtime-x64.zip
+            IA-Offline-Windows-Runtime-x64.zip.sha256
+            Qwen3.5-2B-Q4_K_M.gguf
+            Qwen3.5-2B-Q4_K_M.gguf.sha256
+            segmind_tiny-sd-q4_K.gguf
+            segmind_tiny-sd-q4_K.gguf.sha256
+          make_latest: false
+          overwrite_files: true
