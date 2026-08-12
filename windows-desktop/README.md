@@ -1,17 +1,39 @@
-# IA Offline Workspace — Windows v1
+# IA Offline Workspace — Windows 10 Ryzen/RTX v2
 
-Primeira variante nativa Win32 da IA Offline. O executável principal é pequeno e os modelos permanecem externos para evitar um `.exe` de vários gigabytes e permitir atualizar modelos/plugins sem recompilar a interface.
+Edição Win32 x64 preparada para **Windows 10**, **Ryzen 5 3500X**, **RTX 2070 SUPER** e **16 GB de RAM**. A interface é nativa e os modelos permanecem externos para que a atualização de IA/plugins não exija recompilar o executável.
+
+## Como iniciar
+
+Use sempre:
+
+```text
+IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe
+```
+
+Esse launcher verifica a paginação antes de abrir o núcleo. Se detectar menos de aproximadamente 8 GiB de pagefile, oferece configurar **8192 MiB** no volume do sistema usando UAC. A alteração é explícita e pode exigir reinicialização do Windows.
+
+O programa **não aloca 5 GiB artificialmente ao iniciar**. Em vez disso, usa um orçamento agregado de até **5 GiB** para o processo e runtimes filhos e solicita ao Windows um working set máximo de 5 GiB. Isso evita roubar 5 GiB do sistema sem necessidade.
 
 ## Estrutura esperada
 
 ```text
-IA-Offline-Windows-x64.exe
-settings.ini                 # criado automaticamente
+IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe
+IA-Offline-Core-x64.exe
+Configurar-Memoria.ps1
+settings.ini
 runtime/
-  llama-cli.exe
-  llama-cli-vulkan.exe       # opcional/futuro
-  sd-cli.exe
-  sd-cli-vulkan.exe          # opcional/futuro
+  llama-cpu/
+    llama-cli.exe
+    ... DLLs do pacote oficial CPU
+  llama-vulkan/
+    llama-cli.exe
+    ... DLLs do pacote oficial Vulkan
+  sd-cpu/
+    sd-cli.exe
+    ... DLLs do pacote oficial CPU
+  sd-vulkan/
+    sd-cli.exe
+    ... DLLs do pacote oficial Vulkan
 models/
   Qwen3.5-2B-Q4_K_M.gguf
 plugins/
@@ -22,27 +44,31 @@ plugins/
 output/
 ```
 
-## Recursos deste primeiro build
+## Perfil de desempenho
 
-- interface Win32 nativa, sem Electron e sem WebView;
-- texto local por `llama.cpp`;
-- Tiny-SD local por `stable-diffusion.cpp`;
-- aba/diagnóstico de plugins locais;
-- limites persistentes de CPU, GPU e RAM;
-- CPU entre 25–90%, GPU/orçamento Vulkan entre 0–90% e RAM entre 35–75%;
-- reserva mínima de RAM antes de tarefas pesadas;
-- número de threads derivado do orçamento de CPU;
-- backend `Automático`, `CPU` ou `Vulkan` por política global;
-- `Automático`/`Vulkan` só usam GPU quando existe um runtime Vulkan correspondente; caso contrário o programa cai para CPU;
-- geração de imagem em 512×512 com Tiny-SD;
-- diretório de saída separado.
+- Windows 10 x64 explícito no manifest e macros Win32.
+- Interface compilada com AVX2, `/O2`, `/Ob3` e LTCG.
+- Ryzen 5 3500X: no máximo 6 workers; padrão de CPU em 90% para preservar responsividade.
+- RTX 2070 SUPER: Vulkan é o backend padrão; CPU AVX2 é fallback.
+- Qwen3.5 2B: quando Vulkan está ativo, o launcher do modelo recebe offload de até 99 camadas (`-ngl 99`).
+- Tiny-SD: runtime Vulkan separado e runtime CPU separado para evitar conflitos entre DLLs.
+- Contexto Qwen mantido em 4096 e batch 256 para não pressionar desnecessariamente os 16 GB de RAM.
+- Antes de tarefas pesadas, a aplicação exige aproximadamente 5 GiB de memória física disponível.
+- O Job Object limita o conjunto app + processo de inferência a 5 GiB de memória comprometida pelo job.
 
-## Limites reais
+## Pagefile de 8 GiB
 
-Os percentuais de CPU/GPU são alvos de política, não quotas rígidas do kernel. O Windows não oferece ao aplicativo um limitador portátil para dizer que uma GPU deve ficar exatamente em determinado percentual. RAM recebe uma barreira conservadora antes de iniciar tarefas, e a execução usa poucos workers para reduzir picos.
+`Configurar-Memoria.ps1` desativa o pagefile automático e configura um pagefile fixo de 8192 MiB no volume do sistema. Isso é uma alteração administrativa do Windows e o launcher só a executa depois de confirmação do usuário.
 
-O build inicial publicado pelo CI inclui runtimes CPU. A interface já reconhece runtimes Vulkan separados (`llama-cli-vulkan.exe` e `sd-cli-vulkan.exe`) quando forem adicionados/testados.
+## Observação sobre "reservar 5 GB"
 
-## Objetivo
+Forçar 5 GiB de RAM física a permanecer ocupados/lockados desde a abertura pioraria a disponibilidade do Windows e poderia aumentar paginação. Por isso esta versão usa **teto de 5 GiB + working-set hint + verificação de 5 GiB disponíveis**, que é mais seguro para uma máquina com 16 GiB.
 
-Manter a mesma filosofia da versão Android: aplicação principal enxuta, modelos grandes e capacidades opcionais fora do executável, funcionamento totalmente offline depois que os arquivos locais forem colocados nas pastas esperadas.
+## Runtimes
+
+O build usa pacotes oficiais e verificados por SHA-256:
+
+- `llama.cpp` b10362: Windows x64 CPU e Vulkan;
+- `stable-diffusion.cpp` `master-817-bcc7e29`: Windows x64 CPU e Vulkan.
+
+Os backends ficam em diretórios separados para evitar colisão de DLLs GGML entre os dois projetos.
