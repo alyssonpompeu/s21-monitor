@@ -95,6 +95,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 sdr-probe/patch_marx_userspace_markers.py bcm4375lab/native/marxlinkprobe.c
           NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
           CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
           OUT=bcm4375lab/src/main/jniLibs/arm64-v8a
@@ -105,6 +106,8 @@ jobs:
           "$CC" -O2 -D_GNU_SOURCE -fPIE -pie bcm4375lab/native/marxlinkprobe.c -lm -o "$OUT/libmarxlinkprobe.so"
           file "$OUT"/*.so
           test -x "$OUT/libmarxlinkprobe.so"
+          strings "$OUT/libmarxlinkprobe.so" | grep 'MARX_PLAY_RESULT'
+          strings "$OUT/libmarxlinkprobe.so" | grep 'TX_TRIGGERED'
 
       - name: Build installable MARX LINK APK
         shell: bash
