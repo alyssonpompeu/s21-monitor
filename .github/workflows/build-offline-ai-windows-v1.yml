@@ -1,21 +1,25 @@
-name: Build Offline AI Windows v1
+name: Build Offline AI Windows Ryzen RTX v2
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "feature/offline-ai-windows-v1" ]
+    branches: [ "feature/offline-ai-windows-ryzen-rtx-v2" ]
 
 permissions:
   contents: write
 
 jobs:
-  build-windows-v1:
+  build-windows-ryzen-rtx-v2:
     runs-on: windows-latest
     timeout-minutes: 180
 
     env:
-      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
-      SD_CPP_COMMIT: bcc7e29568b94a25f78e99d34a8fa048d77536b1
+      LLAMA_RELEASE_TAG: b10362
+      LLAMA_CPU_ZIP_SHA256: a9d95d26cf00664f2902f73cb0fd9b167a3a1f252294bb2f8b236305f57d6363
+      LLAMA_VULKAN_ZIP_SHA256: 5da6d2c0cac199b917f0a7677c22b619750a9dd12432586d5d61457350e65a50
+      SD_RELEASE_TAG: master-817-bcc7e29
+      SD_CPU_ZIP_SHA256: 393302e405a290b984cfa110a5f1fc10239aa7b54a78e2b24a21e7334941c526
+      SD_VULKAN_ZIP_SHA256: e49abd736fc9bc918a8f2625f17aec0a4b6efbede014cfb8cacbc685b26f6d48
       QWEN_MODEL_REVISION: 31e04817b38d226cdd13454bcc3982ebaa5a386b
       QWEN_MODEL_FILE: Qwen3.5-2B-Q4_K_M.gguf
       QWEN_MODEL_SHA256: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
@@ -23,7 +27,7 @@ jobs:
       TINY_SD_SHA256: 69fe70e0b72f3ea22830b12ddabeb55ee8fe55a28ccc0b763ace4cf39af346d6
 
     steps:
-      - name: Checkout Windows v1
+      - name: Checkout Windows Ryzen RTX v2
         uses: actions/checkout@v4
 
       - name: Detect Visual Studio CMake generator
@@ -40,60 +44,56 @@ jobs:
           "CMAKE_VS_GENERATOR=$generator" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Usando gerador CMake: $generator"
 
-      - name: Pin llama.cpp
+      - name: Apply Ryzen 3500X RTX 2070 SUPER runtime policy
         shell: pwsh
         run: |
-          if (Test-Path vendor/llama.cpp) { Remove-Item vendor/llama.cpp -Recurse -Force }
-          git clone https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
-          git -C vendor/llama.cpp checkout $env:LLAMA_CPP_COMMIT
+          python scripts/patch_windows_ryzen_rtx_v2.py
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao aplicar patch Windows v2" }
 
-      - name: Build llama.cpp CPU runtime x64
+      - name: Download verified llama.cpp CPU and Vulkan runtimes
         shell: pwsh
         run: |
-          cmake -S vendor/llama.cpp -B build/llama -G "$env:CMAKE_VS_GENERATOR" -A x64 `
-            -DGGML_OPENMP=OFF `
-            -DGGML_VULKAN=OFF `
-            -DLLAMA_CURL=OFF `
-            -DLLAMA_BUILD_SERVER=OFF `
-            -DLLAMA_BUILD_EXAMPLES=ON `
-            -DLLAMA_BUILD_TESTS=OFF `
-            -DLLAMA_BUILD_TOOLS=OFF `
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
-          if ($LASTEXITCODE -ne 0) { throw "Falha ao configurar llama.cpp" }
-          cmake --build build/llama --config Release --target llama-cli -- /m:2
-          if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar llama-cli.exe" }
-          $llama = Get-ChildItem build/llama -Recurse -Filter llama-cli.exe | Select-Object -First 1
-          if (-not $llama) { throw "llama-cli.exe not found" }
-          New-Item -ItemType Directory -Force dist/runtime | Out-Null
-          Copy-Item $llama.FullName dist/runtime/llama-cli.exe
+          New-Item -ItemType Directory -Force build/downloads, build/prebuilt/llama-cpu, build/prebuilt/llama-vulkan, dist/runtime/llama-cpu, dist/runtime/llama-vulkan | Out-Null
+          $cpuZip = 'build/downloads/llama-cpu.zip'
+          $vkZip = 'build/downloads/llama-vulkan.zip'
+          curl.exe -L --fail --retry 5 --retry-delay 5 "https://github.com/ggml-org/llama.cpp/releases/download/$env:LLAMA_RELEASE_TAG/llama-$env:LLAMA_RELEASE_TAG-bin-win-cpu-x64.zip" -o $cpuZip
+          curl.exe -L --fail --retry 5 --retry-delay 5 "https://github.com/ggml-org/llama.cpp/releases/download/$env:LLAMA_RELEASE_TAG/llama-$env:LLAMA_RELEASE_TAG-bin-win-vulkan-x64.zip" -o $vkZip
+          $cpuHash = (Get-FileHash $cpuZip -Algorithm SHA256).Hash.ToLower()
+          $vkHash = (Get-FileHash $vkZip -Algorithm SHA256).Hash.ToLower()
+          if ($cpuHash -ne $env:LLAMA_CPU_ZIP_SHA256) { throw "llama CPU SHA mismatch: $cpuHash" }
+          if ($vkHash -ne $env:LLAMA_VULKAN_ZIP_SHA256) { throw "llama Vulkan SHA mismatch: $vkHash" }
+          Expand-Archive $cpuZip build/prebuilt/llama-cpu -Force
+          Expand-Archive $vkZip build/prebuilt/llama-vulkan -Force
+          $cpuExe = Get-ChildItem build/prebuilt/llama-cpu -Recurse -Filter llama-cli.exe | Select-Object -First 1
+          $vkExe = Get-ChildItem build/prebuilt/llama-vulkan -Recurse -Filter llama-cli.exe | Select-Object -First 1
+          if (-not $cpuExe -or -not $vkExe) { throw "llama-cli.exe não encontrado nos pacotes oficiais" }
+          Copy-Item (Join-Path $cpuExe.Directory.FullName '*') dist/runtime/llama-cpu -Recurse -Force
+          Copy-Item (Join-Path $vkExe.Directory.FullName '*') dist/runtime/llama-vulkan -Recurse -Force
+          & dist/runtime/llama-cpu/llama-cli.exe --version
+          & dist/runtime/llama-vulkan/llama-cli.exe --version
 
-      - name: Pin stable-diffusion.cpp
+      - name: Download verified stable-diffusion.cpp CPU and Vulkan runtimes
         shell: pwsh
         run: |
-          if (Test-Path vendor/stable-diffusion.cpp) { Remove-Item vendor/stable-diffusion.cpp -Recurse -Force }
-          git clone https://github.com/leejet/stable-diffusion.cpp.git vendor/stable-diffusion.cpp
-          git -C vendor/stable-diffusion.cpp checkout $env:SD_CPP_COMMIT
-          git -C vendor/stable-diffusion.cpp submodule update --init --recursive
+          New-Item -ItemType Directory -Force build/prebuilt/sd-cpu, build/prebuilt/sd-vulkan, dist/runtime/sd-cpu, dist/runtime/sd-vulkan | Out-Null
+          $cpuZip = 'build/downloads/sd-cpu.zip'
+          $vkZip = 'build/downloads/sd-vulkan.zip'
+          curl.exe -L --fail --retry 5 --retry-delay 5 "https://github.com/leejet/stable-diffusion.cpp/releases/download/$env:SD_RELEASE_TAG/sd-master-bcc7e29-bin-win-cpu-x64.zip" -o $cpuZip
+          curl.exe -L --fail --retry 5 --retry-delay 5 "https://github.com/leejet/stable-diffusion.cpp/releases/download/$env:SD_RELEASE_TAG/sd-master-bcc7e29-bin-win-vulkan-x64.zip" -o $vkZip
+          $cpuHash = (Get-FileHash $cpuZip -Algorithm SHA256).Hash.ToLower()
+          $vkHash = (Get-FileHash $vkZip -Algorithm SHA256).Hash.ToLower()
+          if ($cpuHash -ne $env:SD_CPU_ZIP_SHA256) { throw "stable-diffusion CPU SHA mismatch: $cpuHash" }
+          if ($vkHash -ne $env:SD_VULKAN_ZIP_SHA256) { throw "stable-diffusion Vulkan SHA mismatch: $vkHash" }
+          Expand-Archive $cpuZip build/prebuilt/sd-cpu -Force
+          Expand-Archive $vkZip build/prebuilt/sd-vulkan -Force
+          $cpuExe = Get-ChildItem build/prebuilt/sd-cpu -Recurse -Filter sd-cli.exe | Select-Object -First 1
+          $vkExe = Get-ChildItem build/prebuilt/sd-vulkan -Recurse -Filter sd-cli.exe | Select-Object -First 1
+          if (-not $cpuExe -or -not $vkExe) { throw "sd-cli.exe não encontrado nos pacotes oficiais" }
+          Copy-Item (Join-Path $cpuExe.Directory.FullName '*') dist/runtime/sd-cpu -Recurse -Force
+          Copy-Item (Join-Path $vkExe.Directory.FullName '*') dist/runtime/sd-vulkan -Recurse -Force
+          & dist/runtime/sd-cpu/sd-cli.exe --help | Select-Object -First 5
 
-      - name: Build Tiny-SD CPU runtime x64
-        shell: pwsh
-        run: |
-          cmake -S vendor/stable-diffusion.cpp -B build/sd -G "$env:CMAKE_VS_GENERATOR" -A x64 `
-            -DSD_BUILD_EXAMPLES=ON `
-            -DSD_WEBP=OFF -DSD_WEBM=OFF `
-            -DSD_CUDA=OFF -DSD_HIPBLAS=OFF -DSD_METAL=OFF `
-            -DSD_VULKAN=OFF -DSD_OPENCL=OFF -DSD_SYCL=OFF `
-            -DSD_BUILD_SHARED_LIBS=OFF -DSD_BUILD_SHARED_GGML_LIB=OFF `
-            -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF `
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
-          if ($LASTEXITCODE -ne 0) { throw "Falha ao configurar stable-diffusion.cpp" }
-          cmake --build build/sd --config Release --target sd-cli -- /m:2
-          if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar sd-cli.exe" }
-          $sd = Get-ChildItem build/sd -Recurse -Filter sd-cli.exe | Select-Object -First 1
-          if (-not $sd) { throw "sd-cli.exe not found" }
-          Copy-Item $sd.FullName dist/runtime/sd-cli.exe
-
-      - name: Build native Win32 interface
+      - name: Build Windows 10 AVX2 native interface and memory launcher
         shell: pwsh
         run: |
           cmake -S windows-desktop -B build/windows-ui -G "$env:CMAKE_VS_GENERATOR" -A x64 `
@@ -101,20 +101,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Falha ao configurar interface Win32" }
           cmake --build build/windows-ui --config Release -- /m:2
           if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar interface Win32" }
-          $app = Get-ChildItem build/windows-ui -Recurse -Filter IA-Offline-Windows-x64.exe | Select-Object -First 1
-          if (-not $app) { throw "IA-Offline-Windows-x64.exe not found" }
-          Copy-Item $app.FullName dist/IA-Offline-Windows-x64.exe
-          Get-FileHash dist/IA-Offline-Windows-x64.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  IA-Offline-Windows-x64.exe" } | Set-Content dist/IA-Offline-Windows-x64.exe.sha256
+
+          $launcher = Get-ChildItem build/windows-ui -Recurse -Filter IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe | Select-Object -First 1
+          $core = Get-ChildItem build/windows-ui -Recurse -Filter IA-Offline-Core-x64.exe | Select-Object -First 1
+          if (-not $launcher -or -not $core) { throw "Executáveis Windows v2 não encontrados" }
+          Copy-Item $launcher.FullName dist/IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe
+          Copy-Item $core.FullName dist/IA-Offline-Core-x64.exe
+          Copy-Item windows-desktop/Configurar-Memoria.ps1 dist/Configurar-Memoria.ps1
+          Copy-Item windows-desktop/README.md dist/LEIA-ME.txt
+          Get-FileHash dist/IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe" } | Set-Content dist/IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe.sha256
 
       - name: Prepare portable runtime package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist/models, dist/plugins/tiny-sd, dist/plugins/coder, dist/output | Out-Null
-          Copy-Item windows-desktop/README.md dist/LEIA-ME.txt
-          Compress-Archive -Path dist/runtime -DestinationPath IA-Offline-Windows-Runtime-x64.zip -CompressionLevel Optimal
-          Get-FileHash IA-Offline-Windows-Runtime-x64.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  IA-Offline-Windows-Runtime-x64.zip" } | Set-Content IA-Offline-Windows-Runtime-x64.zip.sha256
+          Compress-Archive -Path dist/runtime -DestinationPath IA-Offline-Windows10-RTX-Runtime-v2.zip -CompressionLevel Optimal
+          Get-FileHash IA-Offline-Windows10-RTX-Runtime-v2.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  IA-Offline-Windows10-RTX-Runtime-v2.zip" } | Set-Content IA-Offline-Windows10-RTX-Runtime-v2.zip.sha256
+          Compress-Archive -Path dist/* -DestinationPath IA-Offline-Windows10-Ryzen3500X-RTX2070S-v2-SEM-MODELOS.zip -CompressionLevel Optimal
+          Get-FileHash IA-Offline-Windows10-Ryzen3500X-RTX2070S-v2-SEM-MODELOS.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  IA-Offline-Windows10-Ryzen3500X-RTX2070S-v2-SEM-MODELOS.zip" } | Set-Content IA-Offline-Windows10-Ryzen3500X-RTX2070S-v2-SEM-MODELOS.zip.sha256
 
-      - name: Download Qwen3.5 2B model
+      - name: Download and verify Qwen3.5 2B model
         shell: pwsh
         run: |
           curl.exe -L --fail --retry 5 --retry-delay 5 "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/$env:QWEN_MODEL_REVISION/$env:QWEN_MODEL_FILE?download=true" -o $env:QWEN_MODEL_FILE
@@ -122,7 +128,7 @@ jobs:
           if ($hash -ne $env:QWEN_MODEL_SHA256) { throw "Qwen SHA256 mismatch: $hash" }
           "$hash  $env:QWEN_MODEL_FILE" | Set-Content "$env:QWEN_MODEL_FILE.sha256"
 
-      - name: Download Tiny-SD model
+      - name: Download and verify Tiny-SD model
         shell: pwsh
         run: |
           curl.exe -L --fail --retry 5 --retry-delay 5 "https://huggingface.co/turingevo/tiny-sd-gguf/resolve/main/$env:TINY_SD_FILE?download=true" -o $env:TINY_SD_FILE
@@ -130,39 +136,49 @@ jobs:
           if ($hash -ne $env:TINY_SD_SHA256) { throw "Tiny-SD SHA256 mismatch: $hash" }
           "$hash  $env:TINY_SD_FILE" | Set-Content "$env:TINY_SD_FILE.sha256"
 
-      - name: Upload Windows executable artifact
+      - name: Upload Windows Ryzen RTX v2 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: IA-Offline-Windows-v1-x64
+          name: IA-Offline-Windows10-Ryzen3500X-RTX2070S-v2
           path: |
-            dist/IA-Offline-Windows-x64.exe
-            dist/IA-Offline-Windows-x64.exe.sha256
-            IA-Offline-Windows-Runtime-x64.zip
-            IA-Offline-Windows-Runtime-x64.zip.sha256
+            dist/IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe
+            dist/IA-Offline-Core-x64.exe
+            dist/Configurar-Memoria.ps1
+            dist/IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe.sha256
+            IA-Offline-Windows10-RTX-Runtime-v2.zip
+            IA-Offline-Windows10-RTX-Runtime-v2.zip.sha256
+            IA-Offline-Windows10-Ryzen3500X-RTX2070S-v2-SEM-MODELOS.zip
+            IA-Offline-Windows10-Ryzen3500X-RTX2070S-v2-SEM-MODELOS.zip.sha256
           compression-level: 0
 
-      - name: Publish Windows v1 release
+      - name: Publish Windows Ryzen RTX v2 release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: offline-ai-windows-v1
-          name: IA Offline Workspace Windows v1 x64
+          tag_name: offline-ai-windows-ryzen-rtx-v2
+          name: IA Offline Windows 10 — Ryzen 3500X + RTX 2070 SUPER v2
           body: |
-            Primeira versão nativa Windows da IA Offline.
+            Edição x64 otimizada especificamente para Windows 10, Ryzen 5 3500X, RTX 2070 SUPER e 16 GB de RAM.
 
-            - Interface Win32 leve, sem Electron/WebView.
-            - Qwen3.5 2B local por llama.cpp.
-            - Tiny-SD local por stable-diffusion.cpp.
-            - CPU 25–90%, GPU/orçamento 0–90% e RAM 35–75%.
-            - Proteção conservadora de RAM antes de iniciar tarefas pesadas.
-            - Backend Automático/CPU/Vulkan; este primeiro pacote publica runtimes CPU. A interface já reconhece runtimes Vulkan separados quando disponíveis.
-            - Modelos ficam externos ao EXE para evitar recompilar a interface e para facilitar plugins.
+            - Win32 nativo, compilado AVX2/LTCG, sem Electron/WebView.
+            - Backend Vulkan preferido para a RTX 2070 SUPER; CPU AVX2 como fallback.
+            - Runtimes oficiais verificados de llama.cpp b10362 e stable-diffusion.cpp bcc7e29.
+            - Qwen3.5 2B usa offload de até 99 camadas quando Vulkan está ativo.
+            - CPU limitada a no máximo 6 workers e 90% por padrão.
+            - Orçamento agregado do app/filhos limitado a 5 GiB por Job Object e working-set máximo solicitado de 5 GiB.
+            - Antes de abrir a IA, o launcher verifica a paginação. Se estiver abaixo de ~8 GiB, oferece configurar 8192 MiB via UAC e pede reinicialização.
+            - A alteração do pagefile é explícita e administrativa; não é feita silenciosamente.
+            - O limite de 5 GiB é um teto de memória, não uma alocação artificial de 5 GiB: reservar/lockar 5 GiB fisicamente prejudicaria o Windows e outros programas.
 
-            Instalação: baixe IA-Offline-Windows-x64.exe, extraia IA-Offline-Windows-Runtime-x64.zip ao lado do EXE, crie models/ e plugins/tiny-sd/, coloque os modelos nos caminhos descritos em LEIA-ME.txt.
+            Instalação recomendada: baixe o ZIP SEM-MODELOS, extraia, coloque Qwen em models/ e Tiny-SD em plugins/tiny-sd/, e sempre inicie pelo IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe.
           files: |
-            dist/IA-Offline-Windows-x64.exe
-            dist/IA-Offline-Windows-x64.exe.sha256
-            IA-Offline-Windows-Runtime-x64.zip
-            IA-Offline-Windows-Runtime-x64.zip.sha256
+            dist/IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe
+            dist/IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64.exe.sha256
+            dist/IA-Offline-Core-x64.exe
+            dist/Configurar-Memoria.ps1
+            IA-Offline-Windows10-RTX-Runtime-v2.zip
+            IA-Offline-Windows10-RTX-Runtime-v2.zip.sha256
+            IA-Offline-Windows10-Ryzen3500X-RTX2070S-v2-SEM-MODELOS.zip
+            IA-Offline-Windows10-Ryzen3500X-RTX2070S-v2-SEM-MODELOS.zip.sha256
             Qwen3.5-2B-Q4_K_M.gguf
             Qwen3.5-2B-Q4_K_M.gguf.sha256
             segmind_tiny-sd-q4_K.gguf
