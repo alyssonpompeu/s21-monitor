@@ -7,15 +7,46 @@ if len(sys.argv) != 2:
 
 p = Path(sys.argv[1])
 s = p.read_text()
-marker = "        case 0x621:\n"
-if marker not in s:
-    raise SystemExit("PR663 ioctl insertion point changed")
+
 if "case 0x643" in s:
     raise SystemExit("MARX LINK cases already present")
 
-# Keep the firmware shim intentionally tiny.  Human-readable diagnostics,
-# AFHDS2A framing and IQ synthesis live in the Android/native userspace tool.
-# This matters because PR663 has only a 0x3000-byte patch region.
+# PR663 has a very small patch region on BCM4375B1.  The upstream experimental
+# ioctl.c carries canned EAPOL/auth/assoc frames plus nine test-only injection
+# commands.  MARX LINK never uses those fixtures: AFHDS2A framing and IQ are
+# synthesized in the ARM64 userspace helper.  Remove the fixtures/commands to
+# reclaim patch RAM instead of expanding the firmware patch region.
+
+def cut_between(text: str, start: str, end: str, keep_end: bool = True) -> str:
+    a = text.find(start)
+    if a < 0:
+        raise SystemExit(f"start marker not found: {start!r}")
+    b = text.find(end, a)
+    if b < 0:
+        raise SystemExit(f"end marker not found: {end!r}")
+    return text[:a] + (text[b:] if keep_end else text[b + len(end):])
+
+# Remove all canned Wi-Fi test payloads.  Keep orig_call and the actual hook.
+s = cut_between(s, "uint8_t eapol1[] = {\n", "static int orig_call = 0;\n")
+
+# Remove generic frame-injection ioctl from this dedicated build.  Monitor,
+# normal WLC ioctls and Nexmon version reporting remain intact.
+s = cut_between(s, "        case NEX_INJECT_FRAME:\n", "        case WLC_GET_MONITOR:\n")
+
+# Remove console dump command; it pulls extra log-buffer code into the patch.
+console_start = "        case 0x609: // return console\n"
+fixture_start = "        case 0x621:\n"
+a = s.find(console_start)
+b = s.find(fixture_start, a if a >= 0 else 0)
+if a >= 0 and b >= 0:
+    s = s[:a] + s[b:]
+
+# Remove the remaining test-only 0x621..0x629 canned transmit cases.
+s = cut_between(s, "        case 0x621:\n", "        default:\n")
+
+# Keep the firmware shim intentionally small.  Human-readable diagnostics,
+# AFHDS2A framing, GFSK synthesis and experiment orchestration live in the
+# Android/native userspace tool.  Firmware only exposes the D11AC portal.
 block = r'''        case 0x643:
         {
             struct ml_caps {
@@ -146,5 +177,11 @@ block = r'''        case 0x643:
 
 '''
 
-p.write_text(s.replace(marker, block + marker, 1))
-print("MARX LINK compact patch applied to", p)
+marker = "        default:\n"
+if marker not in s:
+    raise SystemExit("default ioctl insertion point changed")
+s = s.replace(marker, block + marker, 1)
+
+p.write_text(s)
+print("MARX LINK lean SDR patch applied to", p)
+print("removed upstream canned injection fixtures and ioctls 0x621..0x629")
