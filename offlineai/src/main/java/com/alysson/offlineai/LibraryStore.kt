@@ -11,6 +11,25 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
     data class Stats(val documents: Int, val chunks: Int, val characters: Long)
     data class Project(val id: Long, val name: String, val createdAt: Long)
     data class SearchHistory(val query: String, val mode: String, val searchedAt: Long)
+    data class DocumentSource(
+        val id: Long,
+        val name: String,
+        val mime: String,
+        val characters: Long,
+        val importedAt: Long,
+        val sizeBytes: Long,
+        val sha256: String,
+        val sourceUri: String,
+    )
+    data class ConversationTurn(
+        val id: Long,
+        val projectId: Long,
+        val user: String,
+        val assistant: String,
+        val pluginId: String,
+        val createdAt: Long,
+        val updatedAt: Long,
+    )
 
     override fun onCreate(db: SQLiteDatabase) {
         createSchema(db)
@@ -29,22 +48,9 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 )
                 """.trimIndent()
             )
-            db.execSQL(
-                "INSERT OR IGNORE INTO projects(id, name, created_at, updated_at) VALUES(1, 'Geral', $now, $now)"
-            )
-
-            val columns = mutableSetOf<String>()
-            db.rawQuery("PRAGMA table_info(documents)", null).use { cursor ->
-                val nameIndex = cursor.getColumnIndex("name")
-                while (cursor.moveToNext()) if (nameIndex >= 0) columns += cursor.getString(nameIndex)
-            }
-            if ("project_id" !in columns) {
-                db.execSQL("ALTER TABLE documents ADD COLUMN project_id INTEGER NOT NULL DEFAULT 1")
-            }
-
-            db.execSQL(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS project_chunks_fts USING fts4(project_id, doc_id, source, location, text)"
-            )
+            db.execSQL("INSERT OR IGNORE INTO projects(id, name, created_at, updated_at) VALUES(1, 'Geral', $now, $now)")
+            addColumnIfMissing(db, "documents", "project_id", "INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS project_chunks_fts USING fts4(project_id, doc_id, source, location, text)")
             val oldFtsExists = db.rawQuery(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='chunks_fts'",
                 null
@@ -72,9 +78,27 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 )
                 """.trimIndent()
             )
+            db.execSQL("CREATE INDEX IF NOT EXISTS search_history_project_idx ON search_history(project_id, searched_at DESC)")
+        }
+
+        if (oldVersion < 4) {
+            addColumnIfMissing(db, "documents", "source_uri", "TEXT NOT NULL DEFAULT ''")
+            addColumnIfMissing(db, "documents", "size_bytes", "INTEGER NOT NULL DEFAULT 0")
+            addColumnIfMissing(db, "documents", "sha256", "TEXT NOT NULL DEFAULT ''")
             db.execSQL(
-                "CREATE INDEX IF NOT EXISTS search_history_project_idx ON search_history(project_id, searched_at DESC)"
+                """
+                CREATE TABLE IF NOT EXISTS conversation_turns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    user_text TEXT NOT NULL,
+                    assistant_text TEXT NOT NULL DEFAULT '',
+                    plugin_id TEXT NOT NULL DEFAULT 'text.qwen',
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+                """.trimIndent()
             )
+            db.execSQL("CREATE INDEX IF NOT EXISTS conversation_project_idx ON conversation_turns(project_id, created_at DESC)")
         }
     }
 
@@ -90,9 +114,7 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
             )
             """.trimIndent()
         )
-        db.execSQL(
-            "INSERT INTO projects(id, name, created_at, updated_at) VALUES(1, 'Geral', $now, $now)"
-        )
+        db.execSQL("INSERT INTO projects(id, name, created_at, updated_at) VALUES(1, 'Geral', $now, $now)")
         db.execSQL(
             """
             CREATE TABLE documents (
@@ -101,7 +123,10 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 name TEXT NOT NULL,
                 mime TEXT NOT NULL,
                 imported_at INTEGER NOT NULL,
-                characters INTEGER NOT NULL
+                characters INTEGER NOT NULL,
+                source_uri TEXT NOT NULL DEFAULT '',
+                size_bytes INTEGER NOT NULL DEFAULT 0,
+                sha256 TEXT NOT NULL DEFAULT ''
             )
             """.trimIndent()
         )
@@ -119,6 +144,35 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
             """.trimIndent()
         )
         db.execSQL("CREATE INDEX search_history_project_idx ON search_history(project_id, searched_at DESC)")
+        db.execSQL(
+            """
+            CREATE TABLE conversation_turns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                user_text TEXT NOT NULL,
+                assistant_text TEXT NOT NULL DEFAULT '',
+                plugin_id TEXT NOT NULL DEFAULT 'text.qwen',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX conversation_project_idx ON conversation_turns(project_id, created_at DESC)")
+    }
+
+    private fun addColumnIfMissing(db: SQLiteDatabase, table: String, column: String, declaration: String) {
+        val exists = db.rawQuery("PRAGMA table_info($table)", null).use { cursor ->
+            val nameIndex = cursor.getColumnIndex("name")
+            var found = false
+            while (cursor.moveToNext()) {
+                if (nameIndex >= 0 && cursor.getString(nameIndex) == column) {
+                    found = true
+                    break
+                }
+            }
+            found
+        }
+        if (!exists) db.execSQL("ALTER TABLE $table ADD COLUMN $column $declaration")
     }
 
     fun ensureDefaultProject(): Long {
@@ -127,16 +181,7 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
             if (cursor.moveToFirst()) cursor.getLong(0) else -1L
         }
         if (id > 0) return id
-        val now = System.currentTimeMillis()
-        return db.insertOrThrow(
-            "projects",
-            null,
-            ContentValues().apply {
-                put("name", "Geral")
-                put("created_at", now)
-                put("updated_at", now)
-            }
-        )
+        return createProject("Geral")
     }
 
     fun projectExists(projectId: Long): Boolean = readableDatabase.rawQuery(
@@ -150,15 +195,13 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
             "SELECT id, name, created_at FROM projects ORDER BY updated_at DESC, id DESC",
             null
         ).use { cursor ->
-            while (cursor.moveToNext()) {
-                result += Project(cursor.getLong(0), cursor.getString(1), cursor.getLong(2))
-            }
+            while (cursor.moveToNext()) result += Project(cursor.getLong(0), cursor.getString(1), cursor.getLong(2))
         }
         return result
     }
 
     fun createProject(name: String): Long {
-        val clean = name.trim().ifBlank { "Novo projeto" }.take(80)
+        val clean = name.trim().ifBlank { "Novo chat" }.take(80)
         val now = System.currentTimeMillis()
         return writableDatabase.insertOrThrow(
             "projects",
@@ -184,6 +227,16 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         )
     }
 
+    fun autoRenameProjectFromQuestion(projectId: Long, question: String) {
+        val current = projectName(projectId)
+        if (!current.startsWith("Chat ") && current != "Novo chat") return
+        val clean = question.replace(Regex("\\s+"), " ").trim()
+            .removeSuffix("?")
+            .take(58)
+            .ifBlank { return }
+        renameProject(projectId, clean)
+    }
+
     fun deleteProject(projectId: Long): Long {
         require(projectExists(projectId)) { "Projeto local inválido." }
         val db = writableDatabase
@@ -192,30 +245,32 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
             db.delete("project_chunks_fts", "project_id = ?", arrayOf(projectId.toString()))
             db.delete("documents", "project_id = ?", arrayOf(projectId.toString()))
             db.delete("search_history", "project_id = ?", arrayOf(projectId.toString()))
+            db.delete("conversation_turns", "project_id = ?", arrayOf(projectId.toString()))
             db.delete("projects", "id = ?", arrayOf(projectId.toString()))
 
             var replacement = db.rawQuery(
                 "SELECT id FROM projects ORDER BY updated_at DESC, id DESC LIMIT 1",
                 null
             ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else -1L }
-
-            if (replacement <= 0L) {
-                val now = System.currentTimeMillis()
-                replacement = db.insertOrThrow(
-                    "projects",
-                    null,
-                    ContentValues().apply {
-                        put("name", "Geral")
-                        put("created_at", now)
-                        put("updated_at", now)
-                    }
-                )
-            }
+            if (replacement <= 0L) replacement = createProjectInTransaction(db, "Geral")
             db.setTransactionSuccessful()
             return replacement
         } finally {
             db.endTransaction()
         }
+    }
+
+    private fun createProjectInTransaction(db: SQLiteDatabase, name: String): Long {
+        val now = System.currentTimeMillis()
+        return db.insertOrThrow(
+            "projects",
+            null,
+            ContentValues().apply {
+                put("name", name)
+                put("created_at", now)
+                put("updated_at", now)
+            }
+        )
     }
 
     fun projectName(projectId: Long): String = readableDatabase.rawQuery(
@@ -230,11 +285,7 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.delete(
-                "search_history",
-                "project_id = ? AND mode = ? AND query = ?",
-                arrayOf(projectId.toString(), mode, clean)
-            )
+            db.delete("search_history", "project_id = ? AND mode = ? AND query = ?", arrayOf(projectId.toString(), mode, clean))
             db.insertOrThrow(
                 "search_history",
                 null,
@@ -250,12 +301,7 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                     "(SELECT id FROM search_history WHERE project_id = ? ORDER BY searched_at DESC LIMIT ?)",
                 arrayOf<Any>(projectId, projectId, MAX_SEARCH_HISTORY)
             )
-            db.update(
-                "projects",
-                ContentValues().apply { put("updated_at", System.currentTimeMillis()) },
-                "id = ?",
-                arrayOf(projectId.toString())
-            )
+            touchProject(db, projectId)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -274,9 +320,7 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
             "SELECT query, mode, searched_at FROM search_history WHERE $where ORDER BY searched_at DESC LIMIT ?",
             args
         ).use { cursor ->
-            while (cursor.moveToNext()) {
-                result += SearchHistory(cursor.getString(0), cursor.getString(1), cursor.getLong(2))
-            }
+            while (cursor.moveToNext()) result += SearchHistory(cursor.getString(0), cursor.getString(1), cursor.getLong(2))
         }
         return result
     }
@@ -285,13 +329,84 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         writableDatabase.delete("search_history", "project_id = ?", arrayOf(projectId.toString()))
     }
 
-    fun addDocument(projectId: Long, name: String, mime: String, sections: List<Section>): Long {
+    fun beginConversationTurn(projectId: Long, user: String, pluginId: String): Long {
+        require(projectExists(projectId)) { "Projeto local inválido." }
+        val now = System.currentTimeMillis()
+        val id = writableDatabase.insertOrThrow(
+            "conversation_turns",
+            null,
+            ContentValues().apply {
+                put("project_id", projectId)
+                put("user_text", user.trim().take(MAX_USER_CHARS))
+                put("assistant_text", "")
+                put("plugin_id", pluginId.take(80))
+                put("created_at", now)
+                put("updated_at", now)
+            }
+        )
+        writableDatabase.let { touchProject(it, projectId) }
+        return id
+    }
+
+    fun updateConversationTurn(turnId: Long, assistant: String) {
+        writableDatabase.update(
+            "conversation_turns",
+            ContentValues().apply {
+                put("assistant_text", assistant.take(MAX_ASSISTANT_CHARS))
+                put("updated_at", System.currentTimeMillis())
+            },
+            "id = ?",
+            arrayOf(turnId.toString())
+        )
+    }
+
+    fun recordTurn(projectId: Long, user: String, assistant: String, pluginId: String = "text.qwen") {
+        val id = beginConversationTurn(projectId, user, pluginId)
+        updateConversationTurn(id, assistant)
+    }
+
+    fun recentConversationTurns(projectId: Long, limit: Int = 8): List<ConversationTurn> {
+        val safeLimit = limit.coerceIn(1, 80)
+        val reversed = mutableListOf<ConversationTurn>()
+        readableDatabase.rawQuery(
+            "SELECT id, project_id, user_text, assistant_text, plugin_id, created_at, updated_at " +
+                "FROM conversation_turns WHERE project_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+            arrayOf(projectId.toString(), safeLimit.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                reversed += ConversationTurn(
+                    id = cursor.getLong(0),
+                    projectId = cursor.getLong(1),
+                    user = cursor.getString(2),
+                    assistant = cursor.getString(3),
+                    pluginId = cursor.getString(4),
+                    createdAt = cursor.getLong(5),
+                    updatedAt = cursor.getLong(6),
+                )
+            }
+        }
+        return reversed.asReversed()
+    }
+
+    fun clearConversation(projectId: Long) {
+        writableDatabase.delete("conversation_turns", "project_id = ?", arrayOf(projectId.toString()))
+    }
+
+    fun addDocument(
+        projectId: Long,
+        name: String,
+        mime: String,
+        sections: List<Section>,
+        sourceUri: String = "",
+        sizeBytes: Long = 0L,
+        sha256: String = "",
+    ): Long {
         require(projectExists(projectId)) { "Projeto local inválido." }
         val cleaned = sections.mapNotNull { section ->
             val text = section.text.replace('\u0000', ' ').trim()
             if (text.isBlank()) null else section.copy(text = text)
         }
-        require(cleaned.isNotEmpty()) { "Nenhum texto reconhecível foi encontrado no arquivo." }
+        require(cleaned.isNotEmpty()) { "Nenhum dado indexável foi encontrado no arquivo." }
 
         val db = writableDatabase
         db.beginTransaction()
@@ -302,10 +417,13 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 null,
                 ContentValues().apply {
                     put("project_id", projectId)
-                    put("name", name)
-                    put("mime", mime)
+                    put("name", name.take(240))
+                    put("mime", mime.take(160))
                     put("imported_at", System.currentTimeMillis())
                     put("characters", characters)
+                    put("source_uri", sourceUri.take(1600))
+                    put("size_bytes", sizeBytes.coerceAtLeast(0L))
+                    put("sha256", sha256.take(64))
                 }
             )
 
@@ -317,24 +435,42 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                         ContentValues().apply {
                             put("project_id", projectId.toString())
                             put("doc_id", docId.toString())
-                            put("source", name)
-                            put("location", section.location)
+                            put("source", name.take(240))
+                            put("location", section.location.take(240))
                             put("text", part)
                         }
                     )
                 }
             }
-            db.update(
-                "projects",
-                ContentValues().apply { put("updated_at", System.currentTimeMillis()) },
-                "id = ?",
-                arrayOf(projectId.toString())
-            )
+            touchProject(db, projectId)
             db.setTransactionSuccessful()
             return docId
         } finally {
             db.endTransaction()
         }
+    }
+
+    fun listDocuments(projectId: Long): List<DocumentSource> {
+        val result = mutableListOf<DocumentSource>()
+        readableDatabase.rawQuery(
+            "SELECT id, name, mime, characters, imported_at, size_bytes, sha256, source_uri " +
+                "FROM documents WHERE project_id = ? ORDER BY imported_at DESC, id DESC",
+            arrayOf(projectId.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result += DocumentSource(
+                    id = cursor.getLong(0),
+                    name = cursor.getString(1),
+                    mime = cursor.getString(2),
+                    characters = cursor.getLong(3),
+                    importedAt = cursor.getLong(4),
+                    sizeBytes = cursor.getLong(5),
+                    sha256 = cursor.getString(6),
+                    sourceUri = cursor.getString(7),
+                )
+            }
+        }
+        return result
     }
 
     fun retrieve(query: String, projectId: Long, maxSnippets: Int = 7): String {
@@ -354,9 +490,7 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 "WHERE project_id = ? AND project_chunks_fts MATCH ? LIMIT ?",
             arrayOf(projectId.toString(), match, maxSnippets.coerceIn(1, 12).toString())
         ).use { cursor ->
-            while (cursor.moveToNext()) {
-                snippets += Triple(cursor.getString(0), cursor.getString(1), cursor.getString(2))
-            }
+            while (cursor.moveToNext()) snippets += Triple(cursor.getString(0), cursor.getString(1), cursor.getString(2))
         }
         if (snippets.isEmpty()) return ""
 
@@ -388,16 +522,22 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
         val characters = db.rawQuery(
             "SELECT COALESCE(SUM(characters), 0) FROM documents WHERE project_id = ?",
             arrayOf(projectId.toString())
-        ).use {
-            it.moveToFirst(); it.getLong(0)
-        }
+        ).use { it.moveToFirst(); it.getLong(0) }
         return Stats(documents, chunks, characters)
+    }
+
+    private fun touchProject(db: SQLiteDatabase, projectId: Long) {
+        db.update(
+            "projects",
+            ContentValues().apply { put("updated_at", System.currentTimeMillis()) },
+            "id = ?",
+            arrayOf(projectId.toString())
+        )
     }
 
     private fun chunk(text: String): List<String> {
         val compact = text.replace(Regex("[\\t\\r ]+"), " ").replace(Regex("\\n{3,}"), "\n\n").trim()
         if (compact.length <= CHUNK_CHARS) return listOf(compact)
-
         val out = mutableListOf<String>()
         var start = 0
         while (start < compact.length) {
@@ -420,10 +560,12 @@ class LibraryStore(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
 
     companion object {
         private const val DB_NAME = "user_library_v1.db"
-        private const val DB_VERSION = 3
+        private const val DB_VERSION = 4
         private const val CHUNK_CHARS = 1400
         private const val CHUNK_OVERLAP = 180
         private const val MAX_SEARCH_HISTORY = 60
         private const val MAX_SEARCH_CHARS = 600
+        private const val MAX_USER_CHARS = 12_000
+        private const val MAX_ASSISTANT_CHARS = 120_000
     }
 }
