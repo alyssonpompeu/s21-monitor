@@ -358,7 +358,7 @@ methods = '''    private fun startNewChat() {
 
     private fun showLiveStatus(icon: String, title: String, detail: String) {
         liveCard.visibility = View.VISIBLE
-        liveStatus.text = "$icon  $title\n$detail"
+        liveStatus.text = "$icon  $title\\n$detail"
     }
 
     private fun updateCodePreview(text: String) {
