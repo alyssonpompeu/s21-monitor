@@ -13,10 +13,10 @@ import java.io.File
 /**
  * Process-scoped owner for the text inference engine.
  *
- * The model is loaded once per Android process and is intentionally kept resident while the app
- * process is alive. Activities only borrow the already-loaded engine and change the system prompt.
- * A tiny marker in cacheDir records the live process/model for diagnostics; it is not a serialized
- * model and cannot restore RAM after Android kills the process.
+ * llama.android requires the system prompt to be set immediately after model loading. Therefore
+ * the resident session owns one immutable system prompt for the lifetime of the loaded model.
+ * Builder/Coder specialization is carried in the user prompt instead of attempting to change the
+ * system prompt after inference has started.
  */
 object NeuralSession {
     private val mutex = Mutex()
@@ -25,6 +25,7 @@ object NeuralSession {
     @Volatile private var engine: InferenceEngine? = null
     @Volatile private var loadedModelPath: String? = null
     @Volatile private var loadedAtElapsedMs: Long = 0L
+    @Volatile private var residentSystemPrompt: String? = null
 
     suspend fun acquire(
         context: Context,
@@ -39,6 +40,7 @@ object NeuralSession {
             engine = null
             loadedModelPath = null
             loadedAtElapsedMs = 0L
+            residentSystemPrompt = null
         }
 
         var current = engine
@@ -55,25 +57,30 @@ object NeuralSession {
         if (loadedModelPath == null) {
             progress("Carregando rede neural uma única vez nesta sessão…")
             current.loadModel(requestedModel.absolutePath)
+            // Required by llama.android: this call must happen RIGHT AFTER loadModel().
+            current.setSystemPrompt(systemPrompt)
+            residentSystemPrompt = systemPrompt
             loadedModelPath = requestedModel.absolutePath
             loadedAtElapsedMs = SystemClock.elapsedRealtime()
             writeMarker(app)
         } else if (loadedModelPath != requestedModel.absolutePath) {
-            // Do not evict the resident Qwen merely because another Activity prefers a Coder pack.
-            // Explicit model switching can be added later, but navigation must not cause reload loops.
-            progress("Reutilizando rede neural já residente na RAM…")
+            progress("Reutilizando Qwen residente; especialização será aplicada no pedido…")
             writeMarker(app)
         } else {
             progress("Rede neural já está pronta na RAM…")
             writeMarker(app)
         }
 
-        current.setSystemPrompt(systemPrompt)
         current
     }
 
+    /**
+     * Kept for source compatibility. Changing the prompt after the model has started is forbidden by
+     * this runtime, so callers must put task-specific instructions in the user prompt instead.
+     */
     suspend fun applySystemPrompt(systemPrompt: String) {
-        engine?.setSystemPrompt(systemPrompt)
+        if (!isLoaded()) return
+        if (residentSystemPrompt == null) residentSystemPrompt = systemPrompt
     }
 
     fun isLoaded(): Boolean = engine != null && loadedModelPath != null && ownerPid == Process.myPid()
@@ -96,11 +103,12 @@ object NeuralSession {
         runCatching {
             markerFile(context).writeText(
                 buildString {
-                    appendLine("version=5.2")
+                    appendLine("version=5.2.1")
                     appendLine("pid=${Process.myPid()}")
                     appendLine("loaded_elapsed_ms=$loadedAtElapsedMs")
                     appendLine("model=$model")
-                    appendLine("note=diagnostic marker only; the neural state remains in RAM")
+                    appendLine("system_prompt=immutable_after_load")
+                    appendLine("note=diagnostic marker only; neural state remains in RAM")
                 }
             )
         }
