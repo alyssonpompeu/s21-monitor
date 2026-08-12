@@ -8,12 +8,12 @@ android {
     compileSdk 36
 
     defaultConfig {
-        // V5.1 is a separate package so v5 remains available while the builder install path is corrected.
-        applicationId 'com.alysson.offlineai.pluginv51'
+        // V5.2 is isolated so v5.1 stays available as an immediate rollback target.
+        applicationId 'com.alysson.offlineai.pluginv52'
         minSdk 31
         targetSdk 35
-        versionCode 9
-        versionName '6.1.0-plugin-v5.1-builder-fix'
+        versionCode 10
+        versionName '6.2.0-plugin-v5.2-session-build-live'
 
         ndk {
             abiFilters 'arm64-v8a'
