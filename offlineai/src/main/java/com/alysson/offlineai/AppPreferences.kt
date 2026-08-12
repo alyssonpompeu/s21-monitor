@@ -18,7 +18,7 @@ class AppPreferences(context: Context) {
         val instruction: String,
     ) {
         ADVANCED(
-            "Avançado",
+            "Alta qualidade",
             1536,
             9,
             "Analise com mais cuidado, verifique premissas, conecte contexto anterior e fontes locais, e priorize precisão antes de velocidade."
@@ -47,10 +47,11 @@ class AppPreferences(context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    /** V5 always runs the text model in the highest-quality local profile. */
     fun load(): Settings = Settings(
         userName = prefs.getString(KEY_NAME, "")?.trim().orEmpty(),
         answerLength = enumValueOrDefault(prefs.getString(KEY_LENGTH, null), AnswerLength.MEDIUM),
-        qualityProfile = enumValueOrDefault(prefs.getString(KEY_QUALITY, null), QualityProfile.INTERMEDIATE),
+        qualityProfile = QualityProfile.ADVANCED,
         specificInstruction = prefs.getString(KEY_SPECIFIC, "")?.trim().orEmpty(),
         activeProjectId = prefs.getLong(KEY_PROJECT, 1L),
     )
@@ -63,8 +64,9 @@ class AppPreferences(context: Context) {
         prefs.edit().putString(KEY_LENGTH, value.name).apply()
     }
 
+    /** Kept for binary/source compatibility; v5 intentionally ignores lower quality selections. */
     fun setQualityProfile(value: QualityProfile) {
-        prefs.edit().putString(KEY_QUALITY, value.name).apply()
+        prefs.edit().putString(KEY_QUALITY, QualityProfile.ADVANCED.name).apply()
     }
 
     fun setSpecificInstruction(value: String) {
@@ -73,6 +75,18 @@ class AppPreferences(context: Context) {
 
     fun setActiveProjectId(value: Long) {
         prefs.edit().putLong(KEY_PROJECT, value).apply()
+    }
+
+    fun persistentTreeUri(): String = prefs.getString(KEY_PERSIST_TREE, "")?.trim().orEmpty()
+
+    fun setPersistentTreeUri(value: String) {
+        prefs.edit().putString(KEY_PERSIST_TREE, value.trim()).apply()
+    }
+
+    fun persistenceFolderPrompted(): Boolean = prefs.getBoolean(KEY_PERSIST_PROMPTED, false)
+
+    fun setPersistenceFolderPrompted(value: Boolean = true) {
+        prefs.edit().putBoolean(KEY_PERSIST_PROMPTED, value).apply()
     }
 
     private inline fun <reified T : Enum<T>> enumValueOrDefault(raw: String?, fallback: T): T {
@@ -86,5 +100,7 @@ class AppPreferences(context: Context) {
         private const val KEY_QUALITY = "quality_profile"
         private const val KEY_SPECIFIC = "specific_instruction"
         private const val KEY_PROJECT = "active_project_id"
+        private const val KEY_PERSIST_TREE = "unilaw_persist_tree_uri"
+        private const val KEY_PERSIST_PROMPTED = "unilaw_persist_prompted"
     }
 }
