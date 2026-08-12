@@ -26,6 +26,20 @@ jobs:
       - name: Checkout Windows v1
         uses: actions/checkout@v4
 
+      - name: Detect Visual Studio CMake generator
+        shell: pwsh
+        run: |
+          $help = (cmake --help | Out-String)
+          if ($help -match 'Visual Studio 18 2026') {
+            $generator = 'Visual Studio 18 2026'
+          } elseif ($help -match 'Visual Studio 17 2022') {
+            $generator = 'Visual Studio 17 2022'
+          } else {
+            throw "Nenhum gerador Visual Studio x64 suportado foi encontrado pelo CMake."
+          }
+          "CMAKE_VS_GENERATOR=$generator" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Usando gerador CMake: $generator"
+
       - name: Pin llama.cpp
         shell: pwsh
         run: |
@@ -36,7 +50,7 @@ jobs:
       - name: Build llama.cpp CPU runtime x64
         shell: pwsh
         run: |
-          cmake -S vendor/llama.cpp -B build/llama -G "Visual Studio 17 2022" -A x64 `
+          cmake -S vendor/llama.cpp -B build/llama -G "$env:CMAKE_VS_GENERATOR" -A x64 `
             -DGGML_OPENMP=OFF `
             -DGGML_VULKAN=OFF `
             -DLLAMA_CURL=OFF `
@@ -45,7 +59,9 @@ jobs:
             -DLLAMA_BUILD_TESTS=OFF `
             -DLLAMA_BUILD_TOOLS=OFF `
             -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao configurar llama.cpp" }
           cmake --build build/llama --config Release --target llama-cli -- /m:2
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar llama-cli.exe" }
           $llama = Get-ChildItem build/llama -Recurse -Filter llama-cli.exe | Select-Object -First 1
           if (-not $llama) { throw "llama-cli.exe not found" }
           New-Item -ItemType Directory -Force dist/runtime | Out-Null
@@ -62,8 +78,7 @@ jobs:
       - name: Build Tiny-SD CPU runtime x64
         shell: pwsh
         run: |
-          cmake -S vendor/stable-diffusion.cpp -B build/sd -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_BUILD_TYPE=Release `
+          cmake -S vendor/stable-diffusion.cpp -B build/sd -G "$env:CMAKE_VS_GENERATOR" -A x64 `
             -DSD_BUILD_EXAMPLES=ON `
             -DSD_WEBP=OFF -DSD_WEBM=OFF `
             -DSD_CUDA=OFF -DSD_HIPBLAS=OFF -DSD_METAL=OFF `
@@ -71,7 +86,9 @@ jobs:
             -DSD_BUILD_SHARED_LIBS=OFF -DSD_BUILD_SHARED_GGML_LIB=OFF `
             -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF `
             -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao configurar stable-diffusion.cpp" }
           cmake --build build/sd --config Release --target sd-cli -- /m:2
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar sd-cli.exe" }
           $sd = Get-ChildItem build/sd -Recurse -Filter sd-cli.exe | Select-Object -First 1
           if (-not $sd) { throw "sd-cli.exe not found" }
           Copy-Item $sd.FullName dist/runtime/sd-cli.exe
@@ -79,8 +96,11 @@ jobs:
       - name: Build native Win32 interface
         shell: pwsh
         run: |
-          cmake -S windows-desktop -B build/windows-ui -G "Visual Studio 17 2022" -A x64
+          cmake -S windows-desktop -B build/windows-ui -G "$env:CMAKE_VS_GENERATOR" -A x64 `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao configurar interface Win32" }
           cmake --build build/windows-ui --config Release -- /m:2
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar interface Win32" }
           $app = Get-ChildItem build/windows-ui -Recurse -Filter IA-Offline-Windows-x64.exe | Select-Object -First 1
           if (-not $app) { throw "IA-Offline-Windows-x64.exe not found" }
           Copy-Item $app.FullName dist/IA-Offline-Windows-x64.exe
