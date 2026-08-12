@@ -1,29 +1,29 @@
-name: Build Offline AI Plugin Platform v5
+name: Build Offline AI Plugin Platform v5.1
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "feature/offline-ptbr-ai-persistent-projects-v5" ]
+    branches: [ "feature/offline-ptbr-ai-builder-install-fix-v5-1" ]
     paths-ignore:
-      - 'offlineai-plugin-v5-last-successful-build.txt'
+      - 'offlineai-plugin-v5-1-last-successful-build.txt'
 
 permissions:
   contents: write
 
 jobs:
-  build-plugin-platform-v5:
+  build-plugin-platform-v5-1:
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
     env:
       LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
-      V4_APK_SHA256: db488ef8679e515281c51eba36f02173a83e430e001622b42222a1058dd57ed3
-      V4_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-plugin-platform-v4
+      V5_APK_SHA256: 59a63f967d11e034bfebb7bec3ec4a9e021ae36005eb15cf141a862db2ee1542
+      V5_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-plugin-platform-v5
       QWEN_MODEL_FILE: Qwen3.5-2B-Q4_K_M.gguf
       QWEN_MODEL_SHA256: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
 
     steps:
-      - name: Checkout Plugin Platform v5
+      - name: Checkout Plugin Platform v5.1
         uses: actions/checkout@v4
 
       - name: Set up Java 17
@@ -88,28 +88,29 @@ jobs:
           activity.write_text(app, encoding='utf-8')
           PY
 
-      - name: Apply Workspace v2 v3 v4 and v5 patches
+      - name: Apply Workspace patches and generated-APK install fix
         shell: bash
         run: |
           python3 scripts/apply_workspace_v2_ui.py
           python3 scripts/apply_workspace_v3.py
           GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
           python3 scripts/apply_workspace_v5.py
+          python3 scripts/apply_builder_install_fix_v51.py
 
-      - name: Reuse verified v4 neural assets and native image engines
+      - name: Reuse verified v5 neural assets and native image engines
         shell: bash
         run: |
-          mkdir -p build/v4-reuse offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
+          mkdir -p build/v5-reuse offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
           curl -L --fail --retry 5 --retry-delay 5 \
-            "$V4_RELEASE_BASE/IA-Offline-Plugin-v4-S21.apk" -o build/v4-reuse/v4.apk
-          echo "$V4_APK_SHA256  build/v4-reuse/v4.apk" | sha256sum -c -
+            "$V5_RELEASE_BASE/IA-Offline-Plugin-v5-S21.apk" -o build/v5-reuse/v5.apk
+          echo "$V5_APK_SHA256  build/v5-reuse/v5.apk" | sha256sum -c -
 
-          unzip -p build/v4-reuse/v4.apk assets/model.gguf > offlineai/src/main/assets/model.gguf
+          unzip -p build/v5-reuse/v5.apk assets/model.gguf > offlineai/src/main/assets/model.gguf
           echo "$QWEN_MODEL_SHA256  offlineai/src/main/assets/model.gguf" | sha256sum -c -
-          unzip -p build/v4-reuse/v4.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
-          unzip -p build/v4-reuse/v4.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
-          unzip -p build/v4-reuse/v4.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
-          unzip -p build/v4-reuse/v4.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          unzip -p build/v5-reuse/v5.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
+          unzip -p build/v5-reuse/v5.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
+          unzip -p build/v5-reuse/v5.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          unzip -p build/v5-reuse/v5.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
           chmod 755 offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
           test -s offlineai/src/main/assets/model.gguf
           test -s offlineai/src/main/assets/ptbr_memory.db
@@ -117,111 +118,130 @@ jobs:
           test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
           test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
 
-      - name: Reuse v4 signed Builder and Coder packs
+      - name: Reuse v5 Builder and Coder packs
         shell: bash
         run: |
           curl -L --fail --retry 5 --retry-delay 5 \
-            "$V4_RELEASE_BASE/Developer-Builder-Core-v1.iapack" -o Developer-Builder-Core-v1.iapack
+            "$V5_RELEASE_BASE/Developer-Builder-Core-v1.iapack" -o Developer-Builder-Core-v1.iapack
           curl -L --fail --retry 5 --retry-delay 5 \
-            "$V4_RELEASE_BASE/Developer-Builder-Core-v1.iapack.sha256" -o Developer-Builder-Core-v1.iapack.sha256
+            "$V5_RELEASE_BASE/Developer-Builder-Core-v1.iapack.sha256" -o Developer-Builder-Core-v1.iapack.sha256
           curl -L --fail --retry 5 --retry-delay 5 \
-            "$V4_RELEASE_BASE/Coder-Qwen2.5-1.5B-Q4KM.iapack" -o Coder-Qwen2.5-1.5B-Q4KM.iapack
+            "$V5_RELEASE_BASE/Coder-Qwen2.5-1.5B-Q4KM.iapack" -o Coder-Qwen2.5-1.5B-Q4KM.iapack
           curl -L --fail --retry 5 --retry-delay 5 \
-            "$V4_RELEASE_BASE/Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256" -o Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256
+            "$V5_RELEASE_BASE/Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256" -o Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256
           sha256sum -c Developer-Builder-Core-v1.iapack.sha256
           sha256sum -c Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256
 
-      - name: Record Plugin v5 source manifest
+      - name: Verify Builder APK templates are aligned
+        shell: bash
+        run: |
+          mkdir -p build/builder-pack-check
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          pack = Path('Developer-Builder-Core-v1.iapack')
+          out = Path('build/builder-pack-check')
+          with zipfile.ZipFile(pack) as z:
+              names = set(z.namelist())
+              for slot in range(1, 5):
+                  wanted = f'payload/android/slot{slot}.apk'
+                  if wanted not in names:
+                      raise SystemExit(f'missing {wanted} in Builder Core')
+                  (out / f'slot{slot}.apk').write_bytes(z.read(wanted))
+          PY
+          ZIPALIGN="$ANDROID_HOME/build-tools/35.0.0/zipalign"
+          for APK in build/builder-pack-check/slot*.apk; do
+            "$ZIPALIGN" -c -P 16 -v 4 "$APK"
+          done
+
+      - name: Record Plugin v5.1 source manifest
         shell: bash
         run: |
           cat > offlineai/src/main/assets/source_manifest.json <<EOF
           {
-            "variant": "plugin-platform-v5",
+            "variant": "plugin-platform-v5.1-builder-install-fix",
             "language": "pt-BR",
             "runtime": "llama.cpp",
             "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
             "runtime_policy": "ARM64; max 3 llama workers; context 4096; batch 128; high-quality profile fixed; CPU/GPU/RAM safety targets; 2 GiB resident checkpoint target; thermal guard",
             "main_model": "$QWEN_MODEL_FILE",
             "main_model_sha256": "$QWEN_MODEL_SHA256",
-            "plugin_format": "iapack-v1-ed25519-sha256",
-            "image_runtime": "stable-diffusion.cpp CPU plus experimental Vulkan engine reused byte-for-byte from verified v4 APK",
-            "persistence": "SQLite durable turns + append-only Unilaw journal + Storage Access Framework mirror + grow-on-demand spill checkpoints capped at 5 GiB; not kernel swap",
-            "features": ["automatic project per new chat", "folder project UI", "project research sources", "arbitrary safe source types", "plugin selector", "high quality fixed", "live token streaming", "think tag suppression", "live code preview", "inline CPU GPU RAM controls", "durable chat recovery", "shared Documents mirror"]
+            "generated_apk_fix": "preserve STORED ZIP entries; resources.arsc uncompressed and 4-byte aligned; uncompressed .so 16KiB aligned; then sign with apksig v1/v2/v3",
+            "persistence": "SQLite durable turns + append-only Unilaw journal + Storage Access Framework mirror + grow-on-demand spill checkpoints capped at 5 GiB; not kernel swap"
           }
           EOF
 
-      - name: Build installable Plugin Platform v5 APK
+      - name: Build installable Plugin Platform v5.1 APK
         id: build_apk
         shell: bash
         run: |
           set +e
           set -o pipefail
-          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee offlineai-plugin-v5-build.log
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee offlineai-plugin-v5-1-build.log
           STATUS=${PIPESTATUS[0]}
           set -e
           if [ "$STATUS" -ne 0 ]; then
             python3 - <<'PY'
           from pathlib import Path
           import re
-          src = Path('offlineai-plugin-v5-build.log').read_text(encoding='utf-8', errors='replace').splitlines()
+          src = Path('offlineai-plugin-v5-1-build.log').read_text(encoding='utf-8', errors='replace').splitlines()
           patterns = re.compile(r'(error:|fatal error:|CMake Error|FAILED:|ninja:|Execution failed|BUILD FAILED|What went wrong|Caused by:)')
           hits = [i for i, line in enumerate(src) if patterns.search(line)]
           selected = set()
           for i in hits:
               selected.update(range(max(0, i - 14), min(len(src), i + 38)))
           lines = [src[i] for i in sorted(selected)] or src[-700:]
-          Path('offlineai-plugin-v5-last-build-error.txt').write_text('\n'.join(lines[-1200:]) + '\n', encoding='utf-8')
+          Path('offlineai-plugin-v5-1-last-build-error.txt').write_text('\n'.join(lines[-1200:]) + '\n', encoding='utf-8')
           PY
-            cat offlineai-plugin-v5-last-build-error.txt
+            cat offlineai-plugin-v5-1-last-build-error.txt
             exit "$STATUS"
           fi
-          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk IA-Offline-Plugin-v5-S21.apk
-          sha256sum IA-Offline-Plugin-v5-S21.apk | tee IA-Offline-Plugin-v5-S21.apk.sha256
-          unzip -l IA-Offline-Plugin-v5-S21.apk | grep -E 'assets/plugin_pubkey.der|assets/model.gguf|assets/ptbr_memory.db|lib/arm64-v8a/libsd-cli.so|lib/arm64-v8a/libsd-vulkan.so'
-          ls -lh IA-Offline-Plugin-v5-S21.apk
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk IA-Offline-Plugin-v5-1-S21.apk
+          sha256sum IA-Offline-Plugin-v5-1-S21.apk | tee IA-Offline-Plugin-v5-1-S21.apk.sha256
+          unzip -l IA-Offline-Plugin-v5-1-S21.apk | grep -E 'assets/plugin_pubkey.der|assets/model.gguf|assets/ptbr_memory.db|lib/arm64-v8a/libsd-cli.so|lib/arm64-v8a/libsd-vulkan.so'
+          ls -lh IA-Offline-Plugin-v5-1-S21.apk
 
-      - name: Upload v5 build diagnostics
+      - name: Upload v5.1 build diagnostics
         if: failure() && steps.build_apk.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: offline-ai-plugin-v5-build-diagnostics
+          name: offline-ai-plugin-v5-1-build-diagnostics
           path: |
-            offlineai-plugin-v5-last-build-error.txt
-            offlineai-plugin-v5-build.log
+            offlineai-plugin-v5-1-last-build-error.txt
+            offlineai-plugin-v5-1-build.log
           retention-days: 7
 
-      - name: Upload Plugin v5 APK artifact
+      - name: Upload Plugin v5.1 APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: IA-Offline-Plugin-v5-S21-APK
+          name: IA-Offline-Plugin-v5-1-S21-APK
           path: |
-            IA-Offline-Plugin-v5-S21.apk
-            IA-Offline-Plugin-v5-S21.apk.sha256
+            IA-Offline-Plugin-v5-1-S21.apk
+            IA-Offline-Plugin-v5-1-S21.apk.sha256
           compression-level: 0
 
-      - name: Publish Plugin Platform v5 and compatible packs
+      - name: Publish Plugin Platform v5.1 and compatible packs
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: offline-ai-plugin-platform-v5
-          name: IA Offline Plugin Platform v5 para Galaxy S21
+          tag_name: offline-ai-plugin-platform-v5-1
+          name: IA Offline Plugin Platform v5.1 para Galaxy S21
           body: |
-            Edição experimental separada da v4 para rollback imediato.
+            Correção focada no Builder Android da v5.
 
-            - Novo chat cria automaticamente um novo projeto persistente.
-            - Projetos aparecem como pastas; ⋮ abre Fontes de pesquisa, Renomear e Excluir.
-            - Fontes aceitam PDF, imagens, ZIP/APK, EXE e outros tipos. Binários nunca são executados: apenas metadados/strings e conteúdo textual seguro são indexados.
-            - O seletor principal escolhe o plugin: Texto/Qwen, Tiny-SD, Coder ou Builder. O seletor de qualidade foi removido; Alta qualidade é fixa.
-            - A pergunta permanece na barra central durante a resposta.
-            - Saída aparece token a token; tags <think> são filtradas; código recebe prévia ao vivo.
-            - CPU/GPU/RAM também aparecem diretamente abaixo da lista de plugins; backends continuam configuráveis por plugin.
-            - Conversas são persistidas incrementalmente em SQLite + chat.unilaw.persist. Com uma pasta concedida pelo usuário, chat.md/manifest/checkpoints também são espelhados em Documentos/Unilaw.
-            - O alvo residente de 2 GiB aciona checkpoint antecipado. O spill de até 5 GiB cresce sob demanda e não é swap do kernel Android.
-            - Mantém CPU seguro e Vulkan experimental do Tiny-SD da v4.
+            A causa do APK gerado não instalar era o empacotamento customizado: ao substituir assets/index.html, o Builder recomprimia também resources.arsc. Android 11+ pode rejeitar APK quando resources.arsc está compactado ou sem alinhamento de 4 bytes.
 
-            Instalação: APK v5 -> Developer Builder Core -> Coder Pack opcional -> Tiny-SD em Plugins locais.
+            - Preserva entradas STORED do APK-template em vez de forçar DEFLATE.
+            - resources.arsc permanece sem compressão e alinhado a 4 bytes.
+            - Bibliotecas .so não compactadas ficam alinhadas a 16 KiB para compatibilidade futura.
+            - Alinhamento é feito antes da assinatura local v1/v2/v3.
+            - O próprio Builder interrompe a criação se detectar resources.arsc compactado/desalinhado, em vez de entregar um APK inválido.
+            - Mantém projetos persistentes, Unilaw, Qwen, Tiny-SD, Coder e Builder da v5.
+            - Package ID separado com.alysson.offlineai.pluginv51 para manter a v5 instalada como rollback.
+
+            Após instalar v5.1, importe novamente Developer Builder Core; Coder e Tiny-SD continuam opcionais.
           files: |
-            IA-Offline-Plugin-v5-S21.apk
-            IA-Offline-Plugin-v5-S21.apk.sha256
+            IA-Offline-Plugin-v5-1-S21.apk
+            IA-Offline-Plugin-v5-1-S21.apk.sha256
             Developer-Builder-Core-v1.iapack
             Developer-Builder-Core-v1.iapack.sha256
             Coder-Qwen2.5-1.5B-Q4KM.iapack
@@ -229,14 +249,14 @@ jobs:
           make_latest: false
           overwrite_files: true
 
-      - name: Record successful Plugin v5 workflow run
+      - name: Record successful Plugin v5.1 workflow run
         shell: bash
         run: |
           printf 'run_id=%s\ncommit=%s\ncompleted_utc=%s\n' \
             "$GITHUB_RUN_ID" "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            > offlineai-plugin-v5-last-successful-build.txt
+            > offlineai-plugin-v5-1-last-successful-build.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add offlineai-plugin-v5-last-successful-build.txt
-          git commit -m 'Record Plugin Platform v5 APK build [skip ci]' || exit 0
-          git push origin HEAD:feature/offline-ptbr-ai-persistent-projects-v5
+          git add offlineai-plugin-v5-1-last-successful-build.txt
+          git commit -m 'Record Plugin Platform v5.1 APK build [skip ci]' || exit 0
+          git push origin HEAD:feature/offline-ptbr-ai-builder-install-fix-v5-1
