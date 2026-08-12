@@ -74,7 +74,7 @@ jobs:
           stat -c 'TRAMP_SIZE=%s' /tmp/marx_tramp.bin
           test "$(stat -c %s /tmp/marx_fw_helper.bin)" -le 2644
           test "$(stat -c %s /tmp/marx_tramp.bin)" -le 64
-          llvm-objdump -d --triple=thumbv7m-none-eabi /tmp/marx_fw_helper.elf | head -80
+          llvm-objdump -d --triple=thumbv7m-none-eabi /tmp/marx_fw_helper.elf | head -80 || true
           llvm-objdump -d --triple=thumbv7m-none-eabi /tmp/marx_tramp.elf
 
       - name: Binary-patch v3 firmware without expanding Nexmon patch region
@@ -123,7 +123,7 @@ jobs:
           APK=bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           BADGING=$("$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK")
-          echo "$BADGING" | head -20
+          echo "$BADGING" | head -20 || true
           [[ "$BADGING" == *"package: name='com.alysson.marx.link.v1'"* ]]
           [[ "$BADGING" == *"versionName='1.0.0-link'"* ]]
           [[ "$BADGING" == *"application-label:'MARX LINK V1.0'"* ]]
