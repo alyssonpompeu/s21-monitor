@@ -1,0 +1,37 @@
+{
+  "target": "Logitech G533",
+  "headset_model": "A-00072",
+  "receiver_model": "A-00073",
+  "firmware_version": "1.13",
+  "client": {
+    "role": "headset",
+    "usb_normal": "046D:0A67",
+    "usb_bootloader": "170D:0101",
+    "sha256": "c3624e58de9f93414ed94c0ab3690ccef35a82dbb525cf600b00ac5b68e67ba3",
+    "fingerprints": [
+      "V1.13,client",
+      "PairingSuccessfulTone",
+      "EnterPairingTone",
+      "sideToneGainConfig",
+      "CarmenEQ",
+      "micEQ"
+    ]
+  },
+  "host": {
+    "role": "receiver",
+    "usb_normal": "046D:0A66",
+    "usb_bootloader": "170D:0100",
+    "sha256": "94f705f835e31f902dfbec77ef872c0fab5cf5339ccf756baa49173d85d5e7a2",
+    "fingerprints": [
+      "V1.13,host",
+      "USB_Enum_Data",
+      "pcGamingInit",
+      "macConfig"
+    ]
+  },
+  "rf": {
+    "band": "2.4 GHz",
+    "transport": "Logitech/Avnera proprietary",
+    "note": "This profile identifies the target. It does not make a Bluetooth or Wi-Fi PHY become an Avnera PHY."
+  }
+}
