@@ -126,7 +126,7 @@ jobs:
           echo "$BADGING" | head -20 || true
           [[ "$BADGING" == *"package: name='com.alysson.marx.link.v1'"* ]]
           [[ "$BADGING" == *"versionName='1.0.0-link'"* ]]
-          [[ "$BADGING" == *"application-label:'MARX LINK V1.0'"* ]]
+          [[ "$BADGING" == *"launchable-activity: name='com.alysson.bcm4375lab.MarxLinkActivity'"* ]]
           unzip -l "$APK" | grep 'assets/nexmon/bcmdhd_sta_marx_link_v1.bin'
           unzip -l "$APK" | grep 'lib/arm64-v8a/libmarxlinkprobe.so'
           mkdir -p out
