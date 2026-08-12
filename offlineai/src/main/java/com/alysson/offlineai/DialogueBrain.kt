@@ -1,20 +1,10 @@
 package com.alysson.offlineai
 
-import java.util.ArrayDeque
-
 /**
- * Lightweight local conversational layer for intent resolution, project continuity and
- * user-selected response depth. No information leaves the device.
+ * Lightweight local conversational layer for intent resolution and project continuity.
+ * V5 reads history from SQLite so process death or model switching does not erase context.
  */
-class DialogueBrain {
-
-    private data class Turn(
-        val projectId: Long,
-        val user: String,
-        val assistant: String,
-    )
-
-    private val history = ArrayDeque<Turn>()
+class DialogueBrain(private val libraryStore: LibraryStore? = null) {
 
     fun buildPrompt(
         projectId: Long,
@@ -29,7 +19,7 @@ class DialogueBrain {
     ): String {
         val interpretationHint = normalizeCasualPtBr(originalQuestion)
         val historyLimit = when (qualityProfile) {
-            AppPreferences.QualityProfile.ADVANCED -> 6
+            AppPreferences.QualityProfile.ADVANCED -> 8
             AppPreferences.QualityProfile.INTERMEDIATE -> 4
             AppPreferences.QualityProfile.FAST -> 2
         }
@@ -39,14 +29,14 @@ class DialogueBrain {
             appendLine("<preferencias_locais>")
             appendLine("Projeto ativo: $projectName")
             if (userName.isNotBlank()) appendLine("Nome informado pelo usuário: $userName")
-            appendLine("Perfil de qualidade local: ${qualityProfile.label}")
-            appendLine(qualityProfile.instruction)
+            appendLine("Qualidade local: Alta qualidade")
+            appendLine(AppPreferences.QualityProfile.ADVANCED.instruction)
             appendLine("Extensão desejada: ${answerLength.label}")
             appendLine(answerLength.instruction)
             if (answerLength == AppPreferences.AnswerLength.SPECIFIC && specificInstruction.isNotBlank()) {
                 appendLine("Preferência específica: ${specificInstruction.take(1000)}")
             }
-            appendLine("Esses perfis são configurações do modelo local; não alegue ser ou usar um modelo de nuvem específico.")
+            appendLine("O perfil de qualidade é configuração local; não alegue ser ou usar um modelo de nuvem específico.")
             appendLine("</preferencias_locais>")
             appendLine()
 
@@ -69,6 +59,7 @@ class DialogueBrain {
             appendLine("Se houver uma interpretação claramente mais provável e de baixo risco, use-a sem interromper a conversa com confirmação desnecessária.")
             appendLine("Só peça esclarecimento quando interpretações plausíveis levarem a respostas materialmente diferentes ou faltar um dado essencial.")
             appendLine("Se o pedido envolver código, preserve requisitos, identifique riscos de implementação e entregue a solução mais executável possível.")
+            appendLine("Nunca mostre tags <think>, raciocínio interno ou texto de scratchpad. Entregue apenas a resposta final útil.")
             if (interpretationHint != originalQuestion) {
                 appendLine("Leitura auxiliar normalizada: $interpretationHint")
                 appendLine("A frase original continua sendo a fonte principal; a leitura auxiliar serve apenas para compreender linguagem informal.")
@@ -82,36 +73,22 @@ class DialogueBrain {
     }
 
     fun recordTurn(projectId: Long, user: String, assistant: String) {
-        val cleanUser = user.trim()
-        val cleanAssistant = assistant.trim()
-        if (cleanUser.isEmpty() || cleanAssistant.isEmpty()) return
-
-        history.addLast(
-            Turn(
-                projectId = projectId,
-                user = cleanUser.take(MAX_USER_CHARS),
-                assistant = cleanAssistant.take(MAX_ASSISTANT_CHARS),
-            )
-        )
-        while (history.size > MAX_TURNS_TOTAL) history.removeFirst()
+        libraryStore?.recordTurn(projectId, user, assistant, "text.qwen")
     }
 
     fun clearProject(projectId: Long) {
-        val kept = history.filter { it.projectId != projectId }
-        history.clear()
-        kept.forEach(history::addLast)
+        libraryStore?.clearConversation(projectId)
     }
 
     private fun recentConversation(projectId: Long, limit: Int): String {
-        val turns = history.filter { it.projectId == projectId }.takeLast(limit)
+        val turns = libraryStore?.recentConversationTurns(projectId, limit).orEmpty()
         if (turns.isEmpty()) return ""
-
         return buildString {
             appendLine("<historico_conversacional_local>")
-            appendLine("Histórico recente apenas deste projeto. Use-o para continuidade, pronomes, elipses e preferências já expressas.")
+            appendLine("Histórico persistente apenas deste projeto. Use-o para continuidade, pronomes, elipses e preferências já expressas.")
             turns.forEach { turn ->
-                appendLine("Usuário: ${turn.user}")
-                appendLine("Assistente: ${turn.assistant}")
+                appendLine("Usuário: ${turn.user.take(MAX_USER_CONTEXT)}")
+                if (turn.assistant.isNotBlank()) appendLine("Assistente: ${turn.assistant.take(MAX_ASSISTANT_CONTEXT)}")
             }
             append("</historico_conversacional_local>")
         }
@@ -130,15 +107,12 @@ class DialogueBrain {
     private fun preserveInitialCase(original: String, replacement: String): String {
         return if (original.firstOrNull()?.isUpperCase() == true) {
             replacement.replaceFirstChar { it.uppercase() }
-        } else {
-            replacement
-        }
+        } else replacement
     }
 
     companion object {
-        private const val MAX_TURNS_TOTAL = 18
-        private const val MAX_USER_CHARS = 900
-        private const val MAX_ASSISTANT_CHARS = 1600
+        private const val MAX_USER_CONTEXT = 1800
+        private const val MAX_ASSISTANT_CONTEXT = 5000
 
         private val REPLACEMENTS = linkedMapOf(
             "vc" to "você",
