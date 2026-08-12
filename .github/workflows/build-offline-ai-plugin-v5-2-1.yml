@@ -1,0 +1,263 @@
+name: Build Offline AI Plugin Platform v5.2.1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "feature/offline-ptbr-ai-neural-library-v5-2-1" ]
+    paths-ignore:
+      - 'offlineai-plugin-v5-2-1-last-successful-build.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  build-plugin-platform-v5-2-1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      V52_APK_SHA256: 7a0329edf8338ab073e8fdbdffb79383b59cb60b68b09f98875ff52c8a49bdd2
+      V52_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-plugin-platform-v5-2
+      QWEN_MODEL_FILE: Qwen3.5-2B-Q4_K_M.gguf
+      QWEN_MODEL_SHA256: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
+
+    steps:
+      - name: Checkout Plugin Platform v5.2.1
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip file
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          "$SDKMANAGER" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Pin llama.cpp source and tune S21 runtime
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+          python3 - <<'PY'
+          from pathlib import Path
+          native = Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          text = native.read_text(encoding='utf-8')
+          replacements = {
+              'constexpr int   N_THREADS_MAX           = 4;': 'constexpr int   N_THREADS_MAX           = 3;',
+              'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;': 'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
+              'constexpr int   BATCH_SIZE              = 512;': 'constexpr int   BATCH_SIZE              = 128;',
+              'constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;': 'constexpr float DEFAULT_SAMPLER_TEMP    = 0.75f;',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Pinned ai_chat.cpp no longer matches expected point: {old}')
+              text = text.replace(old, new, 1)
+          native.write_text(text, encoding='utf-8')
+
+          activity = Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
+          app = activity.read_text(encoding='utf-8')
+          markers = {
+              'Qwen3.5-0.8B-Q4_K_M.gguf': 'Qwen3.5-2B-Q4_K_M.gguf',
+              'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517': 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
+          }
+          for old, new in markers.items():
+              if old not in app:
+                  raise SystemExit(f'MainActivity model marker missing: {old}')
+              app = app.replace(old, new, 1)
+          activity.write_text(app, encoding='utf-8')
+          PY
+
+      - name: Apply Workspace v5.2.1 patches
+        shell: bash
+        run: |
+          python3 scripts/apply_workspace_v2_ui.py
+          python3 scripts/apply_workspace_v3.py
+          GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
+          python3 scripts/apply_workspace_v5.py
+          python3 scripts/apply_builder_install_fix_v51.py
+          python3 scripts/apply_workspace_v52.py
+          python3 scripts/apply_workspace_v521.py
+
+      - name: Reuse verified v5.2 neural assets and native image engines
+        shell: bash
+        run: |
+          mkdir -p build/v52-reuse offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
+          curl -L --fail --retry 5 --retry-delay 5 \
+            "$V52_RELEASE_BASE/IA-Offline-Plugin-v5-2-S21.apk" -o build/v52-reuse/v52.apk
+          echo "$V52_APK_SHA256  build/v52-reuse/v52.apk" | sha256sum -c -
+
+          unzip -p build/v52-reuse/v52.apk assets/model.gguf > offlineai/src/main/assets/model.gguf
+          echo "$QWEN_MODEL_SHA256  offlineai/src/main/assets/model.gguf" | sha256sum -c -
+          unzip -p build/v52-reuse/v52.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
+          unzip -p build/v52-reuse/v52.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
+          unzip -p build/v52-reuse/v52.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          unzip -p build/v52-reuse/v52.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          chmod 755 offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          test -s offlineai/src/main/assets/model.gguf
+          test -s offlineai/src/main/assets/ptbr_memory.db
+          test -s offlineai/src/main/assets/plugin_pubkey.der
+          test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+
+      - name: Reuse v5.2 Builder and Coder packs
+        shell: bash
+        run: |
+          curl -L --fail --retry 5 --retry-delay 5 \
+            "$V52_RELEASE_BASE/Developer-Builder-Core-v1.iapack" -o Developer-Builder-Core-v1.iapack
+          curl -L --fail --retry 5 --retry-delay 5 \
+            "$V52_RELEASE_BASE/Developer-Builder-Core-v1.iapack.sha256" -o Developer-Builder-Core-v1.iapack.sha256
+          curl -L --fail --retry 5 --retry-delay 5 \
+            "$V52_RELEASE_BASE/Coder-Qwen2.5-1.5B-Q4KM.iapack" -o Coder-Qwen2.5-1.5B-Q4KM.iapack
+          curl -L --fail --retry 5 --retry-delay 5 \
+            "$V52_RELEASE_BASE/Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256" -o Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256
+          sha256sum -c Developer-Builder-Core-v1.iapack.sha256
+          sha256sum -c Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256
+
+      - name: Verify Builder APK templates are aligned
+        shell: bash
+        run: |
+          mkdir -p build/builder-pack-check
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          pack = Path('Developer-Builder-Core-v1.iapack')
+          out = Path('build/builder-pack-check')
+          with zipfile.ZipFile(pack) as z:
+              names = set(z.namelist())
+              for slot in range(1, 5):
+                  wanted = f'payload/android/slot{slot}.apk'
+                  if wanted not in names:
+                      raise SystemExit(f'missing {wanted} in Builder Core')
+                  (out / f'slot{slot}.apk').write_bytes(z.read(wanted))
+          PY
+          ZIPALIGN="$ANDROID_HOME/build-tools/35.0.0/zipalign"
+          for APK in build/builder-pack-check/slot*.apk; do
+            "$ZIPALIGN" -c -P 16 -v 4 "$APK"
+          done
+
+      - name: Record Plugin v5.2.1 source manifest
+        shell: bash
+        run: |
+          cat > offlineai/src/main/assets/source_manifest.json <<EOF
+          {
+            "variant": "plugin-platform-v5.2.1-neural-library-fix",
+            "language": "pt-BR",
+            "runtime": "llama.cpp",
+            "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
+            "main_model": "$QWEN_MODEL_FILE",
+            "main_model_sha256": "$QWEN_MODEL_SHA256",
+            "system_prompt_fix": "system prompt is set exactly once immediately after loadModel as required by llama.android; task specialization stays in user prompts",
+            "neural_library": "hidden common knowledge collection managed from Plugins; project sources plus common library are retrieved for ordinary Qwen questions; legacy project 1 sources remain available as common legacy knowledge",
+            "package_policy": "applicationId com.alysson.offlineai.pluginv52 remains stable so this installs as an update and preserves plugins/projects/settings",
+            "neural_session": "one Qwen load per Android process; navigation does not unload/reload model",
+            "generated_apk_fix": "preserve STORED ZIP entries; resources.arsc uncompressed and aligned; sign with apksig after alignment"
+          }
+          EOF
+
+      - name: Build installable Plugin Platform v5.2.1 APK
+        id: build_apk
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee offlineai-plugin-v5-2-1-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          src = Path('offlineai-plugin-v5-2-1-build.log').read_text(encoding='utf-8', errors='replace').splitlines()
+          patterns = re.compile(r'(error:|fatal error:|CMake Error|FAILED:|ninja:|Execution failed|BUILD FAILED|What went wrong|Caused by:)')
+          hits = [i for i, line in enumerate(src) if patterns.search(line)]
+          selected = set()
+          for i in hits:
+              selected.update(range(max(0, i - 14), min(len(src), i + 38)))
+          lines = [src[i] for i in sorted(selected)] or src[-700:]
+          Path('offlineai-plugin-v5-2-1-last-build-error.txt').write_text('\n'.join(lines[-1200:]) + '\n', encoding='utf-8')
+          PY
+            cat offlineai-plugin-v5-2-1-last-build-error.txt
+            exit "$STATUS"
+          fi
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk IA-Offline-Plugin-v5-2-1-S21.apk
+          sha256sum IA-Offline-Plugin-v5-2-1-S21.apk | tee IA-Offline-Plugin-v5-2-1-S21.apk.sha256
+          unzip -l IA-Offline-Plugin-v5-2-1-S21.apk | grep -E 'assets/plugin_pubkey.der|assets/model.gguf|assets/ptbr_memory.db|lib/arm64-v8a/libsd-cli.so|lib/arm64-v8a/libsd-vulkan.so'
+          ls -lh IA-Offline-Plugin-v5-2-1-S21.apk
+
+      - name: Upload v5.2.1 build diagnostics
+        if: failure() && steps.build_apk.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-ai-plugin-v5-2-1-build-diagnostics
+          path: |
+            offlineai-plugin-v5-2-1-last-build-error.txt
+            offlineai-plugin-v5-2-1-build.log
+          retention-days: 7
+
+      - name: Upload Plugin v5.2.1 APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IA-Offline-Plugin-v5-2-1-S21-APK
+          path: |
+            IA-Offline-Plugin-v5-2-1-S21.apk
+            IA-Offline-Plugin-v5-2-1-S21.apk.sha256
+          compression-level: 0
+
+      - name: Publish Plugin Platform v5.2.1 and compatible packs
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-plugin-platform-v5-2-1
+          name: IA Offline Plugin Platform v5.2.1 para Galaxy S21
+          body: |
+            Correção da sessão neural e adição da Biblioteca Neural comum.
+
+            - Corrige o erro "System prompt must be set RIGHT AFTER model loaded!".
+            - O system prompt agora é definido uma única vez imediatamente após loadModel(), como exige o runtime.
+            - Mantém o Qwen residente e não tenta trocar o system prompt ao navegar entre telas.
+            - Adiciona Biblioteca Neural dentro de Plugins locais para livros, PDFs, imagens, textos, ZIP/APK e outras fontes.
+            - Perguntas comuns recuperam fontes do projeto atual + Biblioteca Neural global.
+            - Fontes antigas do primeiro projeto Geral continuam disponíveis como biblioteca legada para pesquisas comuns.
+            - Mantém applicationId com.alysson.offlineai.pluginv52 e versionCode maior: instala como atualização da v5.2 e preserva plugins, Tiny-SD, projetos e configurações.
+            - Mantém a correção de instalabilidade de APK da v5.1.
+          files: |
+            IA-Offline-Plugin-v5-2-1-S21.apk
+            IA-Offline-Plugin-v5-2-1-S21.apk.sha256
+            Developer-Builder-Core-v1.iapack
+            Developer-Builder-Core-v1.iapack.sha256
+            Coder-Qwen2.5-1.5B-Q4KM.iapack
+            Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256
+          make_latest: false
+          overwrite_files: true
+
+      - name: Record successful Plugin v5.2.1 workflow run
+        shell: bash
+        run: |
+          printf 'run_id=%s\ncommit=%s\ncompleted_utc=%s\n' \
+            "$GITHUB_RUN_ID" "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > offlineai-plugin-v5-2-1-last-successful-build.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add offlineai-plugin-v5-2-1-last-successful-build.txt
+          git commit -m 'Record Plugin Platform v5.2.1 APK build [skip ci]' || exit 0
+          git push origin HEAD:feature/offline-ptbr-ai-neural-library-v5-2-1
