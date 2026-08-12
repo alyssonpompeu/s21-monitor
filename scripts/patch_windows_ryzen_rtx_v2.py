@@ -10,11 +10,15 @@ s = s.replace('int cpuPercent = 60;\n    int gpuPercent = 50;\n    int ramPercen
 
 s = s.replace('std::atomic_bool gBusy{false};\n', 'std::atomic_bool gBusy{false};\nHANDLE gMemoryJob{};\nconstexpr SIZE_T APP_MEMORY_BUDGET = 5ull * 1024ull * 1024ull * 1024ull;\n')
 
+# Ryzen 5 3500X: 6 physical/logical threads. Keep the native worker count bounded to the CPU.
+s = s.replace('const int logical = std::max(1u, si.dwNumberOfProcessors);',
+              'const int logical = std::max<int>(1, static_cast<int>(si.dwNumberOfProcessors));')
 s = s.replace('return std::clamp(target, 1, 8);', 'return std::clamp(target, 1, 6);')
 s = s.replace('const ULONGLONG hardFloor = 1024ull * 1024ull * 1024ull;', 'const ULONGLONG hardFloor = 5ull * 1024ull * 1024ull * 1024ull;')
 
 needle = 'bool RunChild(const std::wstring& command, std::wstring& output, DWORD& exitCode) {'
 insert = '''void InitFiveGiBMemoryBudget() {
+    // Working-set sizes are hints to Windows, not a physical RAM reservation.
     SetProcessWorkingSetSizeEx(GetCurrentProcess(), 512ull * 1024ull * 1024ull, APP_MEMORY_BUDGET, 0);
 
     gMemoryJob = CreateJobObjectW(nullptr, L"IAOffline5GiBJob");
