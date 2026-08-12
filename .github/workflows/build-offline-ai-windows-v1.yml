@@ -20,7 +20,7 @@ jobs:
       SD_RELEASE_TAG: master-817-bcc7e29
       SD_CPU_ZIP_SHA256: 393302e405a290b984cfa110a5f1fc10239aa7b54a78e2b24a21e7334941c526
       SD_VULKAN_ZIP_SHA256: e49abd736fc9bc918a8f2625f17aec0a4b6efbede014cfb8cacbc685b26f6d48
-      QWEN_MODEL_REVISION: 31e04817b38d226cdd13454bcc3982ebaa5a386b
+      QWEN_MODEL_REVISION: main
       QWEN_MODEL_FILE: Qwen3.5-2B-Q4_K_M.gguf
       QWEN_MODEL_SHA256: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
       TINY_SD_FILE: segmind_tiny-sd-q4_K.gguf
@@ -124,6 +124,7 @@ jobs:
         shell: pwsh
         run: |
           curl.exe -L --fail --retry 5 --retry-delay 5 "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/$env:QWEN_MODEL_REVISION/$env:QWEN_MODEL_FILE?download=true" -o $env:QWEN_MODEL_FILE
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao baixar Qwen3.5 2B" }
           $hash = (Get-FileHash $env:QWEN_MODEL_FILE -Algorithm SHA256).Hash.ToLower()
           if ($hash -ne $env:QWEN_MODEL_SHA256) { throw "Qwen SHA256 mismatch: $hash" }
           "$hash  $env:QWEN_MODEL_FILE" | Set-Content "$env:QWEN_MODEL_FILE.sha256"
@@ -132,6 +133,7 @@ jobs:
         shell: pwsh
         run: |
           curl.exe -L --fail --retry 5 --retry-delay 5 "https://huggingface.co/turingevo/tiny-sd-gguf/resolve/main/$env:TINY_SD_FILE?download=true" -o $env:TINY_SD_FILE
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao baixar Tiny-SD" }
           $hash = (Get-FileHash $env:TINY_SD_FILE -Algorithm SHA256).Hash.ToLower()
           if ($hash -ne $env:TINY_SD_SHA256) { throw "Tiny-SD SHA256 mismatch: $hash" }
           "$hash  $env:TINY_SD_FILE" | Set-Content "$env:TINY_SD_FILE.sha256"
