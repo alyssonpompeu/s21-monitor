@@ -9,9 +9,8 @@ import java.security.MessageDigest
 import java.util.UUID
 
 /**
- * Runs stable-diffusion.cpp as a separate native process so the image runtime has its own
- * address space and can be terminated immediately if RAM/thermal guardrails are crossed.
- * The image weights are imported as a separate local pack instead of bloating the APK.
+ * Runs stable-diffusion.cpp in a separate native process. CPU remains the safe default for
+ * Galaxy S21 Exynos/Mali; a Vulkan engine may be bundled as an explicit experimental backend.
  */
 class ImageGenerationManager(
     private val context: Context,
@@ -20,16 +19,31 @@ class ImageGenerationManager(
 
     data class ImportResult(val file: File, val sha256: String)
 
+    private val performance = PerformanceSettings(context.applicationContext)
     private val modelDir = File(context.filesDir, "image-models").apply { mkdirs() }
     private val outputDir = File(context.filesDir, "generated-images").apply { mkdirs() }
     private val modelFile = File(modelDir, MODEL_FILE)
 
     fun hasModel(): Boolean = modelFile.isFile && modelFile.length() >= MIN_MODEL_BYTES
 
+    fun hasVulkanEngine(): Boolean = File(context.applicationInfo.nativeLibraryDir, SD_VULKAN_LIB).isFile
+
     fun modelDescription(): String = if (hasModel()) {
         "Tiny-SD Q4_K local • 512×512"
     } else {
         "Modelo de imagens não instalado"
+    }
+
+    fun backendDescription(): String {
+        val selected = performance.backend(PerformanceSettings.IMAGE_PLUGIN_ID)
+        val effective = performance.effectiveBackend(PerformanceSettings.IMAGE_PLUGIN_ID, hasVulkanEngine())
+        return if (selected == effective) effective.label else "${selected.label} → ${effective.label}"
+    }
+
+    fun deleteModel(): Boolean {
+        val tmp = File(modelDir, "$MODEL_FILE.tmp")
+        tmp.delete()
+        return !modelFile.exists() || modelFile.delete()
     }
 
     suspend fun importModel(uri: Uri, progress: (String) -> Unit): ImportResult = withContext(Dispatchers.IO) {
@@ -76,12 +90,14 @@ class ImageGenerationManager(
         quality: AppPreferences.QualityProfile,
         progress: (String) -> Unit,
     ): File = withContext(Dispatchers.IO) {
-        require(hasModel()) { "Instale primeiro o pacote local de geração de imagens." }
+        require(hasModel()) { "Instale primeiro o pacote local de geração de imagens em Plugins locais." }
         val admission = resourceGuard.state(ResourceGuard.TaskKind.IMAGE)
         require(admission.safe) { admission.reason ?: "Recursos insuficientes para gerar imagem agora." }
 
-        val executable = File(context.applicationInfo.nativeLibraryDir, SD_CLI_LIB)
-        require(executable.isFile) { "Motor de imagens não foi incluído nesta compilação." }
+        val backend = performance.effectiveBackend(PerformanceSettings.IMAGE_PLUGIN_ID, hasVulkanEngine())
+        val executableName = if (backend == PerformanceSettings.Backend.VULKAN) SD_VULKAN_LIB else SD_CPU_LIB
+        val executable = File(context.applicationInfo.nativeLibraryDir, executableName)
+        require(executable.isFile) { "Motor ${backend.label} não foi incluído nesta compilação." }
 
         val projectDir = File(outputDir, "project_$projectId").apply { mkdirs() }
         val output = File(projectDir, "imagem_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}.png")
@@ -90,8 +106,10 @@ class ImageGenerationManager(
             AppPreferences.QualityProfile.INTERMEDIATE -> 18
             AppPreferences.QualityProfile.FAST -> 12
         }
+        val imageThreads = performance.imageThreads()
+        val limits = performance.limits()
 
-        val args = listOf(
+        val args = mutableListOf(
             executable.absolutePath,
             "-m", modelFile.absolutePath,
             "-W", "512",
@@ -101,16 +119,15 @@ class ImageGenerationManager(
             "--sampling-method", "euler_a",
             "--diffusion-fa",
             "--vae-tiling",
-            "-t", IMAGE_THREADS.toString(),
+            "-t", imageThreads.toString(),
             "-o", output.absolutePath,
             "-p", prompt,
         )
 
-        progress("Gerando imagem localmente • $steps etapas")
+        progress("Gerando • ${backend.label} • $steps etapas • CPU alvo ${limits.cpuPercent}%")
         val processBuilder = ProcessBuilder(args)
             .directory(context.filesDir)
             .redirectErrorStream(true)
-        // Keep packaged native dependencies discoverable if a future engine build needs one.
         processBuilder.environment()["LD_LIBRARY_PATH"] = context.applicationInfo.nativeLibraryDir
         val process = processBuilder.start()
 
@@ -127,7 +144,7 @@ class ImageGenerationManager(
             }
             val exit = process.waitFor()
             check(exit == 0 && output.isFile && output.length() > 1024) {
-                "O motor de imagens terminou sem produzir uma imagem válida (código $exit)."
+                "O motor ${backend.label} terminou sem produzir uma imagem válida (código $exit)."
             }
             output
         } finally {
@@ -138,8 +155,8 @@ class ImageGenerationManager(
     companion object {
         const val MODEL_FILE = "segmind_tiny-sd-q4_K.gguf"
         const val MODEL_SHA256 = "69fe70e0b72f3ea22830b12ddabeb55ee8fe55a28ccc0b763ace4cf39af346d6"
-        private const val SD_CLI_LIB = "libsd-cli.so"
-        private const val IMAGE_THREADS = 2
+        private const val SD_CPU_LIB = "libsd-cli.so"
+        private const val SD_VULKAN_LIB = "libsd-vulkan.so"
         private const val MIN_MODEL_BYTES = 600L * 1024 * 1024
         private const val MAX_MODEL_BYTES = 1024L * 1024 * 1024
     }
