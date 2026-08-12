@@ -1,5 +1,43 @@
 #!/usr/bin/env python3
+import os
+import shutil
+import subprocess
 from pathlib import Path
+
+
+def prepare_spirv_headers_for_android_cross_compile() -> None:
+    """Make SPIRV-Headers visible inside the Android NDK sysroot used by CMake."""
+    if os.environ.get("GITHUB_ACTIONS", "").lower() != "true":
+        return
+
+    android_home = os.environ.get("ANDROID_HOME")
+    if not android_home:
+        raise SystemExit("v4: ANDROID_HOME ausente no GitHub Actions")
+
+    subprocess.run(["sudo", "apt-get", "install", "-y", "spirv-headers"], check=True)
+
+    sysroot_usr = (
+        Path(android_home)
+        / "ndk"
+        / "29.0.13113456"
+        / "toolchains"
+        / "llvm"
+        / "prebuilt"
+        / "linux-x86_64"
+        / "sysroot"
+        / "usr"
+    )
+    source_headers = Path("/usr/include/spirv")
+    source_cmake = Path("/usr/share/cmake/SPIRV-Headers")
+    if not source_headers.is_dir() or not source_cmake.is_dir():
+        raise SystemExit("v4: spirv-headers instalado, mas arquivos esperados não foram encontrados")
+
+    shutil.copytree(source_headers, sysroot_usr / "include" / "spirv", dirs_exist_ok=True)
+    shutil.copytree(source_cmake, sysroot_usr / "share" / "cmake" / "SPIRV-Headers", dirs_exist_ok=True)
+    print(f"SPIRV-Headers preparado no sysroot Android: {sysroot_usr}")
+
+
+prepare_spirv_headers_for_android_cross_compile()
 
 main_path = Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
 text = main_path.read_text(encoding='utf-8')
