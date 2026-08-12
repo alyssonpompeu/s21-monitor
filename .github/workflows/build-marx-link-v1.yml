@@ -90,7 +90,15 @@ jobs:
           make -j2
           cd patches/bcm4375b1/18_41_117_sta/nexmon
           make init
-          make -j1
+          if ! make -j1; then
+            echo '=== NEXMON LINKER.ERR ==='
+            cat log/linker.err 2>/dev/null || true
+            echo '=== NEXMON LINKER.LOG (tail) ==='
+            tail -n 120 log/linker.log 2>/dev/null || true
+            echo '=== PATCH OBJECT SIZES ==='
+            arm-none-eabi-size obj/*.o 2>/dev/null || true
+            exit 1
+          fi
           test -s bcmdhd_sta.bin_b1
           mkdir -p "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon"
           cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_marx_link_v1.bin"
