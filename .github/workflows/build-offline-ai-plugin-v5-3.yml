@@ -17,7 +17,7 @@ jobs:
 
     env:
       LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
-      V521_APK_SHA256: 3fab01e93af7293ed39c38d706662c15dbfb263bf3700db099c546cb7460a8f9
+      V521_APK_SHA256: 75a68e7905d9fbdd2603e30541a3e8d07f0d7198bd0cbd9cc084437ae73a367f
       V521_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-plugin-platform-v5-2-1
       QWEN_MODEL_FILE: Qwen3.5-2B-Q4_K_M.gguf
       QWEN_MODEL_SHA256: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
