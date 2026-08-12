@@ -1,4 +1,4 @@
-name: Build MARX LINK V1.0
+name: Build MARX LINK COREREV82
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 50
+    timeout-minutes: 35
     steps:
       - name: Checkout MARX LINK branch
         uses: actions/checkout@v4
@@ -37,77 +37,55 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Install Android NDK and build tools
+      - name: Install build tools
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
-
-      - name: Install Nexmon build dependencies
-        shell: bash
-        run: |
-          sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y git gawk qpdf flex libfl-dev bison xxd make patch python3 zlib1g-dev \
-            libc6:i386 libstdc++6:i386 zlib1g:i386 libncurses5:i386
+          sudo apt-get install -y clang lld llvm unzip curl file python3
 
-      - name: Clone exact Nexmon PR663 BCM4375B1 18.41.117
+      - name: Obtain exact proven v3 BCM4375 firmware base
         shell: bash
         run: |
-          git clone --depth 1 https://github.com/seemoo-lab/nexmon.git nexmon
-          cd nexmon
-          git fetch --depth 1 origin pull/663/head:pr663
-          git checkout pr663
-          test "$(git rev-parse HEAD)" = "fd117f434e1c479f6819a0ba31f9ca82d75f8a3a"
-          sed -i 's/LDFLAGS[[:space:]]*+=[[:space:]]*-ll/LDFLAGS\t\t+= -lfl/' buildtools/b43/assembler/Makefile
+          set -euo pipefail
+          URL="https://github.com/alyssonpompeu/s21-monitor/releases/download/rx42-fsi6-re-v3-github-latest/RX42-Control-FSi6-RE-v3-GITHUB-TPLRAM-TXOFF.apk"
+          curl -fL --retry 3 "$URL" -o /tmp/rx42-v3.apk
+          echo "e26308ac906f2648cb9249f1c69ef3fa51f54453ed3cb36cf4ff53c35242041f  /tmp/rx42-v3.apk" | sha256sum -c -
+          mkdir -p /tmp/rx42-v3
+          unzip -q /tmp/rx42-v3.apk assets/nexmon/bcmdhd_sta_rx42_tplram_probe_v2.bin -d /tmp/rx42-v3
+          BASE=/tmp/rx42-v3/assets/nexmon/bcmdhd_sta_rx42_tplram_probe_v2.bin
+          echo "15e3b2f6e29bf01c88b8670f2fcf4b40e02d947a2091af5243ddbf9b0dd69c44  $BASE" | sha256sum -c -
+          stat -c 'BASE_SIZE=%s' "$BASE"
 
-      - name: Verify Samsung stock firmware identity
+      - name: Build fixed-address COREREV82 firmware helper
         shell: bash
         run: |
-          FW=nexmon/firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1
-          ACTUAL=$(sha256sum "$FW" | awk '{print $1}')
-          test "$ACTUAL" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
-          echo "STOCK_SHA256=$ACTUAL"
+          set -euo pipefail
+          clang --target=armv7-none-eabi -mthumb -mcpu=cortex-m3 -Os -ffreestanding -fno-builtin \
+            -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables \
+            -c sdr-probe/marx_fw_helper.c -o /tmp/marx_fw_helper.o
+          ld.lld -T sdr-probe/marx_fw.ld /tmp/marx_fw_helper.o -o /tmp/marx_fw_helper.elf
+          llvm-objcopy -O binary /tmp/marx_fw_helper.elf /tmp/marx_fw_helper.bin
+          clang --target=armv7-none-eabi -mthumb -mcpu=cortex-m3 -c sdr-probe/marx_tramp.S -o /tmp/marx_tramp.o
+          ld.lld -T sdr-probe/marx_tramp.ld /tmp/marx_tramp.o -o /tmp/marx_tramp.elf
+          llvm-objcopy -O binary /tmp/marx_tramp.elf /tmp/marx_tramp.bin
+          stat -c 'HELPER_SIZE=%s' /tmp/marx_fw_helper.bin
+          stat -c 'TRAMP_SIZE=%s' /tmp/marx_tramp.bin
+          test "$(stat -c %s /tmp/marx_fw_helper.bin)" -le 2644
+          test "$(stat -c %s /tmp/marx_tramp.bin)" -le 64
+          llvm-objdump -d --triple=thumbv7m-none-eabi /tmp/marx_fw_helper.elf | head -80
+          llvm-objdump -d --triple=thumbv7m-none-eabi /tmp/marx_tramp.elf
 
-      - name: Apply compact MARX LINK AC-core SDR patch
+      - name: Binary-patch v3 firmware without expanding Nexmon patch region
         shell: bash
         run: |
-          IOCTL=nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
-          python3 sdr-probe/patch_pr663_link.py "$IOCTL"
-          grep -n -A20 'case 0x643' "$IOCTL"
-          grep -n -A20 'case 0x645' "$IOCTL"
-          grep -n -A20 'case 0x646' "$IOCTL"
-          grep -q 'XmtTemplateDataLo' "$IOCTL"
-          grep -q 'SamplePlayStartPtr' "$IOCTL"
-          grep -q 'SampleCollectPlayCtrl' "$IOCTL"
-          ! grep -q 'argprintf("MARX_LINK' "$IOCTL"
-
-      - name: Build patched Nexmon firmware
-        shell: bash
-        run: |
-          cd nexmon
-          source setup_env.sh
-          make -j2
-          cd patches/bcm4375b1/18_41_117_sta/nexmon
-          make init
-          if ! make -j1; then
-            echo '=== NEXMON LINKER.ERR ==='
-            cat log/linker.err 2>/dev/null || true
-            echo '=== NEXMON LINKER.LOG (tail) ==='
-            tail -n 120 log/linker.log 2>/dev/null || true
-            echo '=== PATCH OBJECT SIZES ==='
-            arm-none-eabi-size obj/*.o 2>/dev/null || true
-            exit 1
-          fi
-          test -s bcmdhd_sta.bin_b1
-          mkdir -p "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon"
-          cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_marx_link_v1.bin"
-          sha256sum bcmdhd_sta.bin_b1 > "$GITHUB_WORKSPACE/marx-link-firmware-sha256.txt"
-          cat "$GITHUB_WORKSPACE/marx-link-firmware-sha256.txt"
-
-      - name: Pin firmware SHA into Android loader
-        shell: bash
-        run: |
+          set -euo pipefail
+          BASE=/tmp/rx42-v3/assets/nexmon/bcmdhd_sta_rx42_tplram_probe_v2.bin
+          OUT=bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_marx_link_v1.bin
+          mkdir -p "$(dirname "$OUT")"
+          python3 sdr-probe/build_marx_binary.py "$BASE" /tmp/marx_fw_helper.bin /tmp/marx_tramp.bin "$OUT" | tee /tmp/marx-patch.txt
+          sha256sum "$OUT" | tee marx-link-firmware-sha256.txt
           SHA=$(awk '{print $1}' marx-link-firmware-sha256.txt)
           test -n "$SHA"
           sed -i "s/MARX_LINK_V1_SHA/$SHA/g" bcm4375lab/src/main/java/com/alysson/bcm4375lab/MarxLinkActivity.java
@@ -116,9 +94,9 @@ jobs:
       - name: Build ARM64 root tools
         shell: bash
         run: |
+          set -euo pipefail
           NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
           CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
-          test -x "$CC"
           OUT=bcm4375lab/src/main/jniLibs/arm64-v8a
           mkdir -p "$OUT"
           "$CC" -O2 -fPIE -pie bcm4375lab/native/nexprobe.c -o "$OUT/libnexprobe.so"
@@ -128,32 +106,36 @@ jobs:
           file "$OUT"/*.so
           test -x "$OUT/libmarxlinkprobe.so"
 
-      - name: Build MARX LINK APK with Gradle
+      - name: Build installable MARX LINK APK
         shell: bash
         run: |
+          set -euo pipefail
           gradle :bcm4375lab:clean :bcm4375lab:assembleDebug --stacktrace
           test -s bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
 
-      - name: Verify APK signature and identity
+      - name: Verify APK signature, identity and embedded firmware
         shell: bash
         run: |
+          set -euo pipefail
           APK=bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
           "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           BADGING=$("$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK")
-          echo "$BADGING"
+          echo "$BADGING" | head -20
           [[ "$BADGING" == *"package: name='com.alysson.marx.link.v1'"* ]]
           [[ "$BADGING" == *"versionName='1.0.0-link'"* ]]
           [[ "$BADGING" == *"application-label:'MARX LINK V1.0'"* ]]
+          unzip -l "$APK" | grep 'assets/nexmon/bcmdhd_sta_marx_link_v1.bin'
+          unzip -l "$APK" | grep 'lib/arm64-v8a/libmarxlinkprobe.so'
           mkdir -p out
-          cp "$APK" out/MARX-LINK-V1.0.apk
-          sha256sum out/MARX-LINK-V1.0.apk > out/APK-SHA256.txt
+          cp "$APK" out/MARX-LINK-COREREV82-V1.apk
+          sha256sum out/MARX-LINK-COREREV82-V1.apk | tee out/APK-SHA256.txt
           cp marx-link-firmware-sha256.txt out/FIRMWARE-SHA256.txt
-          cat out/APK-SHA256.txt
+          cp /tmp/marx-patch.txt out/PATCH-MAP.txt
 
       - name: Upload MARX LINK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MARX-LINK-V1.0
+          name: MARX-LINK-COREREV82-V1
           path: out/
           if-no-files-found: error
           retention-days: 30
@@ -161,21 +143,24 @@ jobs:
       - name: Publish MARX LINK release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: marx-link-v1-github-latest
-          name: MARX LINK V1.0
+          tag_name: marx-link-corerev82-latest
+          name: MARX LINK COREREV82 V1
           body: |
-            Experimental Galaxy S21 / BCM4375B1 AFHDS2A communication lab.
+            Galaxy S21 BCM4375B1 / COREREV82 experimental AFHDS2A laboratory.
 
-            Built from Nexmon PR663 with a compact BCM4375 D11AC sample-play
-            shim. The Android/native side performs diagnostics, IQ generation
-            and AFHDS2A BIND1 candidate generation.
+            This build no longer expands the PR663 Nexmon patch region. It starts
+            from the previously built v3 firmware, injects a compact Thumb helper
+            into a verified zero-filled patch-RAM gap, and redirects existing
+            private IOCTL 0x630 to that helper.
 
-            Includes D11AC mapping, bounded low-amplitude RF pulse experiments
-            and short AFHDS2A BIND1 candidates. Full bind is not claimed until
-            an arbitrary-GFSK RX path can learn the receiver ID.
+            The helper exposes the modern D11AC XmtTemplateDataLo/Hi/Ptr and
+            SamplePlayStart/Stop/Control path. Android performs IQ/GFSK generation.
+            RF playback and AFHDS2A bind remain experimental until confirmed on the
+            physical Galaxy S21 + MA-RX42; full bind is not claimed without RX-ID.
           files: |
-            out/MARX-LINK-V1.0.apk
+            out/MARX-LINK-COREREV82-V1.apk
             out/APK-SHA256.txt
             out/FIRMWARE-SHA256.txt
+            out/PATCH-MAP.txt
           make_latest: false
           overwrite_files: true
