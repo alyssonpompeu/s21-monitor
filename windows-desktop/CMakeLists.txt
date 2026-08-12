@@ -1,18 +1,14 @@
 cmake_minimum_required(VERSION 3.24)
-project(IAOfflineWindows LANGUAGES CXX RC)
+project(IAOfflineWindows LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(IA-Offline-Core-x64 WIN32
-  src/main.cpp
-  app.rc
-)
-add_executable(IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64 WIN32
-  src/launcher.cpp
-  app.rc
-)
+# CMake/MSVC already emits an embedded Windows manifest for WIN32 executables.
+# Do not also inject app.rc here, otherwise newer MSVC linkers report duplicate MANIFEST resources.
+add_executable(IA-Offline-Core-x64 WIN32 src/main.cpp)
+add_executable(IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64 WIN32 src/launcher.cpp)
 
 foreach(target IA-Offline-Core-x64 IA-Offline-Windows10-Ryzen3500X-RTX2070S-x64)
   target_compile_definitions(${target} PRIVATE
