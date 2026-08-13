@@ -42,9 +42,7 @@ class UiThemeController(private val context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun mode(): Mode = runCatching {
-        Mode.valueOf(prefs.getString(KEY_MODE, Mode.SYSTEM.name).orEmpty())
-    }.getOrDefault(Mode.SYSTEM)
+    fun mode(): Mode = storedMode(context)
 
     fun setMode(mode: Mode) {
         prefs.edit().putString(KEY_MODE, mode.name).apply()
@@ -63,6 +61,7 @@ class UiThemeController(private val context: Context) {
         activity.window.statusBarColor = p.background
         activity.window.navigationBarColor = p.background
         activity.window.setDecorFitsSystemWindows(false)
+        activity.window.isNavigationBarContrastEnforced = false
         val lightFlags = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
             WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         activity.window.insetsController?.setSystemBarsAppearance(
@@ -117,7 +116,7 @@ class UiThemeController(private val context: Context) {
                     else -> p.text
                 }
             )
-            if (root.hintTextColors != null) root.setHintTextColor(p.secondaryText)
+            root.setHintTextColor(p.secondaryText)
         }
         if (root is ViewGroup) {
             for (i in 0 until root.childCount) polishTextTree(root.getChildAt(i))
@@ -127,6 +126,24 @@ class UiThemeController(private val context: Context) {
     companion object {
         private const val PREFS = "unilaw_ui_v6"
         private const val KEY_MODE = "theme_mode"
+
+        /**
+         * Applies an explicit light/dark resource configuration before Activity.onCreate().
+         * SYSTEM returns the original context so Android follows the device theme normally.
+         */
+        fun wrap(base: Context): Context {
+            val mode = storedMode(base)
+            if (mode == Mode.SYSTEM) return base
+            val config = Configuration(base.resources.configuration)
+            config.uiMode = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                if (mode == Mode.DARK) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
+            return base.createConfigurationContext(config)
+        }
+
+        private fun storedMode(context: Context): Mode = runCatching {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            Mode.valueOf(prefs.getString(KEY_MODE, Mode.SYSTEM.name).orEmpty())
+        }.getOrDefault(Mode.SYSTEM)
 
         private val LIGHT = Palette(
             background = Color.rgb(247, 248, 251),
