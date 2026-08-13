@@ -47,7 +47,7 @@ main = replace_once(
 
     private fun buildUi() {
 ''',
-    '''        maybeRequestPersistenceFolder()
+    r'''        maybeRequestPersistenceFolder()
         prepareOfflineEngine()
         } catch (t: Throwable) {
             showBootstrapFailure(t)
