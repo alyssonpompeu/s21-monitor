@@ -1,5 +1,5 @@
-run_id=31547839832
-head_sha=4acefe0b44cd547555fd97e418ce2109813001b1
+run_id=31740188673
+head_sha=06692108cf59b54c7b490353b02a0b7a6d31eb7b
 exit_code=1
 --- build log tail ---
 	at org.gradle.internal.model.StateTransitionController.doTransition(StateTransitionController.java:266)
