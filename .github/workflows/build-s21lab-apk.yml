@@ -1,0 +1,49 @@
+name: Build S21 Lab Benchmark APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 's21lab/**'
+      - 'settings.gradle'
+      - '.github/workflows/build-s21lab-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build S21 Lab debug APK
+        run: gradle :s21lab:assembleDebug --stacktrace
+
+      - name: Rename APK
+        run: cp s21lab/build/outputs/apk/debug/s21lab-debug.apk S21-Lab-Benchmark.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: S21-Lab-Benchmark-APK
+          path: S21-Lab-Benchmark.apk
+
+      - name: Publish latest APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: s21lab-latest
+          name: S21 Lab Benchmark - Latest
+          body: Benchmark próprio e offline para SM-G991B Exynos 2100, com CPU/GPU/RAM/storage, thermal soak e telemetria root para comparar módulos Magisk.
+          files: S21-Lab-Benchmark.apk
+          make_latest: false
+          overwrite_files: true
