@@ -14,12 +14,15 @@ permissions:
 jobs:
   build-v7-1-recovery:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 180
 
     env:
       LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
-      V7_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-corepacks-v7
-      V7_CORE_SHA256: 43271ff9f22959b19ba5c0e035bf7794aec7c8e7632c3caf01937470d8bed319
+      V531_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-plugin-platform-v5-3-1
+      V531_APK_SHA256: c6b08aa5890f605b6221a93a8b0747ae2c4a3bd2deab9f6ec7780aa629790aa6
+      QWEN_MODEL_SHA256: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
+      TINY_SD_URL: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-workspace-v1/segmind_tiny-sd-q4_K.gguf
+      TINY_SD_SHA256: 69fe70e0b72f3ea22830b12ddabeb55ee8fe55a28ccc0b763ace4cf39af346d6
 
     steps:
       - name: Checkout v7.1 recovery
@@ -40,7 +43,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y unzip file
+          sudo apt-get install -y unzip file openssl
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           set +o pipefail
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
@@ -103,26 +106,86 @@ jobs:
           python3 scripts/apply_workspace_v7_corepacks.py
           python3 scripts/apply_workspace_v71_bootfix.py
 
-      - name: Reuse verified v7 runtime assets
+      - name: Prepare stable runtime assets and v7.1 signing identity
         shell: bash
         run: |
-          mkdir -p build/v7-reuse offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
+          mkdir -p build/v531-reuse build/v71-signing \
+            build/qwenpack/payload build/tinypack/payload \
+            offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
+
           curl -L --fail --retry 8 --retry-delay 5 \
-            "$V7_RELEASE_BASE/Unilaw-AI-Core-S21-v7.apk" -o build/v7-reuse/v7.apk
-          echo "$V7_CORE_SHA256  build/v7-reuse/v7.apk" | sha256sum -c -
-          unzip -p build/v7-reuse/v7.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
-          unzip -p build/v7-reuse/v7.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
-          unzip -p build/v7-reuse/v7.apk assets/plugin_pubkey_v7.der > offlineai/src/main/assets/plugin_pubkey_v7.der
-          unzip -p build/v7-reuse/v7.apk assets/source_manifest.json > offlineai/src/main/assets/source_manifest.json || true
-          unzip -p build/v7-reuse/v7.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
-          unzip -p build/v7-reuse/v7.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+            "$V531_RELEASE_BASE/IA-Offline-Plugin-v5-3-1-S21.apk" -o build/v531-reuse/v531.apk
+          echo "$V531_APK_SHA256  build/v531-reuse/v531.apk" | sha256sum -c -
+
+          unzip -p build/v531-reuse/v531.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
+          unzip -p build/v531-reuse/v531.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
+          unzip -p build/v531-reuse/v531.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          unzip -p build/v531-reuse/v531.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          unzip -p build/v531-reuse/v531.apk assets/model.gguf > build/qwenpack/payload/general.gguf
+          echo "$QWEN_MODEL_SHA256  build/qwenpack/payload/general.gguf" | sha256sum -c -
+
+          openssl genpkey -algorithm ED25519 -out build/v71-signing/plugin-ed25519.pem
+          openssl pkey -in build/v71-signing/plugin-ed25519.pem -pubout -outform DER \
+            -out offlineai/src/main/assets/plugin_pubkey_v7.der
+
           chmod 755 offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
           test -s offlineai/src/main/assets/ptbr_memory.db
           test -s offlineai/src/main/assets/plugin_pubkey.der
           test -s offlineai/src/main/assets/plugin_pubkey_v7.der
           test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
           test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
-          test ! -e offlineai/src/main/assets/model.gguf
+          rm -f offlineai/src/main/assets/model.gguf
+
+      - name: Create signed Qwen General v7.1 pack
+        shell: bash
+        run: |
+          python3 scripts/make_iapack.py \
+            --root build/qwenpack \
+            --id model.qwen35.2b \
+            --name 'Qwen General 2B' \
+            --version '7.1.0' \
+            --type 'required-model' \
+            --description 'Qwen3.5 2B Q4_K_M para chat geral offline da Unilaw. Modelo separado do APK Core.' \
+            --key build/v71-signing/plugin-ed25519.pem \
+            --output Qwen-General-2B-v7-1.iapack
+          sha256sum Qwen-General-2B-v7-1.iapack | tee Qwen-General-2B-v7-1.iapack.sha256
+          ls -lh Qwen-General-2B-v7-1.iapack
+
+      - name: Create signed Tiny-SD v7.1 pack
+        shell: bash
+        run: |
+          curl -L --fail --retry 8 --retry-delay 5 "$TINY_SD_URL" -o build/tinypack/payload/tiny-sd.gguf
+          echo "$TINY_SD_SHA256  build/tinypack/payload/tiny-sd.gguf" | sha256sum -c -
+          python3 scripts/make_iapack.py \
+            --root build/tinypack \
+            --id image.tinysd.q4k \
+            --name 'Tiny-SD Q4_K' \
+            --version '7.1.0' \
+            --type 'image-model' \
+            --description 'Tiny-SD Q4_K para geração local 512x512; CPU padrão e Vulkan experimental.' \
+            --key build/v71-signing/plugin-ed25519.pem \
+            --output Tiny-SD-Q4K-v7-1.iapack
+          sha256sum Tiny-SD-Q4K-v7-1.iapack | tee Tiny-SD-Q4K-v7-1.iapack.sha256
+          ls -lh Tiny-SD-Q4K-v7-1.iapack
+
+      - name: Record v7.1 recovery source manifest
+        shell: bash
+        run: |
+          cat > offlineai/src/main/assets/source_manifest.json <<EOF
+          {
+            "variant": "corepacks-v7.1-recovery",
+            "language": "pt-BR",
+            "target_device": "Samsung Galaxy S21 5G SM-G991B",
+            "soc": "Exynos 2100",
+            "runtime": "llama.cpp ARM64 + Android framework Views",
+            "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
+            "main_model": "Qwen3.5-2B-Q4_K_M.gguf",
+            "main_model_sha256": "$QWEN_MODEL_SHA256",
+            "model_delivery": "signed iapack outside Core APK",
+            "recovery": "unminified debug A/B build + guarded bootstrap + nonfatal telemetry",
+            "package": "com.alysson.offlineai.pluginv52"
+          }
+          EOF
 
       - name: Build crash-safe debug APK
         id: build_apk
@@ -169,34 +232,42 @@ jobs:
             offlineai-corepacks-v7-1-last-build-error.txt
           retention-days: 7
 
-      - name: Upload v7.1 recovery artifact
+      - name: Upload v7.1 recovery artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Unilaw-AI-Core-S21-v7-1-Recovery
+          name: Unilaw-AI-Corepacks-v7-1-Recovery
           path: |
             Unilaw-AI-Core-S21-v7-1-Recovery.apk
             Unilaw-AI-Core-S21-v7-1-Recovery.apk.sha256
+            Qwen-General-2B-v7-1.iapack
+            Qwen-General-2B-v7-1.iapack.sha256
+            Tiny-SD-Q4K-v7-1.iapack
+            Tiny-SD-Q4K-v7-1.iapack.sha256
           compression-level: 0
 
       - name: Publish v7.1 recovery
         uses: softprops/action-gh-release@v2
         with:
           tag_name: offline-ai-corepacks-v7-1-recovery
-          name: Unilaw AI Core v7.1 Recovery
+          name: Unilaw AI Core + Packs v7.1 Recovery
           body: |
             Correção de campo para fechamento imediato observado no Galaxy S21.
 
-            - Mantém a arquitetura Core + .iapack da v7.
             - APK Core continua sem Qwen embutido.
-            - Build de recuperação usa debug não-minificado para eliminar R8/shrink como variável de crash.
+            - Build de recuperação é debug não-minificado para eliminar R8/shrink como variável de crash.
             - attachBaseContext tolera preferência de tema inválida.
-            - Inicialização síncrona agora é protegida: em vez de fechar, mostra uma tela de recuperação com o erro.
-            - Telemetria de CPU/GPU/RAM não pode mais encerrar o processo se um nó sysfs/procfs falhar.
-            - Em caso de falha de bootstrap, grava unilaw-startup-crash.txt na área interna do app.
+            - Inicialização síncrona é protegida: em vez de fechar, mostra uma tela de recuperação com o erro.
+            - Telemetria CPU/GPU/RAM não pode encerrar o processo se procfs/sysfs falhar.
+            - Qwen General e Tiny-SD v7.1 são assinados com a mesma chave pública embutida neste Core.
+            - Builder/Coder legados continuam aceitos pela chave de compatibilidade v5.3.1.
 
-            Use os mesmos Qwen-General-2B.iapack, Tiny-SD-Q4K.iapack, Coder e Builder publicados na release v7.
+            Para este APK de recuperação, use Qwen-General-2B-v7-1.iapack. O pacote v7.1 evita qualquer dependência da chave rotativa da antiga release v7.
           files: |
             Unilaw-AI-Core-S21-v7-1-Recovery.apk
             Unilaw-AI-Core-S21-v7-1-Recovery.apk.sha256
+            Qwen-General-2B-v7-1.iapack
+            Qwen-General-2B-v7-1.iapack.sha256
+            Tiny-SD-Q4K-v7-1.iapack
+            Tiny-SD-Q4K-v7-1.iapack.sha256
           make_latest: false
           overwrite_files: true
