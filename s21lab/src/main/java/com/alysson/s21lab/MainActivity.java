@@ -4,6 +4,7 @@ import android.app.*;
 import android.os.*;
 import android.provider.MediaStore;
 import android.content.*;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.view.*;
@@ -13,7 +14,6 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends Activity {
     private TextView status, resultView, rootView;
@@ -129,19 +129,6 @@ public class MainActivity extends Activity {
                 final int storageMB = fullMode ? 256 : 128;
                 final long soakMs = fullMode ? 180000 : 20000;
 
-                List<String> telemetry = Collections.synchronizedList(new ArrayList<>());
-                AtomicBoolean sampling = new AtomicBoolean(true);
-                Thread sampler = new Thread(() -> {
-                    long t0 = System.nanoTime();
-                    while (sampling.get()) {
-                        long ms = (System.nanoTime() - t0) / 1_000_000L;
-                        String s = root ? RootTelemetry.snapshot() : "root=NA";
-                        telemetry.add(ms + "ms|" + s);
-                        try { Thread.sleep(1000); } catch (InterruptedException e) { return; }
-                    }
-                }, "S21LabTelemetry");
-                sampler.start();
-
                 ui("CPU single-core...", 5);
                 double single = Benchmarks.cpuSingleMops(singleMs);
 
@@ -169,19 +156,15 @@ public class MainActivity extends Activity {
                 GpuBench.Result soakGpu = GpuBench.run(soakMs);
                 cpuSoak.join();
 
-                sampling.set(false);
-                sampler.interrupt();
-                sampler.join(2000);
-
                 ui("Gerando relatório...", 96);
                 String report = buildReport(mode, root, threads, single, multi, gpu, memBw, memLat,
-                        storage, soakCpu[0], soakGpu, telemetry);
+                        storage, soakCpu[0], soakGpu);
                 lastReport = report;
 
                 runOnUiThread(() -> {
                     resultView.setText(report);
                     progress.setProgress(100);
-                    status.setText("Concluído. Copie o relatório e cole no ChatGPT.");
+                    status.setText("Concluído. O TXT salvo será publicado somente depois de totalmente fechado.");
                     quick.setEnabled(true); full.setEnabled(true);
                     copy.setEnabled(true); share.setEnabled(true); save.setEnabled(true);
                 });
@@ -201,7 +184,7 @@ public class MainActivity extends Activity {
     private String buildReport(String mode, boolean root, int threads,
                                double single, double multi, GpuBench.Result gpu,
                                double memBw, double memLat, Benchmarks.StorageResult storage,
-                               double soakCpu, GpuBench.Result soakGpu, List<String> telemetry) {
+                               double soakCpu, GpuBench.Result soakGpu) {
         double cpuScore = single * 90.0 + multi * 28.0;
         double gpuScore = gpu.drawsPerSecond * 140.0;
         double memScore = memBw * 7.0 + memLat * 900.0;
@@ -221,7 +204,7 @@ public class MainActivity extends Activity {
         sb.append("kernel=").append(System.getProperty("os.version")).append('\n');
         sb.append("root=").append(root).append('\n');
         sb.append("cpu_threads=").append(threads).append('\n');
-        sb.append("refresh_current_hz=").append(getWindowManager().getDefaultDisplay().getRefreshRate()).append('\n');
+        sb.append("refresh_current_hz=").append(getDisplay().getRefreshRate()).append('\n');
         sb.append('\n');
 
         sb.append("=== SCORE ===\n");
@@ -248,10 +231,9 @@ public class MainActivity extends Activity {
             sb.append("=== ROOT TELEMETRY ===\nNA - root não concedido\n\n");
         }
 
-        sb.append("=== TELEMETRY 1s ===\n");
-        synchronized (telemetry) {
-            for (String line : telemetry) sb.append(line).append('\n');
-        }
+        sb.append("=== DATA FILE POLICY ===\n");
+        sb.append("per_second_telemetry=handled_by_magisk_boot5min_file\n");
+        sb.append("txt_state=FINAL_CLOSED\n");
         sb.append("\nEND_REPORT\n");
         return sb.toString();
     }
@@ -272,22 +254,37 @@ public class MainActivity extends Activity {
 
     private void saveReport() {
         if (lastReport.isEmpty()) return;
-        String name = "S21Lab_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".txt";
+        String name = "S21Lab_FINAL_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".txt";
         ContentValues cv = new ContentValues();
         cv.put(MediaStore.Downloads.DISPLAY_NAME, name);
         cv.put(MediaStore.Downloads.MIME_TYPE, "text/plain");
         cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+        if (Build.VERSION.SDK_INT >= 29) cv.put(MediaStore.Downloads.IS_PENDING, 1);
+
         Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
         if (uri == null) {
             Toast.makeText(this, "Falha ao criar arquivo.", Toast.LENGTH_LONG).show();
             return;
         }
-        try (OutputStream out = getContentResolver().openOutputStream(uri)) {
-            if (out != null) out.write(lastReport.getBytes(StandardCharsets.UTF_8));
-            Toast.makeText(this, "Salvo em Downloads/" + name, Toast.LENGTH_LONG).show();
+
+        boolean ok = false;
+        try (OutputStream out = getContentResolver().openOutputStream(uri, "w")) {
+            if (out == null) throw new IOException("OutputStream nulo");
+            out.write(lastReport.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            ok = true;
         } catch (IOException e) {
+            getContentResolver().delete(uri, null, null);
             Toast.makeText(this, "Erro ao salvar: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
         }
+
+        if (ok && Build.VERSION.SDK_INT >= 29) {
+            ContentValues done = new ContentValues();
+            done.put(MediaStore.Downloads.IS_PENDING, 0);
+            getContentResolver().update(uri, done, null, null);
+        }
+        Toast.makeText(this, "TXT final fechado em Downloads/" + name, Toast.LENGTH_LONG).show();
     }
 
     @Override protected void onDestroy() {
