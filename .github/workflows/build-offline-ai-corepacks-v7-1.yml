@@ -1,0 +1,202 @@
+name: Build Unilaw AI Corepacks v7.1 Recovery
+
+on:
+  push:
+    branches: [ "feature/offline-ptbr-ai-corepacks-v7" ]
+    paths:
+      - 'scripts/apply_workspace_v71_bootfix.py'
+      - '.github/workflows/build-offline-ai-corepacks-v7-1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-v7-1-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      V7_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-corepacks-v7
+      V7_CORE_SHA256: 43271ff9f22959b19ba5c0e035bf7794aec7c8e7632c3caf01937470d8bed319
+
+    steps:
+      - name: Checkout v7.1 recovery
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip file
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          "$SDKMANAGER" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Pin llama.cpp and tune Exynos 2100 CPU runtime
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+          python3 - <<'PY'
+          from pathlib import Path
+          native = Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          text = native.read_text(encoding='utf-8')
+          replacements = {
+              'constexpr int   N_THREADS_MAX           = 4;': 'constexpr int   N_THREADS_MAX           = 3;',
+              'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;': 'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
+              'constexpr int   BATCH_SIZE              = 512;': 'constexpr int   BATCH_SIZE              = 128;',
+              'constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;': 'constexpr float DEFAULT_SAMPLER_TEMP    = 0.75f;',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Pinned ai_chat.cpp no longer matches expected point: {old}')
+              text = text.replace(old, new, 1)
+          native.write_text(text, encoding='utf-8')
+
+          activity = Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
+          app = activity.read_text(encoding='utf-8')
+          markers = {
+              'Qwen3.5-0.8B-Q4_K_M.gguf': 'Qwen3.5-2B-Q4_K_M.gguf',
+              'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517': 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
+          }
+          for old, new in markers.items():
+              if old not in app:
+                  raise SystemExit(f'MainActivity model marker missing: {old}')
+              app = app.replace(old, new, 1)
+          activity.write_text(app, encoding='utf-8')
+          PY
+
+      - name: Apply Workspace lineage plus v7.1 recovery patch
+        shell: bash
+        run: |
+          python3 scripts/apply_workspace_v2_ui.py
+          python3 scripts/apply_workspace_v3.py
+          GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
+          python3 scripts/apply_workspace_v5.py
+          python3 scripts/apply_builder_install_fix_v51.py
+          python3 scripts/apply_workspace_v52.py
+          python3 scripts/apply_workspace_v521.py
+          python3 scripts/apply_workspace_v53.py
+          python3 scripts/apply_workspace_v531.py
+          python3 scripts/apply_workspace_v6_exynos.py
+          python3 scripts/apply_workspace_v7_corepacks.py
+          python3 scripts/apply_workspace_v71_bootfix.py
+
+      - name: Reuse verified v7 runtime assets
+        shell: bash
+        run: |
+          mkdir -p build/v7-reuse offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
+          curl -L --fail --retry 8 --retry-delay 5 \
+            "$V7_RELEASE_BASE/Unilaw-AI-Core-S21-v7.apk" -o build/v7-reuse/v7.apk
+          echo "$V7_CORE_SHA256  build/v7-reuse/v7.apk" | sha256sum -c -
+          unzip -p build/v7-reuse/v7.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
+          unzip -p build/v7-reuse/v7.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
+          unzip -p build/v7-reuse/v7.apk assets/plugin_pubkey_v7.der > offlineai/src/main/assets/plugin_pubkey_v7.der
+          unzip -p build/v7-reuse/v7.apk assets/source_manifest.json > offlineai/src/main/assets/source_manifest.json || true
+          unzip -p build/v7-reuse/v7.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          unzip -p build/v7-reuse/v7.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          chmod 755 offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          test -s offlineai/src/main/assets/ptbr_memory.db
+          test -s offlineai/src/main/assets/plugin_pubkey.der
+          test -s offlineai/src/main/assets/plugin_pubkey_v7.der
+          test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          test ! -e offlineai/src/main/assets/model.gguf
+
+      - name: Build crash-safe debug APK
+        id: build_apk
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee offlineai-corepacks-v7-1-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            tail -n 1200 offlineai-corepacks-v7-1-build.log > offlineai-corepacks-v7-1-last-build-error.txt
+            cat offlineai-corepacks-v7-1-last-build-error.txt
+            exit "$STATUS"
+          fi
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk Unilaw-AI-Core-S21-v7-1-Recovery.apk
+          sha256sum Unilaw-AI-Core-S21-v7-1-Recovery.apk | tee Unilaw-AI-Core-S21-v7-1-Recovery.apk.sha256
+          ls -lh Unilaw-AI-Core-S21-v7-1-Recovery.apk
+
+      - name: Verify recovery APK
+        shell: bash
+        run: |
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APK="Unilaw-AI-Core-S21-v7-1-Recovery.apk"
+          "$AAPT" dump badging "$APK" | tee build/v7-1-badging.txt
+          grep -q "package: name='com.alysson.offlineai.pluginv52'" build/v7-1-badging.txt
+          grep -q "native-code: 'arm64-v8a'" build/v7-1-badging.txt
+          unzip -l "$APK" | grep -q 'assets/ptbr_memory.db'
+          unzip -l "$APK" | grep -q 'assets/plugin_pubkey_v7.der'
+          if unzip -l "$APK" | grep -q 'assets/model.gguf'; then
+            echo 'ERROR: Qwen was bundled back into the Core.' >&2
+            exit 1
+          fi
+          CORE_BYTES=$(stat -c%s "$APK")
+          test "$CORE_BYTES" -lt 700000000
+
+      - name: Upload diagnostics on failure
+        if: failure() && steps.build_apk.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unilaw-v7-1-recovery-diagnostics
+          path: |
+            offlineai-corepacks-v7-1-build.log
+            offlineai-corepacks-v7-1-last-build-error.txt
+          retention-days: 7
+
+      - name: Upload v7.1 recovery artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unilaw-AI-Core-S21-v7-1-Recovery
+          path: |
+            Unilaw-AI-Core-S21-v7-1-Recovery.apk
+            Unilaw-AI-Core-S21-v7-1-Recovery.apk.sha256
+          compression-level: 0
+
+      - name: Publish v7.1 recovery
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-corepacks-v7-1-recovery
+          name: Unilaw AI Core v7.1 Recovery
+          body: |
+            Correção de campo para fechamento imediato observado no Galaxy S21.
+
+            - Mantém a arquitetura Core + .iapack da v7.
+            - APK Core continua sem Qwen embutido.
+            - Build de recuperação usa debug não-minificado para eliminar R8/shrink como variável de crash.
+            - attachBaseContext tolera preferência de tema inválida.
+            - Inicialização síncrona agora é protegida: em vez de fechar, mostra uma tela de recuperação com o erro.
+            - Telemetria de CPU/GPU/RAM não pode mais encerrar o processo se um nó sysfs/procfs falhar.
+            - Em caso de falha de bootstrap, grava unilaw-startup-crash.txt na área interna do app.
+
+            Use os mesmos Qwen-General-2B.iapack, Tiny-SD-Q4K.iapack, Coder e Builder publicados na release v7.
+          files: |
+            Unilaw-AI-Core-S21-v7-1-Recovery.apk
+            Unilaw-AI-Core-S21-v7-1-Recovery.apk.sha256
+          make_latest: false
+          overwrite_files: true
