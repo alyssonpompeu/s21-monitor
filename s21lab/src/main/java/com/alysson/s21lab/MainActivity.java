@@ -4,7 +4,6 @@ import android.app.*;
 import android.os.*;
 import android.provider.MediaStore;
 import android.content.*;
-import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.view.*;
@@ -16,9 +15,9 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class MainActivity extends Activity {
-    private TextView status, resultView, rootView;
+    private TextView status, resultView;
     private ProgressBar progress;
-    private Button quick, full, copy, share, save;
+    private Button full, save;
     private volatile String lastReport = "";
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
 
@@ -26,7 +25,6 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         buildUi();
-        checkRoot();
     }
 
     private void buildUi() {
@@ -43,21 +41,20 @@ public class MainActivity extends Activity {
         box.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("SM-G991B / Exynos 2100 • S21Lab Score v1\nBenchmark próprio para comparar seus módulos Magisk.");
+        sub.setText("SM-G991B / Exynos 2100\nFULL único • TXT compacto e fechado");
         sub.setTextSize(15);
         sub.setPadding(0, dp(4), 0, dp(12));
         box.addView(sub);
 
-        rootView = new TextView(this);
-        rootView.setText("Root: verificando...");
-        box.addView(rootView);
-
-        quick = button("Executar QUICK (~1 min)");
-        full = button("Executar FULL (~4–5 min)");
-        box.addView(quick); box.addView(full);
+        full = button("Executar FULL");
+        save = button("Salvar log TXT");
+        save.setEnabled(false);
+        box.addView(full);
+        box.addView(save);
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(100); progress.setProgress(0);
+        progress.setMax(100);
+        progress.setProgress(0);
         box.addView(progress, new LinearLayout.LayoutParams(-1, dp(18)));
 
         status = new TextView(this);
@@ -70,19 +67,10 @@ public class MainActivity extends Activity {
         resultView.setTextIsSelectable(true);
         resultView.setTypeface(android.graphics.Typeface.MONOSPACE);
         resultView.setTextSize(12);
-        resultView.setText("O relatório aparecerá aqui.");
+        resultView.setText("Execute o FULL. Depois salve o TXT final.");
         box.addView(resultView);
 
-        copy = button("Copiar relatório");
-        share = button("Compartilhar relatório");
-        save = button("Salvar TXT em Downloads");
-        copy.setEnabled(false); share.setEnabled(false); save.setEnabled(false);
-        box.addView(copy); box.addView(share); box.addView(save);
-
-        quick.setOnClickListener(v -> runBench(false));
-        full.setOnClickListener(v -> runBench(true));
-        copy.setOnClickListener(v -> copyReport());
-        share.setOnClickListener(v -> shareReport());
+        full.setOnClickListener(v -> runBench());
         save.setOnClickListener(v -> saveReport());
 
         ScrollView scroll = new ScrollView(this);
@@ -103,31 +91,21 @@ public class MainActivity extends Activity {
 
     private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
 
-    private void checkRoot() {
-        exec.submit(() -> {
-            boolean root = RootTelemetry.hasRoot();
-            String mod = root ? RootTelemetry.moduleInfo() : "sem root";
-            runOnUiThread(() -> rootView.setText("Root: " + (root ? "OK (Magisk/su)" : "não disponível") +
-                    "\nMódulo detectado:\n" + mod));
-        });
-    }
-
-    private void runBench(boolean fullMode) {
-        quick.setEnabled(false); full.setEnabled(false);
-        copy.setEnabled(false); share.setEnabled(false); save.setEnabled(false);
+    private void runBench() {
+        full.setEnabled(false);
+        save.setEnabled(false);
+        lastReport = "";
         resultView.setText("");
         progress.setProgress(0);
 
         exec.submit(() -> {
             try {
-                final boolean root = RootTelemetry.hasRoot();
-                final String mode = fullMode ? "FULL" : "QUICK";
-                final long singleMs = fullMode ? 12000 : 6000;
-                final long multiMs = fullMode ? 20000 : 8000;
-                final long gpuMs = fullMode ? 18000 : 10000;
-                final long memMs = fullMode ? 12000 : 6000;
-                final int storageMB = fullMode ? 256 : 128;
-                final long soakMs = fullMode ? 180000 : 20000;
+                final long singleMs = 12000;
+                final long multiMs = 20000;
+                final long gpuMs = 18000;
+                final long memMs = 12000;
+                final int storageMB = 256;
+                final long soakMs = 180000;
 
                 ui("CPU single-core...", 5);
                 double single = Benchmarks.cpuSingleMops(singleMs);
@@ -136,7 +114,7 @@ public class MainActivity extends Activity {
                 int threads = Math.max(1, Runtime.getRuntime().availableProcessors());
                 double multi = Benchmarks.cpuMultiMops(multiMs, threads);
 
-                ui("GPU OpenGL ES offscreen...", 35);
+                ui("GPU OpenGL ES...", 35);
                 GpuBench.Result gpu = GpuBench.run(gpuMs);
 
                 ui("Memória RAM...", 52);
@@ -146,7 +124,7 @@ public class MainActivity extends Activity {
                 ui("Armazenamento...", 66);
                 Benchmarks.StorageResult storage = Benchmarks.storage(getCacheDir(), storageMB);
 
-                ui("Carga combinada CPU + GPU / thermal soak...", 78);
+                ui("CPU + GPU / thermal soak...", 78);
                 final double[] soakCpu = new double[1];
                 Thread cpuSoak = new Thread(() -> {
                     try { soakCpu[0] = Benchmarks.cpuMultiMops(soakMs, threads); }
@@ -156,22 +134,21 @@ public class MainActivity extends Activity {
                 GpuBench.Result soakGpu = GpuBench.run(soakMs);
                 cpuSoak.join();
 
-                ui("Gerando relatório...", 96);
-                String report = buildReport(mode, root, threads, single, multi, gpu, memBw, memLat,
+                ui("Gerando TXT final...", 96);
+                lastReport = buildReport(threads, single, multi, gpu, memBw, memLat,
                         storage, soakCpu[0], soakGpu);
-                lastReport = report;
 
                 runOnUiThread(() -> {
-                    resultView.setText(report);
+                    resultView.setText(lastReport);
                     progress.setProgress(100);
-                    status.setText("Concluído. O TXT salvo será publicado somente depois de totalmente fechado.");
-                    quick.setEnabled(true); full.setEnabled(true);
-                    copy.setEnabled(true); share.setEnabled(true); save.setEnabled(true);
+                    status.setText("Concluído. Toque em Salvar log TXT.");
+                    full.setEnabled(true);
+                    save.setEnabled(true);
                 });
             } catch (Throwable e) {
                 runOnUiThread(() -> {
                     status.setText("Erro: " + e);
-                    quick.setEnabled(true); full.setEnabled(true);
+                    full.setEnabled(true);
                 });
             }
         });
@@ -181,7 +158,7 @@ public class MainActivity extends Activity {
         runOnUiThread(() -> { status.setText(s); progress.setProgress(p); });
     }
 
-    private String buildReport(String mode, boolean root, int threads,
+    private String buildReport(int threads,
                                double single, double multi, GpuBench.Result gpu,
                                double memBw, double memLat, Benchmarks.StorageResult storage,
                                double soakCpu, GpuBench.Result soakGpu) {
@@ -191,10 +168,10 @@ public class MainActivity extends Activity {
         double storageScore = (storage.writeMBs + storage.readMBs) * 4.0;
         double total = cpuScore * 0.36 + gpuScore * 0.34 + memScore * 0.20 + storageScore * 0.10;
 
-        StringBuilder sb = new StringBuilder(64 * 1024);
+        StringBuilder sb = new StringBuilder(4096);
         sb.append("S21 LAB BENCHMARK REPORT\n");
-        sb.append("S21Lab Score v1\n");
-        sb.append("mode=").append(mode).append('\n');
+        sb.append("S21Lab Score v1.2\n");
+        sb.append("mode=FULL\n");
         sb.append("timestamp=").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date())).append('\n');
         sb.append("model=").append(Build.MODEL).append('\n');
         sb.append("device=").append(Build.DEVICE).append('\n');
@@ -202,15 +179,12 @@ public class MainActivity extends Activity {
         sb.append("build=").append(Build.DISPLAY).append('\n');
         sb.append("android=").append(Build.VERSION.RELEASE).append(" sdk=").append(Build.VERSION.SDK_INT).append('\n');
         sb.append("kernel=").append(System.getProperty("os.version")).append('\n');
-        sb.append("root=").append(root).append('\n');
         sb.append("cpu_threads=").append(threads).append('\n');
-        sb.append("refresh_current_hz=").append(getDisplay().getRefreshRate()).append('\n');
-        sb.append('\n');
+        sb.append("refresh_current_hz=").append(getDisplay().getRefreshRate()).append("\n\n");
 
         sb.append("=== SCORE ===\n");
-        sb.append(String.format(Locale.US, "TOTAL=%.0f\nCPU=%.0f\nGPU=%.0f\nMEM=%.0f\nSTORAGE=%.0f\n",
+        sb.append(String.format(Locale.US, "TOTAL=%.0f\nCPU=%.0f\nGPU=%.0f\nMEM=%.0f\nSTORAGE=%.0f\n\n",
                 total, cpuScore, gpuScore, memScore, storageScore));
-        sb.append('\n');
 
         sb.append("=== RAW BENCHMARK ===\n");
         sb.append(String.format(Locale.US, "cpu_single_mops=%.3f\ncpu_multi_mops=%.3f\n", single, multi));
@@ -219,42 +193,13 @@ public class MainActivity extends Activity {
         sb.append(String.format(Locale.US, "storage_write_MBps=%.2f\nstorage_read_MBps=%.2f\n", storage.writeMBs, storage.readMBs));
         sb.append(String.format(Locale.US, "soak_cpu_multi_mops=%.3f\nsoak_gpu_draws_per_sec=%.3f\nsoak_gpu_status=%s\n",
                 soakCpu, soakGpu.drawsPerSecond, soakGpu.status));
-        sb.append('\n');
-
-        if (root) {
-            sb.append("=== MAGISK MODULE ===\n").append(RootTelemetry.moduleInfo()).append("\n\n");
-            sb.append("=== STATIC HARDWARE / DVFS ===\n").append(RootTelemetry.staticHardware()).append("\n\n");
-            String npu = RootTelemetry.npuInfo();
-            sb.append("=== NPU / NNAPI CAPABILITY ===\n");
-            sb.append(npu.isBlank() ? "NA - backend NNAPI não expôs dumpsys\n" : npu).append("\n\n");
-        } else {
-            sb.append("=== ROOT TELEMETRY ===\nNA - root não concedido\n\n");
-        }
-
-        sb.append("=== DATA FILE POLICY ===\n");
-        sb.append("per_second_telemetry=handled_by_magisk_boot5min_file\n");
-        sb.append("txt_state=FINAL_CLOSED\n");
-        sb.append("\nEND_REPORT\n");
+        sb.append("\ntxt_state=FINAL_CLOSED\nEND_REPORT\n");
         return sb.toString();
-    }
-
-    private void copyReport() {
-        ClipboardManager cm = (ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
-        cm.setPrimaryClip(ClipData.newPlainText("S21Lab report", lastReport));
-        Toast.makeText(this, "Relatório copiado.", Toast.LENGTH_SHORT).show();
-    }
-
-    private void shareReport() {
-        Intent i = new Intent(Intent.ACTION_SEND);
-        i.setType("text/plain");
-        i.putExtra(Intent.EXTRA_SUBJECT, "S21 Lab Benchmark");
-        i.putExtra(Intent.EXTRA_TEXT, lastReport);
-        startActivity(Intent.createChooser(i, "Compartilhar relatório"));
     }
 
     private void saveReport() {
         if (lastReport.isEmpty()) return;
-        String name = "S21Lab_FINAL_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".txt";
+        String name = "S21Lab_FULL_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".txt";
         ContentValues cv = new ContentValues();
         cv.put(MediaStore.Downloads.DISPLAY_NAME, name);
         cv.put(MediaStore.Downloads.MIME_TYPE, "text/plain");
@@ -267,24 +212,22 @@ public class MainActivity extends Activity {
             return;
         }
 
-        boolean ok = false;
         try (OutputStream out = getContentResolver().openOutputStream(uri, "w")) {
             if (out == null) throw new IOException("OutputStream nulo");
             out.write(lastReport.getBytes(StandardCharsets.UTF_8));
             out.flush();
-            ok = true;
         } catch (IOException e) {
             getContentResolver().delete(uri, null, null);
             Toast.makeText(this, "Erro ao salvar: " + e.getMessage(), Toast.LENGTH_LONG).show();
             return;
         }
 
-        if (ok && Build.VERSION.SDK_INT >= 29) {
+        if (Build.VERSION.SDK_INT >= 29) {
             ContentValues done = new ContentValues();
             done.put(MediaStore.Downloads.IS_PENDING, 0);
             getContentResolver().update(uri, done, null, null);
         }
-        Toast.makeText(this, "TXT final fechado em Downloads/" + name, Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "Log final salvo em Downloads/" + name, Toast.LENGTH_LONG).show();
     }
 
     @Override protected void onDestroy() {
