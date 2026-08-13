@@ -1,0 +1,320 @@
+name: Build Unilaw AI Corepacks v7
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "feature/offline-ptbr-ai-corepacks-v7" ]
+    paths-ignore:
+      - 'offlineai-corepacks-v7-last-successful-build.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  build-corepacks-v7:
+    runs-on: ubuntu-latest
+    timeout-minutes: 210
+
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      V531_APK_SHA256: c6b08aa5890f605b6221a93a8b0747ae2c4a3bd2deab9f6ec7780aa629790aa6
+      V531_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-plugin-platform-v5-3-1
+      V1_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-workspace-v1
+      QWEN_MODEL_FILE: Qwen3.5-2B-Q4_K_M.gguf
+      QWEN_MODEL_SHA256: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
+      TINY_SD_SHA256: 69fe70e0b72f3ea22830b12ddabeb55ee8fe55a28ccc0b763ace4cf39af346d6
+
+    steps:
+      - name: Checkout Corepacks v7
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip file openssl
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          "$SDKMANAGER" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Pin llama.cpp and tune Exynos 2100 CPU runtime
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+          python3 - <<'PY'
+          from pathlib import Path
+          native = Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          text = native.read_text(encoding='utf-8')
+          replacements = {
+              'constexpr int   N_THREADS_MAX           = 4;': 'constexpr int   N_THREADS_MAX           = 3;',
+              'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;': 'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
+              'constexpr int   BATCH_SIZE              = 512;': 'constexpr int   BATCH_SIZE              = 128;',
+              'constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;': 'constexpr float DEFAULT_SAMPLER_TEMP    = 0.75f;',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Pinned ai_chat.cpp no longer matches expected point: {old}')
+              text = text.replace(old, new, 1)
+          native.write_text(text, encoding='utf-8')
+
+          activity = Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
+          app = activity.read_text(encoding='utf-8')
+          markers = {
+              'Qwen3.5-0.8B-Q4_K_M.gguf': 'Qwen3.5-2B-Q4_K_M.gguf',
+              'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517': 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
+          }
+          for old, new in markers.items():
+              if old not in app:
+                  raise SystemExit(f'MainActivity model marker missing: {old}')
+              app = app.replace(old, new, 1)
+          activity.write_text(app, encoding='utf-8')
+          PY
+
+      - name: Apply Workspace lineage and Corepacks v7 patch
+        shell: bash
+        run: |
+          python3 scripts/apply_workspace_v2_ui.py
+          python3 scripts/apply_workspace_v3.py
+          GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
+          python3 scripts/apply_workspace_v5.py
+          python3 scripts/apply_builder_install_fix_v51.py
+          python3 scripts/apply_workspace_v52.py
+          python3 scripts/apply_workspace_v521.py
+          python3 scripts/apply_workspace_v53.py
+          python3 scripts/apply_workspace_v531.py
+          python3 scripts/apply_workspace_v6_exynos.py
+          python3 scripts/apply_workspace_v7_corepacks.py
+
+      - name: Reuse verified runtime assets without bundling Qwen in APK
+        shell: bash
+        run: |
+          mkdir -p build/v531-reuse build/qwenpack/payload offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
+          curl -L --fail --retry 8 --retry-delay 5 \
+            "$V531_RELEASE_BASE/IA-Offline-Plugin-v5-3-1-S21.apk" -o build/v531-reuse/v531.apk
+          echo "$V531_APK_SHA256  build/v531-reuse/v531.apk" | sha256sum -c -
+
+          unzip -p build/v531-reuse/v531.apk assets/model.gguf > build/qwenpack/payload/general.gguf
+          echo "$QWEN_MODEL_SHA256  build/qwenpack/payload/general.gguf" | sha256sum -c -
+          unzip -p build/v531-reuse/v531.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
+          unzip -p build/v531-reuse/v531.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
+          unzip -p build/v531-reuse/v531.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          unzip -p build/v531-reuse/v531.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          chmod 755 offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          test -s offlineai/src/main/assets/ptbr_memory.db
+          test -s offlineai/src/main/assets/plugin_pubkey.der
+          test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          test ! -e offlineai/src/main/assets/model.gguf
+
+      - name: Create v7 signing identity and Qwen General pack
+        shell: bash
+        run: |
+          mkdir -p build/plugin-signing offlineai/src/main/assets
+          openssl genpkey -algorithm ED25519 -out build/plugin-signing/plugin-v7-ed25519.pem
+          openssl pkey -in build/plugin-signing/plugin-v7-ed25519.pem -pubout -outform DER \
+            -out offlineai/src/main/assets/plugin_pubkey_v7.der
+
+          python3 scripts/make_iapack.py \
+            --root build/qwenpack \
+            --id model.qwen35.2b \
+            --name 'Qwen General 2B' \
+            --version '1.0.0' \
+            --type 'required-model' \
+            --description 'Modelo principal Qwen3.5 2B Q4_K_M para chat offline. Mapeado diretamente do iapack pelo Unilaw Core; não é duplicado dentro do APK.' \
+            --key build/plugin-signing/plugin-v7-ed25519.pem \
+            --output Qwen-General-2B.iapack
+          sha256sum Qwen-General-2B.iapack | tee Qwen-General-2B.iapack.sha256
+          ls -lh Qwen-General-2B.iapack
+
+      - name: Create signed Tiny-SD pack
+        shell: bash
+        run: |
+          mkdir -p build/tinysdpack/payload
+          curl -L --fail --retry 8 --retry-delay 5 \
+            "$V1_RELEASE_BASE/segmind_tiny-sd-q4_K.gguf" -o build/tinysdpack/payload/tiny-sd.gguf
+          echo "$TINY_SD_SHA256  build/tinysdpack/payload/tiny-sd.gguf" | sha256sum -c -
+          python3 scripts/make_iapack.py \
+            --root build/tinysdpack \
+            --id image.tinysd.q4k \
+            --name 'Tiny-SD Q4_K' \
+            --version '1.0.0' \
+            --type 'image-model' \
+            --description 'Modelo Tiny-SD 512x512 para geração local. CPU é o padrão seguro no Exynos 2100; Vulkan permanece experimental.' \
+            --key build/plugin-signing/plugin-v7-ed25519.pem \
+            --output Tiny-SD-Q4K.iapack
+          sha256sum Tiny-SD-Q4K.iapack | tee Tiny-SD-Q4K.iapack.sha256
+          ls -lh Tiny-SD-Q4K.iapack
+
+      - name: Reuse compatible Builder Coder and Work Free packages
+        shell: bash
+        run: |
+          for FILE in \
+            Developer-Builder-Core-v1.iapack \
+            Developer-Builder-Core-v1.iapack.sha256 \
+            Coder-Qwen2.5-1.5B-Q4KM.iapack \
+            Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256 \
+            Work-Free-v2.apk \
+            Work-Free-v2.apk.sha256; do
+            curl -L --fail --retry 8 --retry-delay 5 "$V531_RELEASE_BASE/$FILE" -o "$FILE"
+          done
+          sha256sum -c Developer-Builder-Core-v1.iapack.sha256
+          sha256sum -c Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256
+          sha256sum -c Work-Free-v2.apk.sha256
+
+      - name: Record Corepacks source manifest
+        shell: bash
+        run: |
+          cat > offlineai/src/main/assets/source_manifest.json <<EOF
+          {
+            "variant": "corepacks-v7",
+            "language": "pt-BR",
+            "target_device": "Samsung Galaxy S21 5G SM-G991B",
+            "soc": "Exynos 2100",
+            "runtime": "llama.cpp + Android framework Views",
+            "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
+            "main_model": "Qwen General 2B .iapack",
+            "main_model_sha256": "$QWEN_MODEL_SHA256",
+            "pack_architecture": "small core APK + Qwen General + Coder + Tiny-SD + Builder + Work Free",
+            "model_loading": "direct payload mapping from verified iapack; no model duplication in APK or models/ copy",
+            "ui": "native framework Views, light/dark/system palettes, frame-batched streaming",
+            "anr_strategy": "background neural load + worker inference + 32ms UI batching",
+            "root_strategy": "opt-in stock max-frequency caps on detected SM-G991B only",
+            "plugin_trust": "legacy Ed25519 key for existing packs plus v7 Ed25519 key for new Qwen/Tiny-SD packs",
+            "package_policy": "applicationId com.alysson.offlineai.pluginv52 remains stable"
+          }
+          EOF
+
+      - name: Build optimized Core release APK
+        id: build_apk
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          gradle :offlineai:assembleRelease --stacktrace --no-daemon 2>&1 | tee offlineai-corepacks-v7-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          src = Path('offlineai-corepacks-v7-build.log').read_text(encoding='utf-8', errors='replace').splitlines()
+          patterns = re.compile(r'(error:|fatal error:|CMake Error|FAILED:|ninja:|Execution failed|BUILD FAILED|What went wrong|Caused by:|e: file:)')
+          hits = [i for i, line in enumerate(src) if patterns.search(line)]
+          selected = set()
+          for i in hits:
+              selected.update(range(max(0, i - 14), min(len(src), i + 50)))
+          lines = [src[i] for i in sorted(selected)] or src[-1000:]
+          Path('offlineai-corepacks-v7-last-build-error.txt').write_text('\n'.join(lines[-1600:]) + '\n', encoding='utf-8')
+          PY
+            cat offlineai-corepacks-v7-last-build-error.txt
+            exit "$STATUS"
+          fi
+          APK="$(find offlineai/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          cp "$APK" Unilaw-AI-Core-S21-v7.apk
+          sha256sum Unilaw-AI-Core-S21-v7.apk | tee Unilaw-AI-Core-S21-v7.apk.sha256
+          ls -lh Unilaw-AI-Core-S21-v7.apk
+
+      - name: Verify Core APK is model-free ARM64 package
+        shell: bash
+        run: |
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APK="Unilaw-AI-Core-S21-v7.apk"
+          "$AAPT" dump badging "$APK" | tee build/v7-badging.txt
+          grep -q "package: name='com.alysson.offlineai.pluginv52'" build/v7-badging.txt
+          grep -q "native-code: 'arm64-v8a'" build/v7-badging.txt
+          unzip -l "$APK" | grep -q 'assets/ptbr_memory.db'
+          unzip -l "$APK" | grep -q 'assets/plugin_pubkey.der'
+          unzip -l "$APK" | grep -q 'assets/plugin_pubkey_v7.der'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/'
+          if unzip -l "$APK" | grep -q 'assets/model.gguf'; then
+            echo 'ERROR: Qwen model was accidentally bundled into the Core APK.' >&2
+            exit 1
+          fi
+          CORE_BYTES=$(stat -c%s "$APK")
+          if [ "$CORE_BYTES" -ge 700000000 ]; then
+            echo "ERROR: Core APK unexpectedly large: $CORE_BYTES bytes" >&2
+            exit 1
+          fi
+
+      - name: Upload v7 diagnostics
+        if: failure() && steps.build_apk.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unilaw-ai-corepacks-v7-build-diagnostics
+          path: |
+            offlineai-corepacks-v7-last-build-error.txt
+            offlineai-corepacks-v7-build.log
+          retention-days: 7
+
+      - name: Upload Core v7 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unilaw-AI-Corepacks-v7
+          path: |
+            Unilaw-AI-Core-S21-v7.apk
+            Unilaw-AI-Core-S21-v7.apk.sha256
+            Qwen-General-2B.iapack
+            Qwen-General-2B.iapack.sha256
+            Tiny-SD-Q4K.iapack
+            Tiny-SD-Q4K.iapack.sha256
+          compression-level: 0
+
+      - name: Publish Corepacks v7
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-corepacks-v7
+          name: Unilaw AI Core + Packs v7
+          body: |
+            Arquitetura modular otimizada para o Galaxy S21 5G SM-G991B / Exynos 2100.
+
+            - APK principal não contém mais o Qwen 2B.
+            - Qwen General 2B virou .iapack obrigatório e é mapeado diretamente do pacote verificado, sem cópia duplicada.
+            - Tiny-SD também virou .iapack assinado.
+            - Coder e Developer Builder Core continuam separados e compatíveis.
+            - Work Free permanece companion separado.
+            - Carregamento neural em segundo plano, streaming visual em lotes de ~32 ms e limites Exynos/root da v6 permanecem.
+            - APK Core é uma build release com R8/shrinkResources ativo; assinatura de sideload ainda usa a identidade debug do CI até configurarmos uma chave permanente do projeto.
+
+            Ordem recomendada: instale o APK Core, depois Qwen-General-2B.iapack em Plugins locais. Coder, Tiny-SD e Builder são opcionais.
+          files: |
+            Unilaw-AI-Core-S21-v7.apk
+            Unilaw-AI-Core-S21-v7.apk.sha256
+            Qwen-General-2B.iapack
+            Qwen-General-2B.iapack.sha256
+            Tiny-SD-Q4K.iapack
+            Tiny-SD-Q4K.iapack.sha256
+            Work-Free-v2.apk
+            Work-Free-v2.apk.sha256
+            Developer-Builder-Core-v1.iapack
+            Developer-Builder-Core-v1.iapack.sha256
+            Coder-Qwen2.5-1.5B-Q4KM.iapack
+            Coder-Qwen2.5-1.5B-Q4KM.iapack.sha256
+          make_latest: false
+          overwrite_files: true
+
+      - name: Record successful build
+        if: success()
+        shell: bash
+        run: |
+          printf '%s\n' "$(date -u +%FT%TZ) • ${GITHUB_SHA} • Unilaw AI Corepacks v7 build/release succeeded" > offlineai-corepacks-v7-last-successful-build.txt
