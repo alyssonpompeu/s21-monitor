@@ -1,0 +1,63 @@
+name: Build G991B Kernel Control APK
+
+on:
+  push:
+    branches:
+      - g991b-kernel-control-apk-build
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Ensure Android SDK 35
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Rebuild source ZIP and extract project
+        shell: bash
+        run: |
+          base64 -d G991B_Kernel_Control_App_v0.1_SOURCE.zip.b64 > source.zip
+          rm -rf buildsrc
+          mkdir -p buildsrc
+          unzip -q source.zip -d buildsrc
+          test -f buildsrc/settings.gradle
+          test -f buildsrc/app/build.gradle
+
+      - name: Build installable debug APK
+        shell: bash
+        run: |
+          gradle -p buildsrc :app:assembleDebug --no-daemon --stacktrace
+          cp buildsrc/app/build/outputs/apk/debug/app-debug.apk G991B-Kernel-Control-v0.1-debug.apk
+          sha256sum G991B-Kernel-Control-v0.1-debug.apk | tee G991B-Kernel-Control-v0.1-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: G991B-Kernel-Control-v0.1-APK
+          path: |
+            G991B-Kernel-Control-v0.1-debug.apk
+            G991B-Kernel-Control-v0.1-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
