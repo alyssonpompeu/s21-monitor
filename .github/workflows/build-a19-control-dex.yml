@@ -1,0 +1,33 @@
+name: Build A19 Control APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [a19-control-dex]
+    paths:
+      - 'a19control/**'
+      - '.github/workflows/build-a19-control-dex.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build debug APK
+        working-directory: a19control
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Normalize APK name
+        run: cp a19control/app/build/outputs/apk/debug/app-debug.apk G991B_A19_Control_v1.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: G991B_A19_Control_v1.0
+          path: G991B_A19_Control_v1.0.apk
+          if-no-files-found: error
