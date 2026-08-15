@@ -1,9 +1,9 @@
-name: Build G991B Apple Control v1.2 Telemetry APK
+name: Build G991B Apple Control v1.3 GPU MIF APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "apple-control-v12-telemetry" ]
+    branches: [ "apple-control-v13-gpumif" ]
     paths:
       - 'applecontrol/**'
       - 'settings.gradle'
@@ -31,10 +31,10 @@ jobs:
         run: gradle :applecontrol:assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp applecontrol/build/outputs/apk/debug/applecontrol-debug.apk 'G991B Apple Control v1.2 Telemetry.apk'
+        run: cp applecontrol/build/outputs/apk/debug/applecontrol-debug.apk 'G991B Apple Control v1.3.apk'
 
       - uses: actions/upload-artifact@v4
         with:
-          name: G991B-Apple-Control-v1.2-Telemetry-APK
-          path: 'G991B Apple Control v1.2 Telemetry.apk'
+          name: G991B-Apple-Control-v1.3-APK
+          path: 'G991B Apple Control v1.3.apk'
           if-no-files-found: error
