@@ -1,9 +1,9 @@
-name: Build G991B Apple Control v1.1 APK
+name: Build G991B Apple Control v1.2 Telemetry APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "apple-control-v11" ]
+    branches: [ "apple-control-v12-telemetry" ]
     paths:
       - 'applecontrol/**'
       - 'settings.gradle'
@@ -31,10 +31,10 @@ jobs:
         run: gradle :applecontrol:assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp applecontrol/build/outputs/apk/debug/applecontrol-debug.apk G991B-Apple-Control-v1.1.apk
+        run: cp applecontrol/build/outputs/apk/debug/applecontrol-debug.apk 'G991B Apple Control v1.2 Telemetry.apk'
 
       - uses: actions/upload-artifact@v4
         with:
-          name: G991B-Apple-Control-v1.1-APK
-          path: G991B-Apple-Control-v1.1.apk
+          name: G991B-Apple-Control-v1.2-Telemetry-APK
+          path: 'G991B Apple Control v1.2 Telemetry.apk'
           if-no-files-found: error
