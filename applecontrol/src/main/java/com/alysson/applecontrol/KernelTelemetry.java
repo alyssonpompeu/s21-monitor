@@ -21,10 +21,7 @@ final class KernelTelemetry {
         }
     }
 
-    /**
-     * One persistent Magisk su shell. Keeping it open avoids spawning a new su
-     * process for every temperature sample during a benchmark.
-     */
+    /** One persistent Magisk su shell: no new su process for each sample. */
     static final class RootShell implements Closeable {
         private static final String EOF = "__APPLE_ROOT_EOF__";
         private final java.lang.Process process;
@@ -70,7 +67,8 @@ final class KernelTelemetry {
             String marker = "__APPLE_END_" + n + "__";
             StringBuilder out = new StringBuilder();
             try {
-                writer.write("{ " + command + "; }; __apple_rc=$?; printf '\\n" + marker + ":%s\\n' \"$__apple_rc\"\n");
+                // Newlines close the shell group safely even when command itself ends in ';'.
+                writer.write("{\n" + command + "\n}\n__apple_rc=$?\nprintf '\\n" + marker + ":%s\\n' \"$__apple_rc\"\n");
                 writer.flush();
                 long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
                 while (true) {
@@ -133,11 +131,14 @@ final class KernelTelemetry {
     }
 
     static String applyMarginsCommand(String[] nodes, int[] values) {
-        StringBuilder s = new StringBuilder();
-        s.append("write_node(){ if [ -e \"$1\" ] && [ -w \"$1\" ]; then printf '%s\\n' \"$2\" > \"$1\"; else return 13; fi; }; ");
+        StringBuilder s = new StringBuilder("apple_rc=0; ");
         for (int i = 0; i < nodes.length; i++) {
-            s.append("write_node ").append(nodes[i]).append(' ').append(values[i]).append(" || exit $?; ");
+            s.append("if [ \"$apple_rc\" -eq 0 ]; then ")
+             .append("if [ -e ").append(nodes[i]).append(" ] && [ -w ").append(nodes[i]).append(" ]; then ")
+             .append("printf '%s\\n' '").append(values[i]).append("' > ").append(nodes[i]).append(" 2>/dev/null || apple_rc=$?; ")
+             .append("else apple_rc=13; fi; fi; ");
         }
+        s.append("[ \"$apple_rc\" -eq 0 ]");
         return s.toString();
     }
 
@@ -157,14 +158,8 @@ final class KernelTelemetry {
         }
 
         String get(String key) { return values.getOrDefault(key, "NA"); }
-
-        Integer intValue(String key) {
-            try { return Integer.parseInt(get(key)); } catch (Exception e) { return null; }
-        }
-
-        Long longValue(String key) {
-            try { return Long.parseLong(get(key)); } catch (Exception e) { return null; }
-        }
+        Integer intValue(String key) { try { return Integer.parseInt(get(key)); } catch (Exception e) { return null; } }
+        Long longValue(String key) { try { return Long.parseLong(get(key)); } catch (Exception e) { return null; } }
 
         Double tempC(String key) {
             try {
@@ -228,10 +223,7 @@ final class KernelTelemetry {
             if (error.isEmpty() && e != null) error = e;
         }
 
-        private static String fTemp(Double v) {
-            return v == null ? "NA" : String.format(Locale.US, "%.1f", v);
-        }
-
+        private static String fTemp(Double v) { return v == null ? "NA" : String.format(Locale.US, "%.1f", v); }
         private static String fLong(Long v) { return v == null ? "NA" : Long.toString(v); }
 
         synchronized String reportBlock() {
