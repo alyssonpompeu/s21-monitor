@@ -1,0 +1,39 @@
+name: Build KernelBench X1 APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "s21-kernelbench-x1" ]
+    paths:
+      - 's21bench/**'
+      - 'settings.gradle'
+      - '.github/workflows/build-kernelbench-x1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build KernelBench X1
+        run: gradle :s21bench:assembleDebug --stacktrace
+
+      - name: Normalize APK name
+        run: cp s21bench/build/outputs/apk/debug/s21bench-debug.apk KernelBench-X1-v1.0.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KernelBench-X1-v1.0
+          path: KernelBench-X1-v1.0.apk
