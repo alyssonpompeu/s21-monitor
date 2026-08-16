@@ -1,4 +1,4 @@
-name: Build Apple Lab APK
+name: Build Apple Lab v1.1 APK
 
 on:
   workflow_dispatch:
@@ -27,9 +27,9 @@ jobs:
       - name: Build Apple Lab
         run: gradle :applelab:assembleDebug --stacktrace
       - name: Rename APK
-        run: cp applelab/build/outputs/apk/debug/applelab-debug.apk 'Apple Lab v1.0.apk'
+        run: cp applelab/build/outputs/apk/debug/applelab-debug.apk 'Apple Lab v1.1.apk'
       - uses: actions/upload-artifact@v4
         with:
-          name: Apple-Lab-v1.0-APK
-          path: 'Apple Lab v1.0.apk'
+          name: Apple-Lab-v1.1-APK
+          path: 'Apple Lab v1.1.apk'
           if-no-files-found: error
