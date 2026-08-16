@@ -1,4 +1,4 @@
-name: Build KernelBench X1 APK
+name: Build S21 Lab History APK
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
     branches: [ "s21-kernelbench-x1" ]
     paths:
       - 's21bench/**'
+      - 's21lab/**'
       - 'settings.gradle'
       - '.github/workflows/build-kernelbench-x1.yml'
 
@@ -27,13 +28,26 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build KernelBench X1
+      - name: Reuse exact S21Lab benchmark engines
+        run: |
+          sed 's/package com.alysson.s21lab;/package com.alysson.kernelbench;/' s21lab/src/main/java/com/alysson/s21lab/Benchmarks.java > s21bench/src/main/java/com/alysson/kernelbench/Benchmarks.java
+          sed 's/package com.alysson.s21lab;/package com.alysson.kernelbench;/' s21lab/src/main/java/com/alysson/s21lab/GpuBench.java > s21bench/src/main/java/com/alysson/kernelbench/GpuBench.java
+          sed 's/package com.alysson.s21lab;/package com.alysson.kernelbench;/' s21lab/src/main/java/com/alysson/s21lab/RootTelemetry.java > s21bench/src/main/java/com/alysson/kernelbench/RootTelemetry.java
+
+      - name: Verify no 3DMark normalization remains
+        run: |
+          if grep -R -n -E '1940|Wild Life|normalizeGpu|GPU_REFERENCE_SCORE' s21bench/src/main/java; then
+            echo 'Forbidden external-score normalization found.'
+            exit 1
+          fi
+
+      - name: Build S21 Lab History
         run: gradle :s21bench:assembleDebug --stacktrace
 
       - name: Normalize APK name
-        run: cp s21bench/build/outputs/apk/debug/s21bench-debug.apk KernelBench-X1-v1.0.apk
+        run: cp s21bench/build/outputs/apk/debug/s21bench-debug.apk S21-Lab-History-v1.0.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: KernelBench-X1-v1.0
-          path: KernelBench-X1-v1.0.apk
+          name: S21-Lab-History-v1.0
+          path: S21-Lab-History-v1.0.apk
