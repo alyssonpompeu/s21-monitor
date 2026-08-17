@@ -1,0 +1,190 @@
+name: Build MARX RX42 BCM4375 V2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "marx-rx42-bcm4375-v2" ]
+    paths:
+      - '.github/workflows/build-marx-rx42-bcm4375-v2.yml'
+      - 'bcm4375lab/**'
+      - 'sdr-probe/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    steps:
+      - name: Checkout MARX RX42 V2 branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android NDK Nexmon and reverse-analysis dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y git gawk qpdf flex libfl-dev bison xxd make patch python3 zlib1g-dev clang lld llvm \
+            libc6:i386 libstdc++6:i386 zlib1g:i386 libncurses5:i386
+
+      - name: Clone exact Nexmon PR663 BCM4375B1 18.41.117
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/seemoo-lab/nexmon.git nexmon
+          cd nexmon
+          git fetch --depth 1 origin pull/663/head:pr663
+          git checkout pr663
+          test "$(git rev-parse HEAD)" = "fd117f434e1c479f6819a0ba31f9ca82d75f8a3a"
+          sed -i 's/LDFLAGS[[:space:]]*+=[[:space:]]*-ll/LDFLAGS\t\t+= -lfl/' buildtools/b43/assembler/Makefile
+
+      - name: Verify exact Samsung BCM4375B1 firmware base
+        shell: bash
+        run: |
+          set -euo pipefail
+          FW=nexmon/firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1
+          ACTUAL=$(sha256sum "$FW" | awk '{print $1}')
+          test "$ACTUAL" = "1676f46ce56b96f58dc70de08beaab4ab3362ee6dd751465a8d6a0023c3c54ad"
+          echo "STOCK_SHA256=$ACTUAL"
+
+      - name: Static cross-generation locator for native Sample Playback
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          OLD=nexmon/firmwares/bcm43455c0/7_45_154/brcmfmac43455-sdio.bin
+          NEW=nexmon/firmwares/bcm4375b1/18_41_117_sta/bcmdhd_sta.bin_b1
+          test -s "$OLD" && test -s "$NEW"
+          python3 sdr-probe/find_bcm4375_sdr.py "$OLD" "$NEW" out/BCM4375-SDR-CANDIDATES.txt
+          grep 'AUTO_ENABLE=0' out/BCM4375-SDR-CANDIDATES.txt
+          grep 'REFERENCE=wlc_phy_runsamples_acphy' out/BCM4375-SDR-CANDIDATES.txt
+
+      - name: Apply proven 0x630/0x631 plus V2 read-only capability patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          IOCTL=nexmon/patches/bcm4375b1/18_41_117_sta/nexmon/src/ioctl.c
+          python3 sdr-probe/patch_pr663.py "$IOCTL"
+          python3 sdr-probe/patch_pr663_v2.py "$IOCTL"
+          grep -n -A8 -B2 'case 0x63F' "$IOCTL"
+          grep -n -A8 -B2 'case 0x640' "$IOCTL"
+
+      - name: Build patched Nexmon firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd nexmon
+          source setup_env.sh
+          make -j2
+          cd patches/bcm4375b1/18_41_117_sta/nexmon
+          make init
+          make -j1
+          test -s bcmdhd_sta.bin_b1
+          mkdir -p "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon"
+          cp bcmdhd_sta.bin_b1 "$GITHUB_WORKSPACE/bcm4375lab/src/main/assets/nexmon/bcmdhd_sta_marx_rx42_v2.bin"
+          sha256sum bcmdhd_sta.bin_b1 | tee "$GITHUB_WORKSPACE/marx-rx42-v2-firmware-sha256.txt"
+
+      - name: Pin generated firmware SHA in V2 launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA=$(awk '{print $1}' marx-rx42-v2-firmware-sha256.txt)
+          test -n "$SHA"
+          sed -i "s/MARX_RX42_V2_SHA/$SHA/g" bcm4375lab/src/main/java/com/alysson/bcm4375lab/MarxRx42V2Activity.java
+          grep -n 'EXPECTED_SHA' bcm4375lab/src/main/java/com/alysson/bcm4375lab/MarxRx42V2Activity.java
+
+      - name: Build ARM64 root tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
+          OUT=bcm4375lab/src/main/jniLibs/arm64-v8a
+          mkdir -p "$OUT"
+          "$CC" -O2 -fPIE -pie bcm4375lab/native/nexprobe.c -o "$OUT/libnexprobe.so"
+          "$CC" -O2 -fPIE -pie bcm4375lab/native/sdrrx42probe.c -o "$OUT/libsdrrx42probe.so"
+          "$CC" -O2 -fPIE -pie bcm4375lab/native/monrx.c -o "$OUT/libmonrx.so"
+          "$CC" -O2 -D_GNU_SOURCE -fPIE -pie bcm4375lab/native/marxa7105probe.c -lm -o "$OUT/libmarxa7105probe.so"
+          file "$OUT"/*.so
+          strings "$OUT/libmarxa7105probe.so" | grep 'MARX_RX42_BCM4375_V2_PROBE'
+          strings "$OUT/libmarxa7105probe.so" | grep 'NATIVE_SAMPLE_PLAY_READY'
+          strings "$OUT/libmarxa7105probe.so" | grep 'RF_TX_TRIGGERED=0'
+
+      - name: Build installable MARX RX42 V2 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :bcm4375lab:clean :bcm4375lab:assembleDebug --stacktrace
+          test -s bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
+
+      - name: Verify identity launcher firmware and safety markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=bcm4375lab/build/outputs/apk/debug/bcm4375lab-debug.apk
+          "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          BADGING=$("$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$APK")
+          echo "$BADGING" | head -25 || true
+          [[ "$BADGING" == *"package: name='com.alysson.marx.rx42.bcm4375.v2'"* ]]
+          [[ "$BADGING" == *"versionName='2.0.0-bcm4375'"* ]]
+          [[ "$BADGING" == *"launchable-activity: name='com.alysson.bcm4375lab.MarxRx42V2Activity'"* ]]
+          unzip -l "$APK" | grep 'assets/nexmon/bcmdhd_sta_marx_rx42_v2.bin'
+          unzip -l "$APK" | grep 'lib/arm64-v8a/libmarxa7105probe.so'
+          strings bcm4375lab/src/main/jniLibs/arm64-v8a/libmarxa7105probe.so | grep 'RF_TX_TRIGGERED=0'
+          mkdir -p out
+          cp "$APK" out/MARX-RX42-BCM4375-V2.apk
+          sha256sum out/MARX-RX42-BCM4375-V2.apk | tee out/APK-SHA256.txt
+          cp marx-rx42-v2-firmware-sha256.txt out/FIRMWARE-SHA256.txt
+
+      - name: Upload V2 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MARX-RX42-BCM4375-V2
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish V2 release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: marx-rx42-bcm4375-v2-latest
+          name: MARX RX42 BCM4375 V2
+          body: |
+            Galaxy S21 SM-G991B / BCM4375B1 / COREREV82 engineering build.
+
+            V2 adds read-only MARX_GET_CAPS (0x63F) and MARX_REG_SNAPSHOT (0x640),
+            keeps AFHDS2A/GFSK generation in userspace, and performs cross-generation
+            static analysis against the known bcm43455c0 Nexmon SDR functions.
+
+            Safety gate: this release does NOT auto-call reverse-engineered function
+            candidates and does NOT claim RF TX. The TX gate remains closed until a
+            native BCM4375 Sample Playback mapping is validated and firmware reports
+            NATIVE_SAMPLE_PLAY=1 plus BOUNDED_TX=1.
+          files: |
+            out/MARX-RX42-BCM4375-V2.apk
+            out/APK-SHA256.txt
+            out/FIRMWARE-SHA256.txt
+            out/BCM4375-SDR-CANDIDATES.txt
+          make_latest: false
+          overwrite_files: true
