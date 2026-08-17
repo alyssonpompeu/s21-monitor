@@ -1,51 +1,39 @@
 package com.alysson.g991baudiolab;
 
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.os.Bundle;
 import android.os.Build;
-import android.graphics.Color;
+import android.os.Bundle;
 import android.graphics.Typeface;
-import android.content.SharedPreferences;
 import android.view.Gravity;
-import android.view.View;
-import android.widget.*;
-import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    private static final String MODULE_ID = "g991b_audio_lab";
-    private static final String MODULE_DIR = "/data/adb/modules/" + MODULE_ID;
-    private static final String ACTIVE_PARAM = MODULE_DIR + "/system/vendor/etc/SoundBoosterParam.txt";
-    private static final String AUDIO32_MARKER = "/data/adb/modules/g991b_audio32/module.prop";
-    private static final String STOCK_ASSET = "SoundBoosterParam.stock.txt";
+    private static final String HASH_FULL_RAW = "878d90e78379466fbb2e8b389475ca50edec21b4692d526b7d31267015351a7c";
+    private static final String HASH_AUDIO32_GOOD = "ea9082bff92d3e08357bbb06d27ae29fd907ed8e1675a24dcb6e4bc66464f340";
 
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
-    private SharedPreferences prefs;
     private TextView status;
-    private RadioButton bit24, bit32;
-    private RadioGroup rateGroup;
-    private final EditText[][] top = new EditText[8][3];
-    private final EditText[][] bottom = new EditText[8][3];
-
-    private static final int[][] TOP_DEFAULT = {
-            {250,220,-18},{450,320,-14},{750,500,-8},{1200,700,-3},
-            {2200,1200,0},{4000,2200,1},{7000,3500,1},{12500,5000,0}
-    };
-    private static final int[][] BOTTOM_DEFAULT = {
-            {120,100,4},{165,120,5},{230,180,4},{340,260,2},
-            {700,500,1},{1500,1000,0},{3500,2200,-4},{8500,5000,-10}
-    };
+    private TextView output;
+    private volatile String lastReport = "";
 
     @Override public void onCreate(Bundle b) {
         super.onCreate(b);
-        prefs = getSharedPreferences("audio_lab", MODE_PRIVATE);
         buildUi();
-        loadPrefsOrDefaults();
-        refreshStatus();
+        scanAll();
+    }
+
+    @Override protected void onDestroy() {
+        exec.shutdownNow();
+        super.onDestroy();
     }
 
     private void buildUi() {
@@ -55,313 +43,264 @@ public class MainActivity extends Activity {
         root.setPadding(dp(16), dp(14), dp(16), dp(30));
         scroll.addView(root);
 
-        TextView title = text("G991B AUDIO LAB", 26, true);
+        TextView title = text("G991B AUDIO RAW DOCTOR", 25, true);
         root.addView(title);
-        TextView sub = text("SM-G991B / HZA6 • TOP + BOTTOM independentes\nControle tonal próprio sobre o SoundBooster; proteção Cirrus permanece stock.", 14, false);
-        sub.setPadding(0, dp(4), 0, dp(10));
+        TextView sub = text("ROOT • CS35L41 • ABOX • PCM REAL • LOG DE FAULTS", 12, false);
+        sub.setPadding(0, dp(3), 0, dp(10));
         root.addView(sub);
 
-        status = text("Verificando root/backend...", 13, false);
+        status = text("Abrindo root...", 13, true);
         status.setTypeface(Typeface.MONOSPACE);
         status.setTextIsSelectable(true);
         status.setPadding(dp(10), dp(10), dp(10), dp(10));
         root.addView(status);
 
-        root.addView(section("MODO PRINCIPAL"));
-        LinearLayout mainButtons = row();
-        Button stock = button("PADRÃO");
-        Button lab = button("APK / LAB");
-        mainButtons.addView(stock, weight());
-        mainButtons.addView(lab, weight());
-        root.addView(mainButtons);
-        stock.setOnClickListener(v -> confirmAndApplyStock());
-        lab.setOnClickListener(v -> applyLab(false));
+        root.addView(section("DIAGNÓSTICO"));
+        LinearLayout r1 = row();
+        Button scan = button("SCAN COMPLETO");
+        Button pcm = button("PCM AO VIVO");
+        r1.addView(scan, weight());
+        r1.addView(pcm, weight());
+        root.addView(r1);
 
-        root.addView(text("Backend necessário: instale o ZIP G991B HZA6 AudioLab Backend no app Magisk e reinicie uma vez.", 12, true));
+        LinearLayout r2 = row();
+        Button logs = button("LOG DE ERROS");
+        Button amp = button("AMP / TINYMIX");
+        r2.addView(logs, weight());
+        r2.addView(amp, weight());
+        root.addView(r2);
 
-        root.addView(section("FORMATO DE SAÍDA"));
-        TextView fmtNote = text("24-bit é o formato de playback exposto pelo driver stock. 32-bit fica bloqueado até detectar o patch de kernel Audio32. A taxa abaixo é o alvo do projeto; esta v1 não finge forçar ABOX quando o kernel não expõe o controle.", 12, false);
-        root.addView(fmtNote);
+        root.addView(section("CONTROLES ROOT DE TESTE"));
+        root.addView(text("Os botões executam os controles encontrados no aparelho e mostram o retorno real do shell. Nada fica bloqueado artificialmente no APK.", 12, false));
 
-        RadioGroup bits = new RadioGroup(this);
-        bits.setOrientation(RadioGroup.HORIZONTAL);
-        bit24 = new RadioButton(this); bit24.setText("24-bit stock"); bit24.setId(View.generateViewId());
-        bit32 = new RadioButton(this); bit32.setText("32-bit EXP"); bit32.setId(View.generateViewId());
-        bits.addView(bit24, weight()); bits.addView(bit32, weight());
-        root.addView(bits);
-        bit24.setChecked(true);
-        bits.setOnCheckedChangeListener((g,id) -> saveFormatPrefs());
+        LinearLayout r3 = row();
+        Button asp = button("FORÇAR ASP RAW");
+        Button vpbr = button("VPBR OFF");
+        r3.addView(asp, weight());
+        r3.addView(vpbr, weight());
+        root.addView(r3);
 
-        rateGroup = new RadioGroup(this);
-        rateGroup.setOrientation(RadioGroup.HORIZONTAL);
-        for (int rate : new int[]{48000, 96000, 192000}) {
-            RadioButton rb = new RadioButton(this);
-            rb.setText((rate/1000) + " kHz");
-            rb.setTag(rate);
-            rb.setId(View.generateViewId());
-            rateGroup.addView(rb, weight());
-            if (rate == 48000) rb.setChecked(true);
-        }
-        root.addView(rateGroup);
-        rateGroup.setOnCheckedChangeListener((g,id) -> saveFormatPrefs());
+        LinearLayout r4 = row();
+        Button dre = button("DRE OFF");
+        Button save = button("SALVAR RELATÓRIO");
+        r4.addView(dre, weight());
+        r4.addView(save, weight());
+        root.addView(r4);
 
-        root.addView(section("PRESETS"));
-        LinearLayout p1 = row();
-        Button flat = button("REFERENCE FLAT");
-        Button body = button("iPHONE BODY");
-        p1.addView(flat, weight()); p1.addView(body, weight()); root.addView(p1);
-        LinearLayout p2 = row();
-        Button subwoofer = button("SUBWOOFER HEAVY");
-        Button defaults = button("LAB DEFAULT");
-        p2.addView(subwoofer, weight()); p2.addView(defaults, weight()); root.addView(p2);
-        flat.setOnClickListener(v -> presetFlat());
-        body.setOnClickListener(v -> presetIphoneBody());
-        subwoofer.setOnClickListener(v -> presetSubwoofer());
-        defaults.setOnClickListener(v -> presetDefault());
+        root.addView(section("RESULTADO"));
+        output = text("Aguardando scan...", 12, false);
+        output.setTypeface(Typeface.MONOSPACE);
+        output.setTextIsSelectable(true);
+        output.setPadding(dp(8), dp(8), dp(8), dp(16));
+        root.addView(output);
 
-        root.addView(section("TOP / EARPIECE — MÉDIOS + AGUDOS"));
-        root.addView(text("Cada banda: frequência (Hz) • largura/Q experimental • ganho (dB). Ganho limitado a -24…+6 dB.", 12, false));
-        addBandEditor(root, top, "TOP");
-
-        root.addView(section("BOTTOM — WOOFER / MID"));
-        root.addView(text("Use as bandas 1–4 para peso/corpo e 5–6 para médios. As bandas 7–8 controlam quanto agudo fica no speaker inferior.", 12, false));
-        addBandEditor(root, bottom, "BOT");
-
-        root.addView(section("PROTEÇÃO DO TRANSDUTOR"));
-        TextView safety = text("CSPL: ON (bloqueado)\nTérmica: ON (bloqueado)\nExcursão: ON (bloqueado)\nCorrente/tensão: ON (bloqueado)\nCalibração BOT/RCV: STOCK", 14, true);
-        safety.setTextColor(Color.rgb(30,120,60));
-        root.addView(safety);
-        root.addView(text("Grave forte pode elevar excursão e temperatura mesmo em volume moderado. O Audio Lab não altera *.wmfw, spk-prot.bin nem calib.bin.", 12, false));
-
-        root.addView(section("APLICAR"));
-        Button apply = button("APLICAR APK / LAB");
-        Button applyReboot = button("APLICAR + REINICIAR");
-        Button reboot = button("REINICIAR AGORA");
-        root.addView(apply); root.addView(applyReboot); root.addView(reboot);
-        apply.setOnClickListener(v -> applyLab(false));
-        applyReboot.setOnClickListener(v -> applyLab(true));
-        reboot.setOnClickListener(v -> confirmReboot());
+        scan.setOnClickListener(v -> scanAll());
+        pcm.setOnClickListener(v -> runNamed("PCM REAL", pcmCommand()));
+        logs.setOnClickListener(v -> runLogs());
+        amp.setOnClickListener(v -> runNamed("AMP / TINYMIX", tinymixCommand()));
+        asp.setOnClickListener(v -> runNamed("FORÇAR ASP RAW", forceAspCommand()));
+        vpbr.setOnClickListener(v -> runNamed("VPBR OFF", vpbrOffCommand()));
+        dre.setOnClickListener(v -> runNamed("DRE OFF", dreOffCommand()));
+        save.setOnClickListener(v -> saveReport());
 
         setContentView(scroll);
     }
 
-    private void addBandEditor(LinearLayout parent, EditText[][] dst, String prefix) {
-        for (int i=0;i<8;i++) {
-            LinearLayout r = row();
-            TextView n = text(prefix + " " + (i+1), 12, true);
-            n.setGravity(Gravity.CENTER_VERTICAL);
-            r.addView(n, new LinearLayout.LayoutParams(dp(55), dp(48)));
-            for (int j=0;j<3;j++) {
-                EditText e = new EditText(this);
-                e.setSingleLine(true);
-                e.setTextSize(13);
-                e.setGravity(Gravity.CENTER);
-                e.setInputType(android.text.InputType.TYPE_CLASS_NUMBER |
-                        (j==2 ? android.text.InputType.TYPE_NUMBER_FLAG_SIGNED : 0));
-                e.setHint(j==0 ? "Hz" : j==1 ? "Width" : "dB");
-                dst[i][j] = e;
-                r.addView(e, weight());
-            }
-            parent.addView(r);
-        }
-    }
-
-    private void loadPrefsOrDefaults() {
-        for (int i=0;i<8;i++) for (int j=0;j<3;j++) {
-            top[i][j].setText(String.valueOf(prefs.getInt("t_"+i+"_"+j, TOP_DEFAULT[i][j])));
-            bottom[i][j].setText(String.valueOf(prefs.getInt("b_"+i+"_"+j, BOTTOM_DEFAULT[i][j])));
-        }
-        int bits = prefs.getInt("bits",24);
-        if (bits==32) bit32.setChecked(true); else bit24.setChecked(true);
-        int rate = prefs.getInt("rate",48000);
-        for (int i=0;i<rateGroup.getChildCount();i++) {
-            RadioButton rb=(RadioButton)rateGroup.getChildAt(i);
-            if (((Integer)rb.getTag())==rate) rb.setChecked(true);
-        }
-    }
-
-    private void saveFormatPrefs() {
-        int rate=48000;
-        int id=rateGroup.getCheckedRadioButtonId();
-        if (id!=-1) {
-            RadioButton rb=findViewById(id);
-            if (rb!=null && rb.getTag() instanceof Integer) rate=(Integer)rb.getTag();
-        }
-        prefs.edit().putInt("bits", bit32.isChecked()?32:24).putInt("rate",rate).apply();
-    }
-
-    private void saveBandPrefs() {
-        SharedPreferences.Editor ed=prefs.edit();
-        for (int i=0;i<8;i++) for (int j=0;j<3;j++) {
-            ed.putInt("t_"+i+"_"+j, readInt(top[i][j], TOP_DEFAULT[i][j]));
-            ed.putInt("b_"+i+"_"+j, readInt(bottom[i][j], BOTTOM_DEFAULT[i][j]));
-        }
-        ed.apply();
-    }
-
-    private void refreshStatus() {
+    private void scanAll() {
+        status.setText("Executando scan root...");
+        output.setText("Lendo vendor_boot, ALSA, tinymix e kernel log...");
         exec.submit(() -> {
             boolean root = RootShell.hasRoot();
-            boolean mod = root && RootShell.exists(MODULE_DIR + "/module.prop");
-            boolean a32 = root && RootShell.exists(AUDIO32_MARKER);
-            String build = Build.DISPLAY == null ? "?" : Build.DISPLAY;
-            String txt = "Modelo: " + Build.MODEL + "\nBuild: " + build +
-                    "\nRoot: " + (root?"OK":"NÃO") +
-                    "\nBackend: " + (mod?"OK":"NÃO INSTALADO") +
-                    "\nAudio32 kernel: " + (a32?"DETECTADO":"AUSENTE") +
-                    "\nPerfil ativo: " + prefs.getString("active_mode","desconhecido");
-            runOnUiThread(() -> {
-                status.setText(txt);
-                bit32.setEnabled(a32);
-                if (!a32 && bit32.isChecked()) bit24.setChecked(true);
-            });
+            if (!root) {
+                ui("Root: NEGADO/AUSENTE\nConceda root ao APK no Magisk e toque SCAN COMPLETO novamente.", "ROOT NÃO DISPONÍVEL");
+                return;
+            }
+
+            String hash = run(vendorBootHashCommand());
+            String mode;
+            if (hash.contains(HASH_FULL_RAW)) mode = "FULL RAW v1.0 DETECTADO";
+            else if (hash.contains(HASH_AUDIO32_GOOD)) mode = "AUDIO32 v0.1.1 (S32 somente)";
+            else mode = "VENDOR_BOOT DIFERENTE / NÃO IDENTIFICADO";
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("=== G991B AUDIO RAW DOCTOR ===\n");
+            sb.append("Modelo Android: ").append(Build.MODEL).append("\n");
+            sb.append("Build: ").append(Build.DISPLAY).append("\n");
+            sb.append("Root: OK\n");
+            sb.append("Modo detectado: ").append(mode).append("\n\n");
+            sb.append(sectionOut("VENDOR_BOOT", hash));
+            sb.append(sectionOut("KERNEL / MÓDULOS", run("uname -a; echo; cat /proc/modules 2>/dev/null | grep -Ei 'cs35l41|cirrus|abox|unbound' || true")));
+            sb.append(sectionOut("ALSA", run("cat /proc/asound/cards 2>/dev/null; echo; cat /proc/asound/pcm 2>/dev/null")));
+            sb.append(sectionOut("PCM ATIVO", run(pcmCommand())));
+            sb.append(sectionOut("CONTROLES AMP", run(tinymixCommand())));
+
+            String klog = run(kernelLogCommand());
+            sb.append(sectionOut("KERNEL AUDIO LOG", klog));
+            sb.append(sectionOut("CLASSIFICAÇÃO", classify(klog)));
+
+            lastReport = sb.toString();
+            ui(lastReport, mode);
         });
     }
 
-    private void confirmAndApplyStock() {
-        new AlertDialog.Builder(this).setTitle("Restaurar Padrão Samsung?")
-                .setMessage("O arquivo tonal HZA6 original será colocado no overlay do módulo. As proteções Cirrus não são alteradas. Reinício necessário.")
-                .setNegativeButton("Cancelar",null)
-                .setPositiveButton("Restaurar",(d,w)->applyStock()).show();
-    }
-
-    private void applyStock() {
-        if (!deviceLooksRight()) return;
-        setStatus("Gravando perfil Padrão Samsung...");
+    private void runLogs() {
+        status.setText("Lendo faults CS35L41/ABOX...");
         exec.submit(() -> {
-            if (!ensureBackend()) return;
-            try {
-                String stock=readAssetText(STOCK_ASSET);
-                RootShell.Result r=RootShell.writeText(ACTIVE_PARAM,stock);
-                if (!r.ok()) { uiError("Falha ao gravar perfil stock:\n"+r.out); return; }
-                prefs.edit().putString("active_mode","PADRÃO SAMSUNG").apply();
-                runOnUiThread(() -> status.setText("PADRÃO gravado. Reinicie para aplicar."));
-            } catch(Throwable t){ uiError(t.toString()); }
+            if (!RootShell.hasRoot()) { ui("Root não disponível.", "ROOT NÃO"); return; }
+            String log = run(kernelLogCommand());
+            String result = "=== CLASSIFICAÇÃO ===\n" + classify(log) + "\n\n=== LOG ===\n" + log;
+            lastReport = result;
+            ui(result, "LOG CONCLUÍDO");
         });
     }
 
-    private void applyLab(boolean rebootAfter) {
-        if (!deviceLooksRight()) return;
-        int[][] t, b;
-        try { t=readBands(top); b=readBands(bottom); }
-        catch(IllegalArgumentException e){ Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show(); return; }
-        saveBandPrefs(); saveFormatPrefs();
-        setStatus("Gerando perfil APK / LAB...");
+    private void runNamed(String name, String cmd) {
+        status.setText(name + "...");
         exec.submit(() -> {
-            if (!ensureBackend()) return;
-            try {
-                String stock=readAssetText(STOCK_ASSET);
-                String custom=patchBanks(stock,t,b);
-                RootShell.Result r=RootShell.writeText(ACTIVE_PARAM,custom);
-                if (!r.ok()) { uiError("Falha ao gravar perfil LAB:\n"+r.out); return; }
-                prefs.edit().putString("active_mode","APK / LAB").apply();
-                if (rebootAfter) {
-                    runOnUiThread(() -> status.setText("LAB gravado. Reiniciando..."));
-                    Thread.sleep(500);
-                    RootShell.exec("reboot");
-                } else runOnUiThread(() -> status.setText("APK / LAB gravado. Reinicie para aplicar.\nProteção CSPL/térmica/excursão permanece ON."));
-            } catch(Throwable x){ uiError(x.toString()); }
+            if (!RootShell.hasRoot()) { ui("Root não disponível.", "ROOT NÃO"); return; }
+            RootShell.Result r = RootShell.exec(cmd);
+            String s = "=== " + name + " ===\nexit=" + r.code + "\n" + (r.out.isEmpty() ? "(sem saída)" : r.out);
+            lastReport = s;
+            ui(s, name + (r.ok() ? " OK" : " ERRO " + r.code));
         });
     }
 
-    private boolean ensureBackend() {
-        if (!RootShell.hasRoot()) { uiError("Root Magisk não concedido."); return false; }
-        if (!RootShell.exists(MODULE_DIR + "/module.prop")) {
-            uiError("Backend G991B Audio Lab não está instalado. Instale o ZIP companion no Magisk e reinicie.");
-            return false;
-        }
-        return true;
+    private void saveReport() {
+        status.setText("Gerando e salvando relatório...");
+        exec.submit(() -> {
+            if (!RootShell.hasRoot()) { ui("Root não disponível.", "ROOT NÃO"); return; }
+            if (lastReport == null || lastReport.length() < 20) lastReport = "Sem relatório. Execute SCAN COMPLETO.";
+            String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+            String path = "/data/media/0/Download/G991B_AUDIO_RAW_REPORT_" + stamp + ".txt";
+            RootShell.Result r = RootShell.writeText(path, lastReport);
+            if (r.ok()) ui(lastReport + "\n\nSALVO EM:\n/sdcard/Download/G991B_AUDIO_RAW_REPORT_" + stamp + ".txt", "RELATÓRIO SALVO");
+            else ui("Falha ao salvar:\n" + r.out, "ERRO AO SALVAR");
+        });
     }
 
-    private String patchBanks(String stock, int[][] t, int[][] b) {
-        Map<String,String> repl=new HashMap<>();
-        for(int i=0;i<8;i++) {
-            char c=(char)('A'+i);
-            repl.put("AA"+c, line("AA"+c,t[i]));
-            repl.put("BA"+c, line("BA"+c,t[i]));
-            repl.put("AC"+c, line("AC"+c,b[i]));
-            repl.put("BC"+c, line("BC"+c,b[i]));
-        }
-        StringBuilder out=new StringBuilder(stock.length()+128);
-        for(String ln:stock.split("\\r?\\n",-1)) {
-            if(ln.length()>=3 && repl.containsKey(ln.substring(0,3))) out.append(repl.get(ln.substring(0,3)));
-            else out.append(ln);
-            out.append('\n');
-        }
-        return out.toString();
+    private String vendorBootHashCommand() {
+        return "P=''; for X in /dev/block/by-name/vendor_boot /dev/block/bootdevice/by-name/vendor_boot /dev/block/platform/*/by-name/vendor_boot; do [ -e \"$X\" ] && { P=\"$X\"; break; }; done; " +
+                "if [ -n \"$P\" ]; then echo path=$P; sha256sum \"$P\"; else echo 'vendor_boot: NAO ENCONTRADO'; fi";
     }
 
-    private String line(String key,int[] v){ return key+","+v[0]+","+v[1]+","+v[2]; }
-
-    private int[][] readBands(EditText[][] src) {
-        int[][] out=new int[8][3];
-        for(int i=0;i<8;i++) {
-            out[i][0]=readInt(src[i][0],0);
-            out[i][1]=readInt(src[i][1],0);
-            out[i][2]=readInt(src[i][2],0);
-            if(out[i][0]<40 || out[i][0]>20000) throw new IllegalArgumentException("Frequência da banda "+(i+1)+" deve ficar entre 40 e 20000 Hz.");
-            if(out[i][1]<10 || out[i][1]>12000) throw new IllegalArgumentException("Largura da banda "+(i+1)+" deve ficar entre 10 e 12000.");
-            if(out[i][2]<-24 || out[i][2]>6) throw new IllegalArgumentException("Ganho da banda "+(i+1)+" deve ficar entre -24 e +6 dB.");
-        }
-        return out;
+    private String pcmCommand() {
+        return "N=0; for F in /proc/asound/card*/pcm*/sub*/hw_params; do " +
+                "[ -f \"$F\" ] || continue; V=$(cat \"$F\" 2>/dev/null); [ \"$V\" = closed ] && continue; " +
+                "echo '---' $F; echo \"$V\"; N=$((N+1)); done; " +
+                "[ $N -gt 0 ] || echo 'Nenhum PCM aberto. Inicie uma musica e toque PCM AO VIVO novamente.'";
     }
 
-    private void presetDefault(){ setBands(top,TOP_DEFAULT); setBands(bottom,BOTTOM_DEFAULT); toast("LAB DEFAULT carregado. Toque APK / LAB para gravar."); }
-    private void presetFlat(){
-        int[][] t=copy(TOP_DEFAULT), b=copy(BOTTOM_DEFAULT);
-        for(int i=0;i<8;i++){t[i][2]=0;b[i][2]=0;}
-        setBands(top,t);setBands(bottom,b);toast("REFERENCE FLAT carregado.");
-    }
-    private void presetIphoneBody(){
-        int[][] t=copy(TOP_DEFAULT), b=copy(BOTTOM_DEFAULT);
-        int[] tg={-16,-12,-7,-2,0,1,1,0}; int[] bg={3,5,4,2,1,0,-3,-8};
-        for(int i=0;i<8;i++){t[i][2]=tg[i];b[i][2]=bg[i];}
-        setBands(top,t);setBands(bottom,b);toast("iPHONE BODY carregado.");
-    }
-    private void presetSubwoofer(){
-        int[][] t=copy(TOP_DEFAULT), b=copy(BOTTOM_DEFAULT);
-        int[] tg={-18,-15,-9,-3,0,1,1,0}; int[] bg={5,6,5,3,1,0,-5,-12};
-        for(int i=0;i<8;i++){t[i][2]=tg[i];b[i][2]=bg[i];}
-        setBands(top,t);setBands(bottom,b);toast("SUBWOOFER HEAVY carregado. Comece em volume moderado.");
-    }
-    private int[][] copy(int[][] a){int[][]x=new int[a.length][3];for(int i=0;i<a.length;i++)x[i]=a[i].clone();return x;}
-    private void setBands(EditText[][] dst,int[][] vals){for(int i=0;i<8;i++)for(int j=0;j<3;j++)dst[i][j].setText(String.valueOf(vals[i][j]));saveBandPrefs();}
-
-    private boolean deviceLooksRight() {
-        if (!"SM-G991B".equalsIgnoreCase(Build.MODEL)) {
-            new AlertDialog.Builder(this).setTitle("Dispositivo diferente")
-                    .setMessage("Este build foi feito para SM-G991B HZA6. Modelo atual: "+Build.MODEL+". Aplicação bloqueada para evitar escrever parâmetros no aparelho errado.")
-                    .setPositiveButton("OK",null).show();
-            return false;
-        }
-        return true;
+    private String tinymixBase() {
+        return "T=$(command -v tinymix 2>/dev/null); [ -x \"$T\" ] || T=/vendor/bin/tinymix; [ -x \"$T\" ] || T=/system/bin/tinymix; ";
     }
 
-    private void confirmReboot(){
-        new AlertDialog.Builder(this).setTitle("Reiniciar agora?")
-                .setMessage("O perfil SoundBooster selecionado será carregado no próximo boot.")
-                .setNegativeButton("Cancelar",null)
-                .setPositiveButton("Reiniciar",(d,w)->exec.submit(()->RootShell.exec("reboot"))).show();
+    private String tinymixCommand() {
+        return tinymixBase() +
+                "if [ -x \"$T\" ]; then echo tinymix=$T; \"$T\" | grep -Ei 'PCM Source|VPBR|VBBR|Boost Enable|DSP Booted|DSP1 Preload|AMP Mute|DRE|CSPL|HALO|Speaker|Receiver' || true; " +
+                "else echo 'tinymix: AUSENTE'; fi";
     }
 
-    private String readAssetText(String name) throws IOException {
-        try(InputStream in=getAssets().open(name); ByteArrayOutputStream out=new ByteArrayOutputStream()){
-            byte[] b=new byte[8192];int n;while((n=in.read(b))>0)out.write(b,0,n);
-            return out.toString(StandardCharsets.UTF_8.name());
-        }
+    private String forceAspCommand() {
+        return tinymixBase() +
+                "[ -x \"$T\" ] || { echo 'tinymix ausente'; exit 127; }; " +
+                "IDS=$(\"$T\" | grep -i 'PCM Source' | awk '{print $1}'); " +
+                "[ -n \"$IDS\" ] || { echo 'PCM Source nao encontrado'; exit 2; }; " +
+                "for I in $IDS; do echo control=$I; \"$T\" \"$I\" ASP || exit $?; done; " +
+                "echo; \"$T\" | grep -i 'PCM Source' || true";
     }
 
-    private int readInt(EditText e,int fallback){try{return Integer.parseInt(e.getText().toString().trim());}catch(Exception x){return fallback;}}
-    private void setStatus(String s){status.setText(s);}
-    private void uiError(String s){runOnUiThread(()->{status.setText("ERRO\n"+s);Toast.makeText(this,s,Toast.LENGTH_LONG).show();});}
-    private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
+    private String vpbrOffCommand() {
+        return tinymixBase() +
+                "[ -x \"$T\" ] || { echo 'tinymix ausente'; exit 127; }; " +
+                "IDS=$(\"$T\" | grep -i 'VPBR Enable' | awk '{print $1}'); " +
+                "[ -n \"$IDS\" ] || { echo 'VPBR Enable nao exposto'; exit 2; }; " +
+                "for I in $IDS; do echo control=$I; \"$T\" \"$I\" Disabled || \"$T\" \"$I\" 0 || exit $?; done; " +
+                "echo; \"$T\" | grep -i 'VPBR' || true";
+    }
 
-    private TextView section(String s){TextView v=text(s,16,true);v.setPadding(0,dp(18),0,dp(6));return v;}
-    private TextView text(String s,int sp,boolean bold){TextView v=new TextView(this);v.setText(s);v.setTextSize(sp);if(bold)v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return v;}
-    private Button button(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);return b;}
-    private LinearLayout row(){LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);r.setGravity(Gravity.CENTER_VERTICAL);return r;}
-    private LinearLayout.LayoutParams weight(){return new LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f);}
-    private int dp(int v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}
+    private String dreOffCommand() {
+        return tinymixBase() +
+                "[ -x \"$T\" ] || { echo 'tinymix ausente'; exit 127; }; " +
+                "IDS=$(\"$T\" | grep -Ei '[[:space:]]DRE([[:space:]]|$)' | awk '{print $1}'); " +
+                "[ -n \"$IDS\" ] || { echo 'DRE nao exposto'; exit 2; }; " +
+                "for I in $IDS; do echo control=$I; \"$T\" \"$I\" 0 || exit $?; done; " +
+                "echo; \"$T\" | grep -Ei '[[:space:]]DRE([[:space:]]|$)' || true";
+    }
 
-    @Override protected void onDestroy(){exec.shutdownNow();super.onDestroy();}
+    private String kernelLogCommand() {
+        return "(dmesg 2>/dev/null || logcat -b kernel -d 2>/dev/null) | " +
+                "grep -Ei 'cs35l41|cirrus|abox|audio|speaker|amp short|over.?temperature|temp warn|boost|CSPL|HALO|xrun|underrun|uvp|ovp|fault|timeout' | tail -n 400";
+    }
+
+    private String classify(String s) {
+        if (s == null) s = "";
+        String l = s.toLowerCase(Locale.US);
+        StringBuilder x = new StringBuilder();
+        boolean hit = false;
+        if (l.contains("amp short")) { x.append("AMP_SHORT: DETECTADO\n"); hit = true; }
+        if (l.contains("over temperature") || l.contains("overtemperature") || l.contains("temp warn")) { x.append("TEMP/DIE: DETECTADO\n"); hit = true; }
+        if (l.contains("bst ovp") || l.contains("boost") && l.contains("ovp")) { x.append("BOOST_OVP: DETECTADO\n"); hit = true; }
+        if (l.contains("bst dcm uvp") || l.contains("boost") && l.contains("uvp")) { x.append("BOOST_UVP: DETECTADO\n"); hit = true; }
+        if (l.contains("bst short")) { x.append("BOOST_SHORT: DETECTADO\n"); hit = true; }
+        if (l.contains("otp_boot_done") || l.contains("otp boot")) { x.append("CS35L41_OTP_BOOT: PROBLEMA\n"); hit = true; }
+        if ((l.contains("cspl") || l.contains("halo")) && (l.contains("timeout") || l.contains("invalid") || l.contains("error"))) { x.append("CSPL/HALO: ERRO NO LOG\n"); hit = true; }
+        if (l.contains("xrun") || l.contains("underrun")) { x.append("PCM_XRUN/UNDERRUN: DETECTADO\n"); hit = true; }
+        if (!hit) x.append("Nenhuma assinatura principal de fault encontrada neste recorte do kernel log.\n");
+        x.append("\nPCM real deve ser conferido com musica tocando; procure 'format: S32_LE' e a linha 'rate'.");
+        return x.toString();
+    }
+
+    private String run(String cmd) {
+        RootShell.Result r = RootShell.exec(cmd);
+        if (!r.ok() && r.out.isEmpty()) return "exit=" + r.code;
+        return (r.ok() ? "" : "exit=" + r.code + "\n") + r.out;
+    }
+
+    private String sectionOut(String title, String body) {
+        return "\n=== " + title + " ===\n" + (body == null || body.isEmpty() ? "(sem saída)" : body) + "\n";
+    }
+
+    private void ui(String body, String st) {
+        runOnUiThread(() -> {
+            status.setText(st);
+            output.setText(body);
+        });
+    }
+
+    private TextView section(String s) {
+        TextView t = text(s, 14, true);
+        t.setPadding(0, dp(16), 0, dp(5));
+        return t;
+    }
+
+    private TextView text(String s, int sp, boolean bold) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextSize(sp);
+        if (bold) t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        return t;
+    }
+
+    private Button button(String s) {
+        Button b = new Button(this);
+        b.setText(s);
+        b.setAllCaps(false);
+        b.setMinHeight(dp(52));
+        return b;
+    }
+
+    private LinearLayout row() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.HORIZONTAL);
+        l.setGravity(Gravity.CENTER_VERTICAL);
+        return l;
+    }
+
+    private LinearLayout.LayoutParams weight() {
+        return new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+    }
+
+    private int dp(int n) {
+        return Math.round(n * getResources().getDisplayMetrics().density);
+    }
 }
