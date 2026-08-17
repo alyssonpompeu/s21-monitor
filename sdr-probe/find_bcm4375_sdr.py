@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Rank BCM4375B1 RAM candidates for legacy Nexmon SDR functions.
 
-This is a static-analysis helper only. It never patches or calls a candidate.
-Known reference addresses are from Nexmon's bcm43455c0 7.45.154 wrapper map.
-The output is evidence for manual review; AUTO_ENABLE is intentionally always 0.
+Static analysis only: candidate addresses are never patched or called. The
+reference functions/addresses come from Nexmon's bcm43455c0 7.45.154 wrapper
+map. AUTO_ENABLE deliberately remains zero.
 """
 from __future__ import annotations
 import collections
@@ -21,7 +21,9 @@ REFERENCES = {
     "wlc_phy_runsamples_acphy": 0x1D2C8C,
 }
 
-LINE_RE = re.compile(r"^\s*([0-9a-fA-F]+):\s+(?:[0-9a-fA-F]{4}(?:\s+[0-9a-fA-F]{4})?\s+)([a-zA-Z0-9_.]+)\s*(.*)$")
+# Raw instruction bytes are suppressed in llvm-objdump, making this parser
+# independent of whether a runner prints Thumb bytes as bytes or halfwords.
+LINE_RE = re.compile(r"^\s*([0-9a-fA-F]+):\s+([a-zA-Z][a-zA-Z0-9_.]*)\s*(.*)$")
 
 
 def disassemble(binary: Path, ramstart: int) -> list[tuple[int,str,str]]:
@@ -31,7 +33,7 @@ def disassemble(binary: Path, ramstart: int) -> list[tuple[int,str,str]]:
         subprocess.run(["llvm-objcopy", "--set-section-flags", ".data=alloc,code,load,readonly", str(obj)], check=True)
         out = subprocess.check_output([
             "llvm-objdump", "-d", "-j", ".data", "--triple=thumbv7r-none-eabi",
-            f"--adjust-vma={hex(ramstart)}", str(obj)
+            "--no-show-raw-insn", f"--adjust-vma={hex(ramstart)}", str(obj)
         ], text=True, errors="replace")
     ins=[]
     for line in out.splitlines():
@@ -112,7 +114,9 @@ def main():
     for name,addr in REFERENCES.items():
         ref=slice_from(oi,addr)
         lines += ["", f"REFERENCE={name}", f"REFERENCE_ADDR=0x{addr:08X}", f"REFERENCE_INSNS={len(ref)}"]
-        for pos,(score,caddr,n) in enumerate(rank(ref,ni),1):
+        ranked=rank(ref,ni)
+        lines.append(f"CANDIDATE_COUNT={len(ranked)}")
+        for pos,(score,caddr,n) in enumerate(ranked,1):
             lines.append(f"CANDIDATE_{pos:02d}=0x{caddr:08X} SCORE={score:.5f} WINDOW={n}")
     lines += ["", "NOTE=Candidates are similarity hints only; no address is patched or called by this workflow."]
     report.parent.mkdir(parents=True, exist_ok=True)
