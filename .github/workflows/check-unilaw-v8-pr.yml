@@ -1,0 +1,40 @@
+name: Check Unilaw v8 source
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'scripts/apply_workspace_v8_full_suite.py'
+      - '.github/workflows/check-unilaw-v8-pr.yml'
+
+jobs:
+  check-v8:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax
+        run: python3 -m py_compile scripts/apply_workspace_v8_full_suite.py
+      - name: Apply source lineage through v8
+        run: |
+          python3 scripts/apply_workspace_v2_ui.py
+          python3 scripts/apply_workspace_v3.py
+          GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
+          python3 scripts/apply_workspace_v5.py
+          python3 scripts/apply_builder_install_fix_v51.py
+          python3 scripts/apply_workspace_v52.py
+          python3 scripts/apply_workspace_v521.py
+          python3 scripts/apply_workspace_v53.py
+          python3 scripts/apply_workspace_v531.py
+          python3 scripts/apply_workspace_v6_exynos.py
+          python3 scripts/apply_workspace_v7_corepacks.py
+          python3 scripts/apply_workspace_v71_bootfix.py
+          python3 scripts/apply_workspace_v72_s21_firmware.py
+          python3 scripts/apply_workspace_v8_full_suite.py
+      - name: Verify generated source
+        run: |
+          grep -q 'AUTO("Conversar • Auto")' offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt
+          grep -q 'WORK_OFFLINE("Work • Offline")' offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt
+          grep -q 'class ExactToolEngine' offlineai/src/main/java/com/alysson/offlineai/ExactToolEngine.kt
+          grep -q 'object BuiltInPluginRegistry' offlineai/src/main/java/com/alysson/offlineai/BuiltInPluginRegistry.kt
+          grep -q "versionName '8.0.0-full-workspace'" offlineai/build.gradle
