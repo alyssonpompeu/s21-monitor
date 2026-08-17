@@ -1,0 +1,240 @@
+name: Build Unilaw AI v7.2 S21 Firmware Tuned
+
+on:
+  push:
+    branches: [ "feature/unilaw-s21-firmware-tuned-v7-2" ]
+    paths:
+      - 'scripts/apply_workspace_v72_s21_firmware.py'
+      - '.github/workflows/build-offline-ai-corepacks-v7-2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-v7-2-s21-tuned:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      V71_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-corepacks-v7-1-recovery
+      V71_CORE_SHA256: 588e4cde917891b20c542cb665148ba511741ceec5c3b14926f8fcfc4782c66e
+      EXPECTED_KERNEL: 5.4.242-30958140-abG991BXXSJHZA6
+
+    steps:
+      - name: Checkout v7.2 tuned branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip file
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          "$SDKMANAGER" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Pin llama.cpp and keep Exynos 2100 sustained runtime
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+          python3 - <<'PY'
+          from pathlib import Path
+          native = Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          text = native.read_text(encoding='utf-8')
+          replacements = {
+              'constexpr int   N_THREADS_MAX           = 4;': 'constexpr int   N_THREADS_MAX           = 3;',
+              'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;': 'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
+              'constexpr int   BATCH_SIZE              = 512;': 'constexpr int   BATCH_SIZE              = 128;',
+              'constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;': 'constexpr float DEFAULT_SAMPLER_TEMP    = 0.75f;',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Pinned ai_chat.cpp no longer matches expected point: {old}')
+              text = text.replace(old, new, 1)
+          native.write_text(text, encoding='utf-8')
+
+          activity = Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
+          app = activity.read_text(encoding='utf-8')
+          markers = {
+              'Qwen3.5-0.8B-Q4_K_M.gguf': 'Qwen3.5-2B-Q4_K_M.gguf',
+              'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517': 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
+          }
+          for old, new in markers.items():
+              if old not in app:
+                  raise SystemExit(f'MainActivity model marker missing: {old}')
+              app = app.replace(old, new, 1)
+          activity.write_text(app, encoding='utf-8')
+          PY
+
+      - name: Apply Workspace lineage through v7.2 firmware tuning
+        shell: bash
+        run: |
+          python3 scripts/apply_workspace_v2_ui.py
+          python3 scripts/apply_workspace_v3.py
+          GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
+          python3 scripts/apply_workspace_v5.py
+          python3 scripts/apply_builder_install_fix_v51.py
+          python3 scripts/apply_workspace_v52.py
+          python3 scripts/apply_workspace_v521.py
+          python3 scripts/apply_workspace_v53.py
+          python3 scripts/apply_workspace_v531.py
+          python3 scripts/apply_workspace_v6_exynos.py
+          python3 scripts/apply_workspace_v7_corepacks.py
+          python3 scripts/apply_workspace_v71_bootfix.py
+          python3 scripts/apply_workspace_v72_s21_firmware.py
+
+      - name: Reuse verified v7.1 runtime assets and signing public keys
+        shell: bash
+        run: |
+          mkdir -p build/v71-reuse offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
+          curl -L --fail --retry 8 --retry-delay 5 \
+            "$V71_RELEASE_BASE/Unilaw-AI-Core-S21-v7-1-Recovery.apk" -o build/v71-reuse/v71.apk
+          echo "$V71_CORE_SHA256  build/v71-reuse/v71.apk" | sha256sum -c -
+
+          unzip -p build/v71-reuse/v71.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
+          unzip -p build/v71-reuse/v71.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
+          unzip -p build/v71-reuse/v71.apk assets/plugin_pubkey_v7.der > offlineai/src/main/assets/plugin_pubkey_v7.der
+          unzip -p build/v71-reuse/v71.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          unzip -p build/v71-reuse/v71.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          chmod 755 offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          test -s offlineai/src/main/assets/ptbr_memory.db
+          test -s offlineai/src/main/assets/plugin_pubkey.der
+          test -s offlineai/src/main/assets/plugin_pubkey_v7.der
+          test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          test ! -e offlineai/src/main/assets/model.gguf
+
+      - name: Verify firmware-tuned source invariants
+        shell: bash
+        run: |
+          grep -q "$EXPECTED_KERNEL" offlineai/src/main/java/com/alysson/offlineai/S21KernelProfile.kt
+          grep -q 'VALIDATED_GPU_SUSTAINABLE_HZ = 494_000_000L' offlineai/src/main/java/com/alysson/offlineai/S21KernelProfile.kt
+          grep -q 'applySustainedAi' offlineai/src/main/java/com/alysson/offlineai/RootPerformanceController.kt
+          grep -q 'thermal_zone' offlineai/src/main/java/com/alysson/offlineai/S21KernelProfile.kt
+          grep -q 'zram0' offlineai/src/main/java/com/alysson/offlineai/S21KernelProfile.kt
+          grep -q "versionName '7.2.0-s21-firmware-tuned'" offlineai/build.gradle
+
+      - name: Record v7.2 source manifest
+        shell: bash
+        run: |
+          cat > offlineai/src/main/assets/source_manifest.json <<EOF
+          {
+            "variant": "corepacks-v7.2-s21-firmware-tuned",
+            "language": "pt-BR",
+            "target_device": "Samsung Galaxy S21 5G SM-G991B",
+            "soc": "Exynos 2100",
+            "kernel_fingerprint": "$EXPECTED_KERNEL",
+            "kernel_page_size": "4K",
+            "cpu_topology": "4x little (0-3) + 3x mid (4-6) + 1x big (7)",
+            "gpu": "Mali-G78 / Valhall",
+            "gpu_sustainable_clock_hz": 494000000,
+            "zram_from_supplied_fstab_bytes": 3221225472,
+            "runtime": "llama.cpp ARM64, 3 workers, ctx 4096, batch 128",
+            "root_policy": "max-frequency caps only; discrete runtime tables; no overclock/undervolt/governor/min-frequency/thermal-trip/zram writes",
+            "model_delivery": "signed iapack outside Core APK",
+            "recovery": "v7.1 guarded bootstrap retained; debug non-minified for physical validation",
+            "package": "com.alysson.offlineai.pluginv52"
+          }
+          EOF
+
+      - name: Build firmware-tuned debug APK
+        id: build_apk
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee offlineai-v7-2-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            tail -n 1400 offlineai-v7-2-build.log > offlineai-v7-2-last-build-error.txt
+            cat offlineai-v7-2-last-build-error.txt
+            exit "$STATUS"
+          fi
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk Unilaw-AI-Core-S21-v7-2-Tuned.apk
+          sha256sum Unilaw-AI-Core-S21-v7-2-Tuned.apk | tee Unilaw-AI-Core-S21-v7-2-Tuned.apk.sha256
+          ls -lh Unilaw-AI-Core-S21-v7-2-Tuned.apk
+
+      - name: Verify v7.2 APK
+        shell: bash
+        run: |
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APK="Unilaw-AI-Core-S21-v7-2-Tuned.apk"
+          "$AAPT" dump badging "$APK" | tee build/v7-2-badging.txt
+          grep -q "package: name='com.alysson.offlineai.pluginv52'" build/v7-2-badging.txt
+          grep -q "versionName='7.2.0-s21-firmware-tuned'" build/v7-2-badging.txt
+          grep -q "native-code: 'arm64-v8a'" build/v7-2-badging.txt
+          unzip -l "$APK" | grep -q 'assets/ptbr_memory.db'
+          unzip -l "$APK" | grep -q 'assets/plugin_pubkey_v7.der'
+          unzip -p "$APK" assets/source_manifest.json | grep -q "$EXPECTED_KERNEL"
+          if unzip -l "$APK" | grep -q 'assets/model.gguf'; then
+            echo 'ERROR: Qwen was bundled back into the Core.' >&2
+            exit 1
+          fi
+          CORE_BYTES=$(stat -c%s "$APK")
+          test "$CORE_BYTES" -lt 700000000
+
+      - name: Upload diagnostics on failure
+        if: failure() && steps.build_apk.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unilaw-v7-2-s21-tuned-diagnostics
+          path: |
+            offlineai-v7-2-build.log
+            offlineai-v7-2-last-build-error.txt
+          retention-days: 7
+
+      - name: Upload v7.2 tuned artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unilaw-AI-Core-S21-v7-2-Tuned
+          path: |
+            Unilaw-AI-Core-S21-v7-2-Tuned.apk
+            Unilaw-AI-Core-S21-v7-2-Tuned.apk.sha256
+          compression-level: 0
+
+      - name: Publish v7.2 S21 tuned release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-corepacks-v7-2-s21-tuned
+          name: Unilaw AI Core v7.2 • S21 Firmware Tuned
+          body: |
+            Core especializado a partir das imagens de firmware fornecidas para o SM-G991B.
+
+            - Reconhece o kernel 5.4.242-30958140-abG991BXXSJHZA6 e cai para modo adaptativo se o kernel mudar.
+            - Detecta os clusters 0-3 / 4-6 / 7 pelas políticas cpufreq reais em runtime.
+            - Limites root passam a escolher degraus reais de frequência, não interpolação cega.
+            - Perfil IA Sustentada reduz mais o cluster big e usa 494 MHz para a Mali quando o firmware exato é reconhecido.
+            - Thermal guard lê thermal_zone do aparelho e antecipa checkpoint/pause antes de pressão prolongada.
+            - Detecta a zRAM existente; não cria nem reconfigura swap/zRAM.
+            - Mantém o boot crash-safe da v7.1 e continua sem Qwen embutido no Core.
+            - Qwen-General-2B-v7-1.iapack e Tiny-SD-Q4K-v7-1.iapack continuam compatíveis; não precisam ser recompilados.
+
+            Este APK não modifica boot.img, vendor_boot.img, dtbo.img ou vbmeta. Root é opcional e as escritas ficam limitadas a frequências máximas expostas pelo kernel.
+          files: |
+            Unilaw-AI-Core-S21-v7-2-Tuned.apk
+            Unilaw-AI-Core-S21-v7-2-Tuned.apk.sha256
+          make_latest: false
+          overwrite_files: true
