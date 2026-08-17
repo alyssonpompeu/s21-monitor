@@ -1,0 +1,44 @@
+name: Export MARX handoff source
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "marx-virtual-a7105-v1" ]
+    paths:
+      - '.github/workflows/export-marx-handoff.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Build source snapshot
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p handoff
+          printf 'repo=%s\nbranch=%s\ncommit=%s\ndate_utc=%s\n' \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA" "$(date -u +%FT%TZ)" > handoff/GIT_SNAPSHOT.txt
+          cp -a bcm4375lab handoff/
+          [ ! -d sdr-probe ] || cp -a sdr-probe handoff/
+          cp -a build.gradle settings.gradle gradle.properties handoff/ 2>/dev/null || true
+          mkdir -p handoff/workflows
+          cp .github/workflows/build-marx-a7105-v1.yml handoff/workflows/ 2>/dev/null || true
+          cp .github/workflows/export-marx-handoff.yml handoff/workflows/
+          find handoff -type f -print0 | sort -z | xargs -0 sha256sum > handoff/SOURCE_SHA256SUMS.txt
+          (cd handoff && zip -qr ../MARX-A7105-V1.0-source-snapshot.zip .)
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: MARX-A7105-V1.0-source-snapshot
+          path: MARX-A7105-V1.0-source-snapshot.zip
+          if-no-files-found: error
+          retention-days: 30
