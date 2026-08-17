@@ -1,5 +1,6 @@
-/* MARX A7105 V1.0 userspace probe.
+/* MARX RX42 BCM4375 V2 userspace probe.
  * Bounded diagnostics only. No generic arbitrary-ioctl interface is exposed.
+ * TX remains gated until firmware explicitly reports a validated native sample-play backend.
  */
 #include <errno.h>
 #include <stdbool.h>
@@ -22,6 +23,7 @@
 #define PR663_GET_VERSION 0x600u
 #define WLC_PHY_SAMPLE_COLLECT 307u
 #define MARX_BACKEND_CAPS 0x63Fu
+#define MARX_REG_SNAPSHOT 0x640u
 #define SAMPLE_RATE 40000000.0
 #define BIT_RATE 500000.0
 #define SPS 80
@@ -93,21 +95,44 @@ static int do_gfskdry(void){
     printf("GFSK_IQ_DRYRUN=PASS\nRF_TX_TRIGGERED=0\n"); free(iq); return 0;
 }
 
+static int do_text_ioctl(int s,const char*ifn,unsigned cmd,const char*name){
+    char buf[1024]; memset(buf,0,sizeof(buf));
+    struct result r=run_ioctl(s,ifn,cmd,buf,sizeof(buf),false);
+    pr(name,cmd,r);
+    if(r.ret>=0) printf("%s",buf);
+    return r.ret>=0?0:24;
+}
+
+static int do_capsv2(int s,const char*ifn){
+    printf("MARX_V2_CAPS_QUERY=1\n");
+    return do_text_ioctl(s,ifn,MARX_BACKEND_CAPS,"MARX_GET_CAPS_V2");
+}
+
+static int do_regsnap(int s,const char*ifn){
+    printf("MARX_V2_REG_SNAPSHOT_QUERY=1\nTX_REQUESTED=0\n");
+    return do_text_ioctl(s,ifn,MARX_REG_SNAPSHOT,"MARX_REG_SNAPSHOT");
+}
+
 static int do_backend(int s,const char*ifn){
-    struct stat st; int dev=(stat("/dev/marxrf",&st)==0);
-    char cap[256]={0}; struct result r=run_ioctl(s,ifn,MARX_BACKEND_CAPS,cap,sizeof(cap),false);
-    printf("MARXRF_DEVICE=%s\n",dev?"PRESENT":"ABSENT"); pr("MARX_BACKEND_CAPS",MARX_BACKEND_CAPS,r);
+    char cap[1024]={0}; struct result r=run_ioctl(s,ifn,MARX_BACKEND_CAPS,cap,sizeof(cap),false);
+    pr("MARX_BACKEND_CAPS",MARX_BACKEND_CAPS,r);
     if(r.ret>=0)printf("MARX_BACKEND_REPLY=%s\n",cap);
-    int ready=dev || (r.ret>=0 && strstr(cap,"MARX_ARBITRARY_TX_V1"));
+    int native_play=(r.ret>=0 && strstr(cap,"NATIVE_SAMPLE_PLAY=1"));
+    int bounded_tx=(r.ret>=0 && strstr(cap,"BOUNDED_TX=1"));
+    int ready=native_play && bounded_tx;
+    printf("NATIVE_SAMPLE_PLAY_READY=%d\n",native_play);
+    printf("BOUNDED_TX_READY=%d\n",bounded_tx);
     printf("ARBITRARY_TX_BACKEND=%s\n",ready?"READY":"NOT_READY");
-    printf("RX_PATH=%s\n",(r.ret>=0 && strstr(cap,"RX_IQ"))?"IQ":"NONE");
-    printf("BACKEND_POLICY=NO_GENERIC_IOCTL_NO_CONTINUOUS_TX\n"); return ready?0:23;
+    printf("RX_PATH=%s\n",(r.ret>=0 && strstr(cap,"RX_IQ=1"))?"IQ":"NONE");
+    printf("BACKEND_POLICY=AFHDS2A_ONLY_NO_GENERIC_TX_NO_CONTINUOUS_TX\n");
+    printf("RF_TX_TRIGGERED=0\n");
+    return ready?0:23;
 }
 
 int main(int argc,char**argv){
     const char*ifn=(argc>1&&argv[1][0])?argv[1]:"wlan0";const char*m=(argc>2&&argv[2][0])?argv[2]:"backend";
-    printf("MARX_A7105_PROBE=1\nMODE=%s\n",m);
+    printf("MARX_RX42_BCM4375_V2_PROBE=1\nMODE=%s\n",m);
     if(!strcmp(m,"gfskdry"))return do_gfskdry();
     int s=socket(AF_INET,SOCK_DGRAM,0);if(s<0){printf("SOCKET_FAIL=%d %s\n",errno,strerror(errno));return 20;}
-    int rc;if(!strcmp(m,"nexmon"))rc=do_nexmon(s,ifn);else if(!strcmp(m,"sample307"))rc=do_sample307(s,ifn);else if(!strcmp(m,"backend"))rc=do_backend(s,ifn);else{printf("UNSUPPORTED_MODE=1\n");rc=2;}close(s);return rc;
+    int rc;if(!strcmp(m,"nexmon"))rc=do_nexmon(s,ifn);else if(!strcmp(m,"sample307"))rc=do_sample307(s,ifn);else if(!strcmp(m,"capsv2"))rc=do_capsv2(s,ifn);else if(!strcmp(m,"regsnap"))rc=do_regsnap(s,ifn);else if(!strcmp(m,"backend"))rc=do_backend(s,ifn);else{printf("UNSUPPORTED_MODE=1\n");rc=2;}close(s);return rc;
 }
