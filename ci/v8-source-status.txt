@@ -1,0 +1,4 @@
+SOURCE_OK
+commit=bc90a0d3d03500768a6163a9816fa21838d2b23e
+58:        AUTO("Conversar • Auto"),
+16:        versionName '8.0.0-full-workspace'
