@@ -1,4 +1,4 @@
-name: Build G991B Audio RAW Doctor APK
+name: Build G991B Audio Kernel EQ APK
 
 on:
   workflow_dispatch:
@@ -32,8 +32,8 @@ jobs:
       - name: Build APK
         run: gradle :audiolab:assembleDebug --stacktrace
       - name: Prepare APK
-        run: cp audiolab/build/outputs/apk/debug/audiolab-debug.apk G991B-Audio-RAW-Doctor-v2.0.apk
+        run: cp audiolab/build/outputs/apk/debug/audiolab-debug.apk G991B-Audio-Kernel-EQ-v3.0.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: G991B-Audio-RAW-Doctor-v2.0-APK
-          path: G991B-Audio-RAW-Doctor-v2.0.apk
+          name: G991B-Audio-Kernel-EQ-v3.0-APK
+          path: G991B-Audio-Kernel-EQ-v3.0.apk
