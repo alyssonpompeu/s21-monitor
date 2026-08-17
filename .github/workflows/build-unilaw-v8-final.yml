@@ -1,0 +1,210 @@
+name: Build Unilaw v8 Final Workspace
+
+on:
+  push:
+    branches: [ "feature/unilaw-s21-firmware-tuned-v7-2" ]
+    paths:
+      - 'scripts/apply_workspace_v8_full_suite.py'
+      - 'scripts/apply_workspace_v8_docs_vision.py'
+      - 'scripts/apply_workspace_v8_work_ui.py'
+      - '.github/workflows/build-unilaw-v8-final.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-v8-final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      V71_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-corepacks-v7-1-recovery
+      V71_CORE_SHA256: 588e4cde917891b20c542cb665148ba511741ceec5c3b14926f8fcfc4782c66e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android build environment
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip file
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Pin llama.cpp and tune Exynos 2100 runtime
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          s=p.read_text(encoding='utf-8')
+          for a,b in {
+              'constexpr int   N_THREADS_MAX           = 4;':'constexpr int   N_THREADS_MAX           = 3;',
+              'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;':'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
+              'constexpr int   BATCH_SIZE              = 512;':'constexpr int   BATCH_SIZE              = 128;',
+              'constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;':'constexpr float DEFAULT_SAMPLER_TEMP    = 0.75f;',
+          }.items():
+              if a not in s: raise SystemExit('native marker missing: '+a)
+              s=s.replace(a,b,1)
+          p.write_text(s,encoding='utf-8')
+          a=Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
+          s=a.read_text(encoding='utf-8')
+          for x,y in {
+              'Qwen3.5-0.8B-Q4_K_M.gguf':'Qwen3.5-2B-Q4_K_M.gguf',
+              'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517':'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
+          }.items():
+              if x not in s: raise SystemExit('model marker missing: '+x)
+              s=s.replace(x,y,1)
+          a.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Apply full Workspace lineage
+        shell: bash
+        run: |
+          python3 -m py_compile scripts/apply_workspace_v8_full_suite.py scripts/apply_workspace_v8_docs_vision.py scripts/apply_workspace_v8_work_ui.py
+          python3 scripts/apply_workspace_v2_ui.py
+          python3 scripts/apply_workspace_v3.py
+          GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
+          python3 scripts/apply_workspace_v5.py
+          python3 scripts/apply_builder_install_fix_v51.py
+          python3 scripts/apply_workspace_v52.py
+          python3 scripts/apply_workspace_v521.py
+          python3 scripts/apply_workspace_v53.py
+          python3 scripts/apply_workspace_v531.py
+          python3 scripts/apply_workspace_v6_exynos.py
+          python3 scripts/apply_workspace_v7_corepacks.py
+          python3 scripts/apply_workspace_v71_bootfix.py
+          python3 scripts/apply_workspace_v72_s21_firmware.py
+          python3 scripts/apply_workspace_v8_full_suite.py
+          python3 scripts/apply_workspace_v8_docs_vision.py
+          python3 scripts/apply_workspace_v8_work_ui.py
+
+      - name: Reuse verified v7.1 native/runtime assets
+        shell: bash
+        run: |
+          mkdir -p build/v71 offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
+          curl -L --fail --retry 8 --retry-delay 5 "$V71_RELEASE_BASE/Unilaw-AI-Core-S21-v7-1-Recovery.apk" -o build/v71/v71.apk
+          echo "$V71_CORE_SHA256  build/v71/v71.apk" | sha256sum -c -
+          unzip -p build/v71/v71.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
+          unzip -p build/v71/v71.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
+          unzip -p build/v71/v71.apk assets/plugin_pubkey_v7.der > offlineai/src/main/assets/plugin_pubkey_v7.der
+          unzip -p build/v71/v71.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          unzip -p build/v71/v71.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          chmod 755 offlineai/src/main/jniLibs/arm64-v8a/*.so
+          rm -f offlineai/src/main/assets/model.gguf
+
+      - name: Verify generated v8 source before compilation
+        shell: bash
+        run: |
+          grep -q 'AUTO("Conversar • Auto")' offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt
+          grep -q 'WORK_OFFLINE("Work • Offline")' offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt
+          grep -q 'WORK_ONLINE("Work • Online")' offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt
+          grep -q 'class SmartCapabilityRouter' offlineai/src/main/java/com/alysson/offlineai/SmartCapabilityRouter.kt
+          grep -q 'class ExactToolEngine' offlineai/src/main/java/com/alysson/offlineai/ExactToolEngine.kt
+          grep -q 'object BuiltInPluginRegistry' offlineai/src/main/java/com/alysson/offlineai/BuiltInPluginRegistry.kt
+          grep -q 'ImageLabeling.getClient' offlineai/src/main/java/com/alysson/offlineai/AttachmentImporter.kt
+          grep -q 'extractSqlite' offlineai/src/main/java/com/alysson/offlineai/AttachmentImporter.kt
+          grep -q 'inspectApk' offlineai/src/main/java/com/alysson/offlineai/AttachmentImporter.kt
+          grep -q "com.google.mlkit:image-labeling:17.0.9" offlineai/build.gradle
+          grep -q "versionName '8.0.0-full-workspace'" offlineai/build.gradle
+          grep -q "versionName '3.0.0-unilaw-work-v8'" workonline/build.gradle
+          grep -q 'EXPECTED_KERNEL = "5.4.242-30958140-abG991BXXSJHZA6"' offlineai/src/main/java/com/alysson/offlineai/S21KernelProfile.kt
+
+      - name: Build main Workspace and Work companion
+        id: build
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          gradle :offlineai:assembleDebug :workonline:assembleDebug --stacktrace --no-daemon 2>&1 | tee unilaw-v8-final-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            tail -n 1800 unilaw-v8-final-build.log > unilaw-v8-final-error.txt
+            cat unilaw-v8-final-error.txt
+            exit "$STATUS"
+          fi
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk Unilaw-AI-Workspace-S21-v8.apk
+          cp workonline/build/outputs/apk/debug/workonline-debug.apk Unilaw-Work-Online-v3.apk
+          sha256sum Unilaw-AI-Workspace-S21-v8.apk | tee Unilaw-AI-Workspace-S21-v8.apk.sha256
+          sha256sum Unilaw-Work-Online-v3.apk | tee Unilaw-Work-Online-v3.apk.sha256
+          ls -lh Unilaw-AI-Workspace-S21-v8.apk Unilaw-Work-Online-v3.apk
+
+      - name: Verify APK identities and offline boundary
+        shell: bash
+        run: |
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$AAPT" dump badging Unilaw-AI-Workspace-S21-v8.apk | tee main-badging.txt
+          "$AAPT" dump badging Unilaw-Work-Online-v3.apk | tee work-badging.txt
+          grep -q "package: name='com.alysson.offlineai.pluginv52'" main-badging.txt
+          grep -q "versionName='8.0.0-full-workspace'" main-badging.txt
+          grep -q "native-code: 'arm64-v8a'" main-badging.txt
+          grep -q "package: name='com.alysson.offlineai.workonline'" work-badging.txt
+          grep -q "versionName='3.0.0-unilaw-work-v8'" work-badging.txt
+          if "$AAPT" dump permissions Unilaw-AI-Workspace-S21-v8.apk | grep -q 'android.permission.INTERNET'; then
+            echo 'ERROR: main Workspace gained INTERNET permission' >&2; exit 1
+          fi
+          "$AAPT" dump permissions Unilaw-Work-Online-v3.apk | grep -q 'android.permission.INTERNET'
+          if unzip -l Unilaw-AI-Workspace-S21-v8.apk | grep -q 'assets/model.gguf'; then
+            echo 'ERROR: heavy Qwen payload returned to APK' >&2; exit 1
+          fi
+
+      - name: Upload failure diagnostics
+        if: failure() && steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unilaw-v8-final-diagnostics
+          path: |
+            unilaw-v8-final-build.log
+            unilaw-v8-final-error.txt
+          retention-days: 7
+
+      - name: Upload v8 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unilaw-v8-Final
+          path: |
+            Unilaw-AI-Workspace-S21-v8.apk
+            Unilaw-AI-Workspace-S21-v8.apk.sha256
+            Unilaw-Work-Online-v3.apk
+            Unilaw-Work-Online-v3.apk.sha256
+          compression-level: 0
+
+      - name: Publish v8 release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-workspace-v8
+          name: Unilaw AI Workspace v8 • Full S21 Suite
+          body: |
+            Unilaw v8 para SM-G991B/Exynos 2100.
+
+            - Conversar Auto com roteamento local automático.
+            - Work Offline no mesmo app: Qwen + projeto + Biblioteca Neural.
+            - Work Online em companion separado e visualmente alinhado, preservando a fronteira sem INTERNET no Core.
+            - Ferramentas exatas embutidas.
+            - OCR e visão leve offline empacotados.
+            - Office/EPUB, SQLite read-only e APK inspector melhorados.
+            - Perfil root/térmico/zRAM específico da linha v7.2 preservado.
+            - Modelos neurais grandes permanecem .iapack para não recriar um APK monolítico de 3+ GiB.
+          files: |
+            Unilaw-AI-Workspace-S21-v8.apk
+            Unilaw-AI-Workspace-S21-v8.apk.sha256
+            Unilaw-Work-Online-v3.apk
+            Unilaw-Work-Online-v3.apk.sha256
+          make_latest: false
+          overwrite_files: true
