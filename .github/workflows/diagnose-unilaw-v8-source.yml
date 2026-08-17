@@ -1,0 +1,71 @@
+name: Diagnose Unilaw v8 source
+
+on:
+  push:
+    branches: [ "feature/unilaw-s21-firmware-tuned-v7-2" ]
+    paths:
+      - '.github/workflows/diagnose-unilaw-v8-source.yml'
+      - 'scripts/apply_workspace_v8_full_suite.py'
+      - 'scripts/apply_workspace_v8_docs_vision.py'
+      - 'scripts/apply_workspace_v8_work_ui.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply lineage with captured log
+        id: apply
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          {
+            python3 -m py_compile scripts/apply_workspace_v8_full_suite.py scripts/apply_workspace_v8_docs_vision.py scripts/apply_workspace_v8_work_ui.py &&
+            python3 scripts/apply_workspace_v2_ui.py &&
+            python3 scripts/apply_workspace_v3.py &&
+            GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py &&
+            python3 scripts/apply_workspace_v5.py &&
+            python3 scripts/apply_builder_install_fix_v51.py &&
+            python3 scripts/apply_workspace_v52.py &&
+            python3 scripts/apply_workspace_v521.py &&
+            python3 scripts/apply_workspace_v53.py &&
+            python3 scripts/apply_workspace_v531.py &&
+            python3 scripts/apply_workspace_v6_exynos.py &&
+            python3 scripts/apply_workspace_v7_corepacks.py &&
+            python3 scripts/apply_workspace_v71_bootfix.py &&
+            python3 scripts/apply_workspace_v72_s21_firmware.py &&
+            python3 scripts/apply_workspace_v8_full_suite.py &&
+            python3 scripts/apply_workspace_v8_docs_vision.py &&
+            python3 scripts/apply_workspace_v8_work_ui.py
+          } 2>&1 | tee /tmp/v8-source.log
+          STATUS=${PIPESTATUS[0]}
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Record diagnostic
+        shell: bash
+        run: |
+          mkdir -p ci
+          if [ "${{ steps.apply.outputs.status }}" = "0" ]; then
+            {
+              echo "SOURCE_OK"
+              echo "commit=$GITHUB_SHA"
+              grep -n 'AUTO("Conversar • Auto")' offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt || true
+              grep -n "versionName '8.0.0-full-workspace'" offlineai/build.gradle || true
+            } > ci/v8-source-status.txt
+          else
+            {
+              echo "SOURCE_FAILED"
+              echo "commit=$GITHUB_SHA"
+              tail -n 220 /tmp/v8-source.log
+            } > ci/v8-source-status.txt
+          fi
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add ci/v8-source-status.txt
+          git commit -m "CI: record v8 source diagnostic [skip ci]" || exit 0
+          git push
