@@ -17,7 +17,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    private static final String HASH_FULL_RAW = "878d90e78379466fbb2e8b389475ca50edec21b4692d526b7d31267015351a7c";
+    private static final String HASH_FULL_RAW = "df37c8d7ad52673b2dccb843ff150f5620990e893a150e0275dbc62aa704d70e";
     private static final String HASH_AUDIO32_GOOD = "ea9082bff92d3e08357bbb06d27ae29fd907ed8e1675a24dcb6e4bc66464f340";
 
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
