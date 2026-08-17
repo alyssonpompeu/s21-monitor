@@ -1,0 +1,275 @@
+name: Build Unilaw v7.2 SM-G991B HZA6
+
+on:
+  push:
+    branches: [ "feature/unilaw-sm-g991b-hza6-v7-2" ]
+    paths:
+      - 'scripts/apply_workspace_v72_g991b_hza6.py'
+      - '.github/workflows/build-unilaw-sm-g991b-hza6-v7-2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-g991b-hza6:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      V71_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-corepacks-v7-1-recovery
+      V71_CORE_SHA256: 588e4cde917891b20c542cb665148ba511741ceec5c3b14926f8fcfc4782c66e
+
+    steps:
+      - name: Checkout exact-device branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android toolchain
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip file
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          "$SDKMANAGER" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+
+      - name: Pin llama.cpp and tune exact Exynos 2100 topology
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+          python3 - <<'PY'
+          from pathlib import Path
+
+          native = Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          text = native.read_text(encoding='utf-8')
+
+          old_constants = '''constexpr int   N_THREADS_MIN           = 2;
+          constexpr int   N_THREADS_MAX           = 4;
+          constexpr int   N_THREADS_HEADROOM      = 2;
+
+          constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;
+          constexpr int   OVERFLOW_HEADROOM       = 4;
+          constexpr int   BATCH_SIZE              = 512;
+          constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;'''
+          new_constants = '''constexpr int   N_THREADS_MIN           = 2;
+          constexpr int   N_THREADS_DECODE        = 3;
+          constexpr int   N_THREADS_BATCH         = 4;
+
+          constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;
+          constexpr int   OVERFLOW_HEADROOM       = 4;
+          constexpr int   BATCH_SIZE              = 256;
+          constexpr float DEFAULT_SAMPLER_TEMP    = 0.75f;'''
+          if old_constants not in text:
+              raise SystemExit('ai_chat.cpp constants no longer match pinned commit')
+          text = text.replace(old_constants, new_constants, 1)
+
+          old_threads = '''    // Multi-threading setup
+              const int n_threads = std::max(N_THREADS_MIN, std::min(N_THREADS_MAX,
+                                                             (int) sysconf(_SC_NPROCESSORS_ONLN) -
+                                                             N_THREADS_HEADROOM));
+              LOGi("%s: Using %d threads", __func__, n_threads);'''
+          new_threads = '''    // SM-G991B Exynos 2100: 4x A55 + 3x A78 + 1x X1.
+              // Decode stays at 3 workers for sustained efficiency; prompt/batch can use 4.
+              const int online = std::max(1, (int) sysconf(_SC_NPROCESSORS_ONLN));
+              const int n_threads = std::max(N_THREADS_MIN, std::min(N_THREADS_DECODE, online));
+              const int n_threads_batch = std::max(n_threads, std::min(N_THREADS_BATCH, online));
+              LOGi("%s: SM-G991B decode=%d batch=%d online=%d", __func__, n_threads, n_threads_batch, online);'''
+          if old_threads not in text:
+              raise SystemExit('ai_chat.cpp thread setup no longer matches pinned commit')
+          text = text.replace(old_threads, new_threads, 1)
+          text = text.replace('ctx_params.n_threads_batch = n_threads;', 'ctx_params.n_threads_batch = n_threads_batch;', 1)
+          native.write_text(text, encoding='utf-8')
+
+          # Exact-device release is arm64-only. Keep llama CPU runtime variants enabled so the
+          # library still picks the best dotprod/i8mm-capable backend at runtime.
+          lib_gradle = Path('vendor/llama.cpp/examples/llama.android/lib/build.gradle.kts')
+          g = lib_gradle.read_text(encoding='utf-8')
+          g = g.replace('abiFilters += listOf("arm64-v8a", "x86_64")', 'abiFilters += listOf("arm64-v8a")', 1)
+          lib_gradle.write_text(g, encoding='utf-8')
+
+          activity = Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
+          app = activity.read_text(encoding='utf-8')
+          markers = {
+              'Qwen3.5-0.8B-Q4_K_M.gguf': 'Qwen3.5-2B-Q4_K_M.gguf',
+              'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517': 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
+          }
+          for old, new in markers.items():
+              if old not in app:
+                  raise SystemExit(f'MainActivity model marker missing: {old}')
+              app = app.replace(old, new, 1)
+          activity.write_text(app, encoding='utf-8')
+          PY
+
+      - name: Apply Unilaw lineage and exact-device profile
+        shell: bash
+        run: |
+          python3 scripts/apply_workspace_v2_ui.py
+          python3 scripts/apply_workspace_v3.py
+          GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
+          python3 scripts/apply_workspace_v5.py
+          python3 scripts/apply_builder_install_fix_v51.py
+          python3 scripts/apply_workspace_v52.py
+          python3 scripts/apply_workspace_v521.py
+          python3 scripts/apply_workspace_v53.py
+          python3 scripts/apply_workspace_v531.py
+          python3 scripts/apply_workspace_v6_exynos.py
+          python3 scripts/apply_workspace_v7_corepacks.py
+          python3 scripts/apply_workspace_v71_bootfix.py
+          python3 scripts/apply_workspace_v72_g991b_hza6.py
+
+      - name: Reuse verified v7.1 signing/runtime assets
+        shell: bash
+        run: |
+          mkdir -p build/v71-reuse offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
+          curl -L --fail --retry 8 --retry-delay 5 \
+            "$V71_RELEASE_BASE/Unilaw-AI-Core-S21-v7-1-Recovery.apk" -o build/v71-reuse/v71.apk
+          echo "$V71_CORE_SHA256  build/v71-reuse/v71.apk" | sha256sum -c -
+
+          unzip -p build/v71-reuse/v71.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
+          unzip -p build/v71-reuse/v71.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
+          unzip -p build/v71-reuse/v71.apk assets/plugin_pubkey_v7.der > offlineai/src/main/assets/plugin_pubkey_v7.der
+          unzip -p build/v71-reuse/v71.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          unzip -p build/v71-reuse/v71.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          chmod 755 offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          rm -f offlineai/src/main/assets/model.gguf
+
+          test -s offlineai/src/main/assets/ptbr_memory.db
+          test -s offlineai/src/main/assets/plugin_pubkey.der
+          test -s offlineai/src/main/assets/plugin_pubkey_v7.der
+          test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          test -s offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+
+      - name: Record exact-device source manifest
+        shell: bash
+        run: |
+          cat > offlineai/src/main/assets/source_manifest.json <<EOF
+          {
+            "variant": "corepacks-v7.2-sm-g991b-hza6",
+            "language": "pt-BR",
+            "target_device": "Samsung Galaxy S21 5G SM-G991B",
+            "target_firmware_kernel_build": "G991BXXSJHZA6",
+            "kernel_observed": "5.4.242-30958140-abG991BXXSJHZA6",
+            "soc": "Exynos 2100",
+            "cpu_topology": "4x Cortex-A55 + 3x Cortex-A78 + 1x Cortex-X1",
+            "gpu": "Mali-G78 family / mali_kbase / 130-858 MHz DT DVFS",
+            "zram_observed_bytes": 3221225472,
+            "llama_cpp_commit": "$LLAMA_CPP_COMMIT",
+            "llm_decode_threads": 3,
+            "llm_batch_threads": 4,
+            "llm_context": 4096,
+            "llm_batch": 256,
+            "thermal_checkpoint_c": 68,
+            "image_stop_c": 72,
+            "model_delivery": "reuse signed v7.1 iapacks",
+            "package": "com.alysson.offlineai.pluginv52",
+            "recovery_lineage": "v7.1 unminified crash-safe boot retained"
+          }
+          EOF
+
+      - name: Build exact-device recovery APK
+        id: build_apk
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee unilaw-v7-2-g991b-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            tail -n 1500 unilaw-v7-2-g991b-build.log > unilaw-v7-2-g991b-last-error.txt
+            cat unilaw-v7-2-g991b-last-error.txt
+            exit "$STATUS"
+          fi
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk Unilaw-AI-SM-G991B-HZA6-v7-2.apk
+          sha256sum Unilaw-AI-SM-G991B-HZA6-v7-2.apk | tee Unilaw-AI-SM-G991B-HZA6-v7-2.apk.sha256
+          cp offlineai/src/main/assets/device_profile_sm_g991b_hza6.json SM-G991B-HZA6-device-profile.json
+          ls -lh Unilaw-AI-SM-G991B-HZA6-v7-2.apk
+
+      - name: Verify exact-device APK
+        shell: bash
+        run: |
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/35.0.0/zipalign"
+          APK="Unilaw-AI-SM-G991B-HZA6-v7-2.apk"
+
+          "$AAPT" dump badging "$APK" | tee build/v7-2-badging.txt
+          grep -q "package: name='com.alysson.offlineai.pluginv52'" build/v7-2-badging.txt
+          grep -q "native-code: 'arm64-v8a'" build/v7-2-badging.txt
+          "$APKSIGNER" verify --verbose "$APK"
+          "$ZIPALIGN" -c -P 16 -v 4 "$APK"
+          unzip -l "$APK" | grep -q 'assets/device_profile_sm_g991b_hza6.json'
+          unzip -l "$APK" | grep -q 'assets/plugin_pubkey_v7.der'
+          if unzip -l "$APK" | grep -q 'assets/model.gguf'; then
+            echo 'ERROR: Qwen was bundled back into the Core.' >&2
+            exit 1
+          fi
+          CORE_BYTES=$(stat -c%s "$APK")
+          test "$CORE_BYTES" -lt 700000000
+
+      - name: Upload diagnostics on failure
+        if: failure() && steps.build_apk.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unilaw-v7-2-g991b-diagnostics
+          path: |
+            unilaw-v7-2-g991b-build.log
+            unilaw-v7-2-g991b-last-error.txt
+          retention-days: 7
+
+      - name: Upload v7.2 exact-device artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unilaw-AI-SM-G991B-HZA6-v7-2
+          path: |
+            Unilaw-AI-SM-G991B-HZA6-v7-2.apk
+            Unilaw-AI-SM-G991B-HZA6-v7-2.apk.sha256
+            SM-G991B-HZA6-device-profile.json
+          compression-level: 0
+
+      - name: Publish v7.2 exact-device release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-corepacks-v7-2-sm-g991b-hza6
+          name: Unilaw AI v7.2 • SM-G991B HZA6
+          body: |
+            Build experimental de campo otimizada a partir das partições boot/vendor_boot/dtbo fornecidas do aparelho alvo.
+
+            Perfil detectado no firmware:
+            - Samsung Galaxy S21 5G SM-G991B / Exynos 2100.
+            - Kernel 5.4.242-30958140-abG991BXXSJHZA6.
+            - CPU 4x A55 + 3x A78 + 1x X1; decode neural em 3 workers e prefill/batch em 4.
+            - Contexto 4096 e batch 256 para equilibrar latência, RAM e aquecimento.
+            - Mali com tabela DT de 130 a 858 MHz; Tiny-SD continua CPU por padrão e Vulkan manual/experimental.
+            - zRAM do firmware: 3 GiB. O app não altera zRAM nem cria swap.
+            - Checkpoint térmico antecipado em 68 C; geração de imagem interrompida em 72 C quando os thermal zones forem legíveis.
+            - Mantém a inicialização protegida/não-minificada da v7.1 para não reintroduzir o fechamento imediato.
+
+            Use Qwen-General-2B-v7-1.iapack e Tiny-SD-Q4K-v7-1.iapack da release v7.1 Recovery; a chave pública v7.1 foi reutilizada neste Core.
+          files: |
+            Unilaw-AI-SM-G991B-HZA6-v7-2.apk
+            Unilaw-AI-SM-G991B-HZA6-v7-2.apk.sha256
+            SM-G991B-HZA6-device-profile.json
+          make_latest: false
+          overwrite_files: true
