@@ -1,0 +1,245 @@
+name: Build Unilaw v8.1 Plugin Bundle
+
+on:
+  push:
+    branches: [ "feature/unilaw-plugin-bundle-v8-1" ]
+    paths:
+      - 'scripts/apply_workspace_v81_plugin_bundle.py'
+      - '.github/workflows/build-unilaw-v8-1-plugin-bundle.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-v81:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+      V71_RELEASE_BASE: https://github.com/alyssonpompeu/s21-monitor/releases/download/offline-ai-corepacks-v7-1-recovery
+      V71_CORE_SHA256: 588e4cde917891b20c542cb665148ba511741ceec5c3b14926f8fcfc4782c66e
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android build environment
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip file zip
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          set -o pipefail
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+
+      - name: Pin llama.cpp and tune Exynos 2100 runtime
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          s=p.read_text(encoding='utf-8')
+          for a,b in {
+              'constexpr int   N_THREADS_MAX           = 4;':'constexpr int   N_THREADS_MAX           = 3;',
+              'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;':'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
+              'constexpr int   BATCH_SIZE              = 512;':'constexpr int   BATCH_SIZE              = 128;',
+              'constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;':'constexpr float DEFAULT_SAMPLER_TEMP    = 0.75f;',
+          }.items():
+              if a not in s: raise SystemExit('native marker missing: '+a)
+              s=s.replace(a,b,1)
+          p.write_text(s,encoding='utf-8')
+          a=Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
+          s=a.read_text(encoding='utf-8')
+          for x,y in {
+              'Qwen3.5-0.8B-Q4_K_M.gguf':'Qwen3.5-2B-Q4_K_M.gguf',
+              'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517':'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
+          }.items():
+              if x not in s: raise SystemExit('model marker missing: '+x)
+              s=s.replace(x,y,1)
+          a.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Apply full Workspace lineage through v8.1
+        shell: bash
+        run: |
+          python3 -m py_compile scripts/apply_workspace_v81_plugin_bundle.py
+          python3 scripts/apply_workspace_v2_ui.py
+          python3 scripts/apply_workspace_v3.py
+          GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
+          python3 scripts/apply_workspace_v5.py
+          python3 scripts/apply_builder_install_fix_v51.py
+          python3 scripts/apply_workspace_v52.py
+          python3 scripts/apply_workspace_v521.py
+          python3 scripts/apply_workspace_v53.py
+          python3 scripts/apply_workspace_v531.py
+          python3 scripts/apply_workspace_v6_exynos.py
+          python3 scripts/apply_workspace_v7_corepacks.py
+          python3 scripts/apply_workspace_v71_bootfix.py
+          python3 scripts/apply_workspace_v72_s21_firmware.py
+          python3 scripts/apply_workspace_v8_full_suite.py
+          python3 scripts/apply_workspace_v8_docs_vision.py
+          python3 scripts/apply_workspace_v8_work_ui.py
+          python3 scripts/apply_workspace_v81_plugin_bundle.py
+
+      - name: Reuse verified v7.1 native/runtime assets
+        shell: bash
+        run: |
+          mkdir -p build/v71 offlineai/src/main/assets offlineai/src/main/jniLibs/arm64-v8a
+          curl -L --fail --retry 8 --retry-delay 5 "$V71_RELEASE_BASE/Unilaw-AI-Core-S21-v7-1-Recovery.apk" -o build/v71/v71.apk
+          echo "$V71_CORE_SHA256  build/v71/v71.apk" | sha256sum -c -
+          unzip -p build/v71/v71.apk assets/ptbr_memory.db > offlineai/src/main/assets/ptbr_memory.db
+          unzip -p build/v71/v71.apk assets/plugin_pubkey.der > offlineai/src/main/assets/plugin_pubkey.der
+          unzip -p build/v71/v71.apk assets/plugin_pubkey_v7.der > offlineai/src/main/assets/plugin_pubkey_v7.der
+          unzip -p build/v71/v71.apk lib/arm64-v8a/libsd-cli.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-cli.so
+          unzip -p build/v71/v71.apk lib/arm64-v8a/libsd-vulkan.so > offlineai/src/main/jniLibs/arm64-v8a/libsd-vulkan.so
+          chmod 755 offlineai/src/main/jniLibs/arm64-v8a/*.so
+          rm -f offlineai/src/main/assets/model.gguf
+
+      - name: Generate S21 plugin ZIP
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+
+          profiles = [
+            dict(id='tools.exact', name='Ferramentas Exatas', description='Calculadora, porcentagens, conversões, SHA-256 e Base64 sem gastar tokens do Qwen.', category='tool', automatic=True, threads=1, max_concurrent=2, thermal_soft_c=68, thermal_hard_c=72),
+            dict(id='search.local', name='Pesquisa Local', description='Consulta projeto e Biblioteca Neural antes do Qwen.', category='document', automatic=True, threads=2, max_concurrent=1, thermal_soft_c=66, thermal_hard_c=70),
+            dict(id='document.ocr', name='OCR Offline', description='Extrai texto de imagens e PDFs escaneados com modelo latino empacotado.', category='vision', automatic=True, threads=2, max_concurrent=1, thermal_soft_c=64, thermal_hard_c=69, max_image_dimension=1800),
+            dict(id='vision.labels', name='Visão Leve', description='Rotula objetos/cenas localmente para enriquecer a pesquisa de imagens.', category='vision', automatic=True, threads=2, max_concurrent=1, thermal_soft_c=64, thermal_hard_c=69, max_image_dimension=1800),
+            dict(id='barcode.qr', name='QR e Código de Barras', description='Lê QR, EAN, UPC e outros códigos das imagens anexadas sem internet.', category='vision', automatic=True, threads=1, max_concurrent=1, thermal_soft_c=64, thermal_hard_c=69, max_image_dimension=1800),
+            dict(id='files.universal', name='Leitor Universal', description='PDF, texto, Markdown, código, ZIP/JAR/APK e binários em modo seguro.', category='document', automatic=True, threads=2, max_concurrent=1, thermal_soft_c=66, thermal_hard_c=70),
+            dict(id='files.office', name='Office Local', description='DOCX, XLSX e PPTX: extrai texto pesquisável sem executar macros.', category='document', automatic=True, threads=2, max_concurrent=1, thermal_soft_c=66, thermal_hard_c=70),
+            dict(id='files.epub', name='EPUB Reader', description='Importa livros EPUB para a Biblioteca Neural por capítulos/arquivos internos.', category='document', automatic=True, threads=2, max_concurrent=1, thermal_soft_c=66, thermal_hard_c=70),
+            dict(id='structured.csvjson', name='CSV e JSON Analyzer', description='Valida JSON e resume linhas/colunas de CSV antes do contexto neural.', category='document', automatic=True, threads=1, max_concurrent=2, thermal_soft_c=68, thermal_hard_c=72),
+            dict(id='database.sqlite', name='SQLite Inspector', description='Abre bancos somente para leitura, extrai esquema e pequenas amostras.', category='developer', automatic=True, threads=2, max_concurrent=1, thermal_soft_c=66, thermal_hard_c=70),
+            dict(id='security.apk', name='APK Inspector', description='Pacote, SDK, permissões, certificado, hashes e conteúdo ZIP sem executar o APK.', category='developer', automatic=True, threads=2, max_concurrent=1, thermal_soft_c=66, thermal_hard_c=70),
+            dict(id='developer.binary', name='Binary Inspector', description='Metadados, strings e amostra segura de arquivos binários.', category='developer', automatic=True, threads=1, max_concurrent=1, thermal_soft_c=67, thermal_hard_c=71),
+            dict(id='developer.logcat', name='Logcat Analyzer', description='Analisa logs e stack traces; captura root somente quando solicitada.', category='developer', automatic=True, threads=1, max_concurrent=1, thermal_soft_c=67, thermal_hard_c=71),
+            dict(id='backup.projects', name='Backup de Projetos', description='Exporta e restaura projetos, fontes, chats e checkpoints pelo SAF.', category='tool', automatic=False, threads=1, max_concurrent=1, thermal_soft_c=68, thermal_hard_c=72),
+            dict(id='image.tools', name='Ferramentas de Imagem', description='Preparação, redimensionamento e conversão local de imagens.', category='vision', automatic=True, threads=2, max_concurrent=1, thermal_soft_c=64, thermal_hard_c=69, max_image_dimension=1800),
+            dict(id='device.s21', name='S21 Exynos Manager', description='Perfil SM-G991B: térmico, zRAM, CPU/GPU e limites root seguros.', category='hardware', automatic=True, threads=1, max_concurrent=1, thermal_soft_c=64, thermal_hard_c=70),
+            dict(id='model.qwen', name='Qwen General', description='Chat e Work Offline; pesado, um modelo neural principal por vez.', category='model', automatic=True, threads=3, max_concurrent=1, thermal_soft_c=63, thermal_hard_c=69, requires_pack_id='model.qwen35.2b'),
+            dict(id='model.coder', name='Qwen Coder', description='Programação especializada; troca controlada de modelo quando necessário.', category='model', automatic=True, threads=3, max_concurrent=1, thermal_soft_c=63, thermal_hard_c=69, requires_pack_id='coder.qwen25.1_5b'),
+            dict(id='model.tinysd', name='Tiny-SD', description='Geração de imagens; serial, proteção térmica e Vulkan experimental.', category='model', automatic=True, threads=2, max_concurrent=1, thermal_soft_c=62, thermal_hard_c=68, max_image_dimension=512, requires_pack_id='image.tinysd.q4k'),
+          ]
+          out = Path('build/plugin-bundle')
+          (out/'profiles').mkdir(parents=True, exist_ok=True)
+          paths=[]
+          for p in profiles:
+              payload={'schema':1, **p}
+              path=f"profiles/{p['id']}.json"
+              paths.append(path)
+              (out/path).write_text(json.dumps(payload, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          bundle={
+            'schema':1,
+            'type':'unilaw-capability-bundle',
+            'id':'unilaw.s21.essential.v81',
+            'name':'Unilaw Plugins Essenciais S21 v8.1',
+            'version':'8.1.0',
+            'target':'SM-G991B / Exynos 2100',
+            'profiles':paths,
+          }
+          (out/'bundle.json').write_text(json.dumps(bundle, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          (out/'README.md').write_text('''# Unilaw Plugins Essenciais S21 v8.1\n\nBundle declarativo para o Unilaw v8.1. Não contém código executável. Cada perfil ativa/documenta uma capacidade compilada no Core e define limites conservadores para o SM-G991B/Exynos 2100.\n\nOs pesos Qwen/Coder/Tiny-SD não estão dentro deste ZIP; continuam em .iapack separados.\n''', encoding='utf-8')
+          with zipfile.ZipFile('Unilaw-Plugins-Essenciais-S21-v8-1.zip','w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for f in sorted(out.rglob('*')):
+                  if f.is_file(): z.write(f, f.relative_to(out).as_posix())
+          PY
+          sha256sum Unilaw-Plugins-Essenciais-S21-v8-1.zip | tee Unilaw-Plugins-Essenciais-S21-v8-1.zip.sha256
+          unzip -l Unilaw-Plugins-Essenciais-S21-v8-1.zip
+
+      - name: Verify generated v8.1 source
+        shell: bash
+        run: |
+          grep -q 'class CapabilityBundleManager' offlineai/src/main/java/com/alysson/offlineai/CapabilityBundleManager.kt
+          grep -q 'class S21PluginScheduler' offlineai/src/main/java/com/alysson/offlineai/S21PluginScheduler.kt
+          grep -q 'barcode-scanning:17.3.0' offlineai/build.gradle
+          grep -q "versionName '8.1.0-plugin-bundle-s21'" offlineai/build.gradle
+          grep -q 'REQUEST_CAPABILITY_BUNDLE' offlineai/src/main/java/com/alysson/offlineai/PluginManagerActivity.kt
+          grep -q 'recognizeBarcodes' offlineai/src/main/java/com/alysson/offlineai/AttachmentImporter.kt
+          grep -q 'structuredSummary' offlineai/src/main/java/com/alysson/offlineai/AttachmentImporter.kt
+
+      - name: Build Unilaw v8.1
+        id: build
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          gradle :offlineai:assembleDebug --stacktrace --no-daemon 2>&1 | tee unilaw-v81-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            tail -n 1800 unilaw-v81-build.log > unilaw-v81-error.txt
+            cat unilaw-v81-error.txt
+            exit "$STATUS"
+          fi
+          cp offlineai/build/outputs/apk/debug/offlineai-debug.apk Unilaw-AI-Workspace-S21-v8-1.apk
+          sha256sum Unilaw-AI-Workspace-S21-v8-1.apk | tee Unilaw-AI-Workspace-S21-v8-1.apk.sha256
+
+      - name: Verify APK identity and offline boundary
+        shell: bash
+        run: |
+          AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          "$AAPT" dump badging Unilaw-AI-Workspace-S21-v8-1.apk | tee main-badging.txt
+          grep -q "package: name='com.alysson.offlineai.pluginv52'" main-badging.txt
+          grep -q "versionName='8.1.0-plugin-bundle-s21'" main-badging.txt
+          grep -q "native-code: 'arm64-v8a'" main-badging.txt
+          if "$AAPT" dump permissions Unilaw-AI-Workspace-S21-v8-1.apk | grep -q 'android.permission.INTERNET'; then
+            echo 'ERROR: main Workspace gained INTERNET permission' >&2; exit 1
+          fi
+          if unzip -l Unilaw-AI-Workspace-S21-v8-1.apk | grep -q 'assets/model.gguf'; then
+            echo 'ERROR: heavy Qwen payload returned to APK' >&2; exit 1
+          fi
+
+      - name: Upload diagnostics
+        if: failure() && steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unilaw-v81-diagnostics
+          path: |
+            unilaw-v81-build.log
+            unilaw-v81-error.txt
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Unilaw-v8-1-Plugin-Bundle
+          path: |
+            Unilaw-AI-Workspace-S21-v8-1.apk
+            Unilaw-AI-Workspace-S21-v8-1.apk.sha256
+            Unilaw-Plugins-Essenciais-S21-v8-1.zip
+            Unilaw-Plugins-Essenciais-S21-v8-1.zip.sha256
+          compression-level: 0
+
+      - name: Publish v8.1 release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: offline-ai-workspace-v8-1-plugins
+          name: Unilaw AI Workspace v8.1 • Plugin Bundle S21
+          body: |
+            V8.1 adiciona um bundle ZIP declarativo de plugins/capacidades e um scheduler conservador para SM-G991B/Exynos 2100.
+
+            O ZIP não executa código externo: ele instala somente perfis JSON validados contra uma allowlist de capacidades compiladas no Core. OCR/visão/barcode são offline e empacotados. Qwen/Coder/Tiny-SD continuam como .iapack separados.
+          files: |
+            Unilaw-AI-Workspace-S21-v8-1.apk
+            Unilaw-AI-Workspace-S21-v8-1.apk.sha256
+            Unilaw-Plugins-Essenciais-S21-v8-1.zip
+            Unilaw-Plugins-Essenciais-S21-v8-1.zip.sha256
+          make_latest: false
+          overwrite_files: true
