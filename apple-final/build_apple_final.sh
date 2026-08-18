@@ -46,17 +46,23 @@ grep -q '{ 28,  0, 25 }' src/kernel/sched/ems/cpu_select.c
 grep -q '{ 55, 35,  0 }' src/kernel/sched/ems/cpu_select.c
 
 # Android clang r383902 is the exact compiler generation printed by the HZA6
-# stock Image. Keep the older GNU cross binutils available for Samsung scripts.
-git clone --depth=1 --branch android11-release \
+# stock Image. Sparse-checkout ONLY that toolchain from the official Android
+# prebuilt repository instead of downloading every Clang generation.
+git clone --filter=blob:none --no-checkout --depth=1 --branch android11-release \
   https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
-  toolchain/clang
-CLANG="$PWD/toolchain/clang/clang-r383902/bin"
+  toolchain/clang-repo
+git -C toolchain/clang-repo sparse-checkout init --cone
+git -C toolchain/clang-repo sparse-checkout set clang-r383902
+git -C toolchain/clang-repo checkout
+CLANG="$PWD/toolchain/clang-repo/clang-r383902/bin"
 if [ ! -x "$CLANG/clang" ]; then
-  echo 'clang-r383902 missing from android11-release' >&2
-  find toolchain/clang -maxdepth 3 -type f -name clang -print >&2 || true
+  echo 'clang-r383902 missing from official Android android11-release' >&2
+  find toolchain/clang-repo -maxdepth 3 -type f -name clang -print >&2 || true
   exit 32
 fi
+"$CLANG/clang" --version | tee out/clang-version.txt
 
+# GNU 4.9 cross tools are still referenced by portions of this Samsung tree.
 git clone --depth=1 --branch android11-release \
   https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
   toolchain/gcc49
@@ -162,4 +168,4 @@ EOF
 tar -C out -czf APPLE_FINAL_BUILD.tar.gz \
   APPLE_FINAL.Image APPLE_FINAL_Module.symvers APPLE_FINAL.config \
   APPLE_FINAL_BUILD_INFO.txt APPLE_FINAL_source.patch APPLE_FINAL_KMI_REPORT.txt \
-  Image.sha256 linux-version.txt config.diff source-commit.txt
+  Image.sha256 linux-version.txt clang-version.txt config.diff source-commit.txt
