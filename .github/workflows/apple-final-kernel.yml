@@ -31,9 +31,25 @@ jobs:
           sudo apt-get install -y bc bison build-essential cpio flex git libelf-dev libssl-dev python3 rsync unzip xz-utils
 
       - name: Build APPLE FINAL
-        run: bash apple-final/build_apple_final.sh
+        shell: bash
+        run: |
+          set -o pipefail
+          bash apple-final/build_apple_final.sh 2>&1 | tee APPLE_FINAL_CI.log
+
+      - name: Upload APPLE FINAL diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: APPLE-FINAL-DIAGNOSTICS
+          path: |
+            APPLE_FINAL_CI.log
+            APPLE_FINAL_BUILD.tar.gz
+            out/**
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload APPLE FINAL build
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: APPLE-FINAL-KERNEL-BUILD
