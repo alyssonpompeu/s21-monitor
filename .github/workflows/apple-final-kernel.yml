@@ -7,6 +7,11 @@ on:
     paths:
       - 'apple-final/**'
       - '.github/workflows/apple-final-kernel.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'apple-final/**'
+      - '.github/workflows/apple-final-kernel.yml'
 
 jobs:
   build:
