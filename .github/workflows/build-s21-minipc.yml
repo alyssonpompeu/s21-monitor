@@ -6,6 +6,10 @@ on:
     branches: [ main ]
     paths:
       - ".github/workflows/build-s21-minipc.yml"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "S21_MINIPC_BUILD_TRIGGER.txt"
 
 permissions:
   contents: write
@@ -142,6 +146,7 @@ jobs:
           retention-days: 30
 
       - name: Publish rolling test release
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
