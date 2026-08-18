@@ -13,7 +13,7 @@ git -C src fetch --depth=1 origin "$SRC_COMMIT"
 git -C src checkout FETCH_HEAD
 
 # Exact configuration extracted from the user's HZA6 stock Image via IKCONFIG.
-base64 -d apple-final/HZA6_exact.config.gz.b64 | gzip -dc > src/.config
+cat apple-final/HZA6_exact.config.gz.b64.part* | base64 -d | gzip -dc > src/.config
 # Match the exact HZA6 module vermagic/release string while avoiding a git hash suffix.
 sed -i 's/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-30958140-abG991BXXSJHZA6"/' src/.config
 sed -i 's/^CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/' src/.config
