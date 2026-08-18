@@ -72,6 +72,11 @@ export SUBARCH=arm64
 export PLATFORM_VERSION=11
 export ANDROID_MAJOR_VERSION=r
 export PATH="$CLANG:$PWD/toolchain/gcc49/bin:$PATH"
+# This Samsung Makefile ignores environment CC unless LLVM is non-empty and
+# otherwise hard-selects $(CROSS_COMPILE)gcc. Force the intended HZA6 Clang
+# path for Kconfig and the full build.
+export LLVM=1
+export LLVM_IAS=1
 export CC=clang
 export LD=ld.lld
 export AR=llvm-ar
