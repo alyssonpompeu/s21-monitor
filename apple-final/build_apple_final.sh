@@ -3,37 +3,20 @@ set -euxo pipefail
 
 KERNEL_RELEASE='5.4.242-30958140-abG991BXXSJHZA6'
 SOURCE_BRANCH='rebased-11'
+SRC_COMMIT='d26be7c85bf2e84881ffefa46daddcf9e0e0aa1f'
 
 rm -rf src out toolchain
-mkdir -p out toolchain
+mkdir -p out toolchain src
 
-# Pull the Samsung/Exynos history, not the generic Android 5.4 branch. We use
-# partial clone so history can be inspected cheaply; blobs are fetched only for
-# the revision that is finally checked out.
-git clone --filter=blob:none --no-checkout --single-branch --branch "$SOURCE_BRANCH" \
-  https://github.com/xfwdrev/android_kernel_samsung_ex2100.git src
+# The validated Samsung/Exynos 5.4.242 + EMS revision is now pinned. Earlier
+# runs spent minutes cloning and scanning the full rebased-11 history every
+# time. Fetch only this exact commit so retries are deterministic and faster.
+git -C src init
+git -C src remote add origin https://github.com/xfwdrev/android_kernel_samsung_ex2100.git
+git -C src fetch --depth=1 origin "$SRC_COMMIT"
+git -C src checkout --detach FETCH_HEAD
 
-# Find the newest revision in Samsung's rebased-11 lineage for which BOTH are
-# true: kernel SUBLEVEL is exactly 242 and Samsung EMS cpu_select.c exists.
-SRC_COMMIT=''
-while read -r C; do
-  [ -n "$C" ] || continue
-  SUB="$(git -C src show "$C:Makefile" 2>/dev/null | sed -n 's/^SUBLEVEL[[:space:]]*=[[:space:]]*//p' | head -1 || true)"
-  [ "$SUB" = '242' ] || continue
-  if git -C src cat-file -e "$C:kernel/sched/ems/cpu_select.c" 2>/dev/null; then
-    SRC_COMMIT="$C"
-    break
-  fi
-done < <(git -C src log "$SOURCE_BRANCH" --format='%H' -- Makefile)
-
-if [ -z "$SRC_COMMIT" ]; then
-  echo 'No Samsung EMS revision with SUBLEVEL=242 found in rebased-11' >&2
-  exit 21
-fi
-
-echo "Selected Samsung EMS 5.4.242 source: $SRC_COMMIT"
-git -C src checkout --detach "$SRC_COMMIT"
-
+echo "Pinned Samsung EMS 5.4.242 source: $SRC_COMMIT"
 grep -q '^SUBLEVEL[[:space:]]*=[[:space:]]*242$' src/Makefile
 [ -f src/kernel/sched/ems/cpu_select.c ]
 
@@ -99,12 +82,9 @@ cp out/.config out/config.before
 make -C src O="$PWD/out" ARCH=arm64 olddefconfig
 
 # Samsung's production config references an internal build-server-only GKI
-# whitelist (/home/dpi/.../gki/abi_symbollist.raw). That file is not part of
-# the released source. Do NOT substitute a partial whitelist: it could trim
-# exports needed by other vendor modules. For the reproducible public build,
-# disable unused-ksym trimming entirely. This only broadens the exported-symbol
-# set; MODVERSIONS CRC compatibility is still enforced below against the real
-# HZA6 modules before any artifact can pass.
+# whitelist. It is not part of the released source. Do not substitute a partial
+# whitelist because that could trim exports needed by vendor modules. The KMI
+# CRC gate below remains mandatory before any successful artifact is accepted.
 sed -i 's/^CONFIG_TRIM_UNUSED_KSYMS=y/# CONFIG_TRIM_UNUSED_KSYMS is not set/' out/.config
 sed -i 's|^CONFIG_UNUSED_KSYMS_WHITELIST=.*|CONFIG_UNUSED_KSYMS_WHITELIST=""|' out/.config
 make -C src O="$PWD/out" ARCH=arm64 olddefconfig
