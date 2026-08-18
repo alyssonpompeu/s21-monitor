@@ -1,2 +1,3 @@
 S21 MiniPC v0.1 G991B build trigger
 Target: SM-G991B / Exynos 2100 / Mali-G78 MP14
+Retry: Android SDK setup enabled
