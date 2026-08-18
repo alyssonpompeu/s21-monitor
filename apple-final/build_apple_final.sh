@@ -121,6 +121,15 @@ strings "$IMG" | grep -m1 'Linux version' | tee out/linux-version.txt
 sha256sum "$IMG" | tee out/Image.sha256
 [ -s out/Module.symvers ]
 
+# Exact HZA6 ABI/KMI gate. Any CRC conflict against symbols imported by the
+# active Mali/CAL/final-audio modules rejects the build before packaging.
+python3 apple-final/check_kmi.py \
+  apple-final/HZA6_KMI_CRITICAL.txt \
+  out/Module.symvers \
+  out/APPLE_FINAL_KMI_REPORT.txt
+
+grep -q '^gate=PASS$' out/APPLE_FINAL_KMI_REPORT.txt
+
 cp out/Module.symvers out/APPLE_FINAL_Module.symvers
 cp out/.config out/APPLE_FINAL.config
 cp "$IMG" out/APPLE_FINAL.Image
@@ -147,9 +156,10 @@ gpu_max_target_kHz=858000
 cpu_oc=NO
 mif_oc=NO
 thermal_bypass=NO
+kmi_gate=PASS
 EOF
 
 tar -C out -czf APPLE_FINAL_BUILD.tar.gz \
   APPLE_FINAL.Image APPLE_FINAL_Module.symvers APPLE_FINAL.config \
-  APPLE_FINAL_BUILD_INFO.txt APPLE_FINAL_source.patch Image.sha256 \
-  linux-version.txt config.diff source-commit.txt
+  APPLE_FINAL_BUILD_INFO.txt APPLE_FINAL_source.patch APPLE_FINAL_KMI_REPORT.txt \
+  Image.sha256 linux-version.txt config.diff source-commit.txt
