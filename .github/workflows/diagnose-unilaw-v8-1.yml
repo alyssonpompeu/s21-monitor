@@ -1,0 +1,108 @@
+name: Diagnose Unilaw v8.1
+
+on:
+  push:
+    branches: [ "feature/unilaw-plugin-bundle-v8-1" ]
+    paths:
+      - '.github/workflows/diagnose-unilaw-v8-1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose-v81:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      LLAMA_CPP_COMMIT: 153d324bcf86d220b235ca010eeb11213f32b5d1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Prepare pinned sources
+        shell: bash
+        run: |
+          rm -rf vendor/llama.cpp
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp.git vendor/llama.cpp
+          git -C vendor/llama.cpp checkout "$LLAMA_CPP_COMMIT"
+          git -C vendor/llama.cpp submodule update --init --recursive
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp')
+          s=p.read_text(encoding='utf-8')
+          for a,b in {
+              'constexpr int   N_THREADS_MAX           = 4;':'constexpr int   N_THREADS_MAX           = 3;',
+              'constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;':'constexpr int   DEFAULT_CONTEXT_SIZE    = 4096;',
+              'constexpr int   BATCH_SIZE              = 512;':'constexpr int   BATCH_SIZE              = 128;',
+              'constexpr float DEFAULT_SAMPLER_TEMP    = 0.3f;':'constexpr float DEFAULT_SAMPLER_TEMP    = 0.75f;',
+          }.items():
+              if a not in s: raise SystemExit('native marker missing: '+a)
+              s=s.replace(a,b,1)
+          p.write_text(s,encoding='utf-8')
+          a=Path('offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt')
+          s=a.read_text(encoding='utf-8')
+          for x,y in {
+              'Qwen3.5-0.8B-Q4_K_M.gguf':'Qwen3.5-2B-Q4_K_M.gguf',
+              'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517':'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223',
+          }.items():
+              if x not in s: raise SystemExit('model marker missing: '+x)
+              s=s.replace(x,y,1)
+          a.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Apply lineage
+        shell: bash
+        run: |
+          python3 scripts/apply_workspace_v2_ui.py
+          python3 scripts/apply_workspace_v3.py
+          GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
+          python3 scripts/apply_workspace_v5.py
+          python3 scripts/apply_builder_install_fix_v51.py
+          python3 scripts/apply_workspace_v52.py
+          python3 scripts/apply_workspace_v521.py
+          python3 scripts/apply_workspace_v53.py
+          python3 scripts/apply_workspace_v531.py
+          python3 scripts/apply_workspace_v6_exynos.py
+          python3 scripts/apply_workspace_v7_corepacks.py
+          python3 scripts/apply_workspace_v71_bootfix.py
+          python3 scripts/apply_workspace_v72_s21_firmware.py
+          python3 scripts/apply_workspace_v8_full_suite.py
+          python3 scripts/apply_workspace_v8_docs_vision.py
+          python3 scripts/apply_workspace_v8_work_ui.py
+          python3 scripts/apply_workspace_v81_plugin_bundle.py
+
+      - name: Compile Kotlin and capture diagnostics
+        id: compile
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          gradle :offlineai:compileDebugKotlin --stacktrace --no-daemon 2>&1 | tee v81-kotlin.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          mkdir -p ci
+          {
+            echo "status=$STATUS"
+            echo "commit=$GITHUB_SHA"
+            echo "--- kotlin/compiler errors ---"
+            grep -E '(^e:| error: |Unresolved reference|Unsupported escape|Type mismatch|Cannot infer|Overload resolution)' v81-kotlin.log | tail -n 160 || true
+            echo "--- tail ---"
+            tail -n 260 v81-kotlin.log
+          } > ci/v81-diagnostic.txt
+          exit 0
+
+      - name: Publish diagnostic to branch
+        shell: bash
+        run: |
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci/v81-diagnostic.txt
+          git commit -m 'Record v8.1 Kotlin diagnostic [skip ci]' || exit 0
+          git push origin HEAD:feature/unilaw-plugin-bundle-v8-1
