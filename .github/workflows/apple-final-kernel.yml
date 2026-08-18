@@ -1,0 +1,33 @@
+name: Build APPLE FINAL Kernel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ apple-final-kernel-build ]
+    paths:
+      - 'apple-final/**'
+      - '.github/workflows/apple-final-kernel.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout build harness
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential cpio flex git libelf-dev libssl-dev python3 rsync unzip xz-utils
+
+      - name: Build APPLE FINAL
+        run: bash apple-final/build_apple_final.sh
+
+      - name: Upload APPLE FINAL build
+        uses: actions/upload-artifact@v4
+        with:
+          name: APPLE-FINAL-KERNEL-BUILD
+          path: APPLE_FINAL_BUILD.tar.gz
+          if-no-files-found: error
+          retention-days: 7
