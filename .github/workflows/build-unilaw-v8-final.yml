@@ -7,6 +7,7 @@ on:
       - 'scripts/apply_workspace_v8_full_suite.py'
       - 'scripts/apply_workspace_v8_docs_vision.py'
       - 'scripts/apply_workspace_v8_work_ui.py'
+      - 'scripts/apply_workspace_v8_compilefix.py'
       - '.github/workflows/build-unilaw-v8-final.yml'
   workflow_dispatch:
 
@@ -76,7 +77,7 @@ jobs:
       - name: Apply full Workspace lineage
         shell: bash
         run: |
-          python3 -m py_compile scripts/apply_workspace_v8_full_suite.py scripts/apply_workspace_v8_docs_vision.py scripts/apply_workspace_v8_work_ui.py
+          python3 -m py_compile scripts/apply_workspace_v8_full_suite.py scripts/apply_workspace_v8_docs_vision.py scripts/apply_workspace_v8_work_ui.py scripts/apply_workspace_v8_compilefix.py
           python3 scripts/apply_workspace_v2_ui.py
           python3 scripts/apply_workspace_v3.py
           GITHUB_ACTIONS=false python3 scripts/apply_workspace_v4.py
@@ -93,6 +94,7 @@ jobs:
           python3 scripts/apply_workspace_v8_full_suite.py
           python3 scripts/apply_workspace_v8_docs_vision.py
           python3 scripts/apply_workspace_v8_work_ui.py
+          python3 scripts/apply_workspace_v8_compilefix.py
 
       - name: Reuse verified v7.1 native/runtime assets
         shell: bash
@@ -114,6 +116,8 @@ jobs:
           grep -q 'AUTO("Conversar • Auto")' offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt
           grep -q 'WORK_OFFLINE("Work • Offline")' offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt
           grep -q 'WORK_ONLINE("Work • Online")' offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt
+          ! grep -q 'InteractionMode.TEXT' offlineai/src/main/java/com/alysson/offlineai/MainActivity.kt
+          grep -Fq '|[.]exe)' offlineai/src/main/java/com/alysson/offlineai/SmartCapabilityRouter.kt
           grep -q 'class SmartCapabilityRouter' offlineai/src/main/java/com/alysson/offlineai/SmartCapabilityRouter.kt
           grep -q 'class ExactToolEngine' offlineai/src/main/java/com/alysson/offlineai/ExactToolEngine.kt
           grep -q 'object BuiltInPluginRegistry' offlineai/src/main/java/com/alysson/offlineai/BuiltInPluginRegistry.kt
