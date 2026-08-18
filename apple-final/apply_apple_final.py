@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 p = Path('src/kernel/sched/ems/cpu_select.c')
 s = p.read_text()
@@ -9,20 +10,19 @@ if marker in s:
     print('APPLE FINAL patch already present')
     raise SystemExit(0)
 
-anchor = '''/******************************************************************************\n * best cpu selection                                                         *\n ******************************************************************************/\nint find_best_cpu(struct tp_env *env)\n{\n'''
-if anchor not in s:
-    raise SystemExit('PATCH ERROR: find_best_cpu anchor not found')
+fn_re = re.compile(r'\bint\s+find_best_cpu\s*\(\s*struct\s+tp_env\s*\*\s*env\s*\)\s*\{')
+m = fn_re.search(s)
+if not m:
+    raise SystemExit('PATCH ERROR: find_best_cpu(struct tp_env *env) not found')
 
 helpers = r'''/* APPLE FINAL EMS 3x3
  *
  * Native Exynos2100 task-placement hysteresis and cache-locality layer.
- * This is intentionally conservative: Samsung EMS still computes the primary
- * target; this layer only rejects low-value cross-cluster movement when the
- * previous CPU remains a valid fit candidate.
+ * Samsung EMS remains the primary placement/energy engine. This layer only
+ * rejects low-value movement when the previous CPU remains a legal, fit CPU.
  *
  * Topology: CPU0-3=A55, CPU4-6=A78, CPU7=X1.
- * Migration matrix is asymmetric by design. Higher values mean that a larger
- * placement benefit is required to leave the current cluster.
+ * Matrix values are asymmetric migration costs; they are not MHz or voltage.
  */
 static const unsigned int apple_final_migration_cost[3][3] = {
     /* to: A55, A78, X1 */
@@ -42,7 +42,8 @@ static inline int apple_final_cluster(int cpu)
 
 static inline bool apple_final_cpu_valid(struct tp_env *env, int cpu)
 {
-    return cpu >= 0 && cpu < nr_cpu_ids && cpu_active(cpu) &&
+    return cpu >= 0 && cpu < nr_cpu_ids &&
+           cpumask_test_cpu(cpu, cpu_active_mask) &&
            cpumask_test_cpu(cpu, &env->cpus_allowed) &&
            cpumask_test_cpu(cpu, &env->fit_cpus);
 }
@@ -67,9 +68,9 @@ static bool apple_final_keep_prev(struct tp_env *env, int best_cpu)
     dst_cap = capacity_cpu(best_cpu);
     cost = apple_final_migration_cost[src][dst];
 
-    /* Same-cluster cache locality: if the old CPU is not over capacity and
-     * its rq is no more congested than the selected sibling, keep the hot
-     * task/cache local instead of bouncing between cores. */
+    /* Same-cluster locality: keep the task on its hot CPU when that CPU still
+     * fits and is not materially more congested than the selected sibling.
+     * This avoids needless L1/L2 refills and same-cluster ping-pong. */
     if (src == dst) {
         if (env->cpu_util_with[prev_cpu] <= prev_cap &&
             env->nr_running[prev_cpu] <= env->nr_running[best_cpu] + 1)
@@ -77,8 +78,8 @@ static bool apple_final_keep_prev(struct tp_env *env, int best_cpu)
         return false;
     }
 
-    /* Up-migration hysteresis. The selected faster cluster is accepted only
-     * once the task is sufficiently large for the source cluster. */
+    /* Up-migration hysteresis. X1 remains a sprint CPU, while A78 is the
+     * preferred sustained performance cluster when it can meet demand. */
     if (dst > src) {
         unsigned long pct = 0;
 
@@ -92,9 +93,8 @@ static bool apple_final_keep_prev(struct tp_env *env, int best_cpu)
         if (pct && util * 100 < prev_cap * pct)
             return true;
 
-        /* Matrix tie-breaker close to the threshold: a higher migration cost
-         * extends the source-cluster residency by at most 10 percentage
-         * points; this provides hysteresis without hard-pinning the task. */
+        /* Near the boundary, use the 3x3 matrix as a bounded extra residency
+         * cost. Samsung's EMS energy winner still wins once benefit is clear. */
         if (pct && cost) {
             unsigned long extra = min_t(unsigned long, cost / 5, 10);
             if (util * 100 < prev_cap * (pct + extra) &&
@@ -104,8 +104,8 @@ static bool apple_final_keep_prev(struct tp_env *env, int best_cpu)
         return false;
     }
 
-    /* Down-migration hysteresis. Do not throw a hot task down a cluster until
-     * the target has substantial spare capacity. */
+    /* Down-migration hysteresis: avoid immediately dropping a hot task to a
+     * smaller cluster after a brief utilization dip. */
     if (src == 2 && dst == 1) {
         if (util * 100 > dst_cap * 65)
             return true;
@@ -122,14 +122,47 @@ static bool apple_final_keep_prev(struct tp_env *env, int best_cpu)
 
 '''
 
-s = s.replace(anchor, helpers + anchor, 1)
-old = '''\treturn best_cpu;\n}\n'''
-# Replace only the final return in find_best_cpu by using the last occurrence.
-pos = s.rfind(old)
-if pos < 0:
-    raise SystemExit('PATCH ERROR: final return anchor not found')
-new = '''\tif (apple_final_keep_prev(env, best_cpu))\n\t\tbest_cpu = task_cpu(env->p);\n\n\treturn best_cpu;\n}\n'''
-s = s[:pos] + new + s[pos+len(old):]
+# Insert immediately before the actual function, independent of Samsung's
+# surrounding comment/banner formatting in that historical revision.
+insert_at = m.start()
+s = s[:insert_at] + helpers + s[insert_at:]
+
+# Re-find the function after insertion and brace-scan only its body. This avoids
+# accidentally modifying a similarly named return in another EMS function.
+m = fn_re.search(s, insert_at + len(helpers))
+if not m:
+    raise SystemExit('PATCH ERROR: find_best_cpu disappeared after insertion')
+brace_open = s.find('{', m.start(), m.end() + 1)
+if brace_open < 0:
+    raise SystemExit('PATCH ERROR: function opening brace not found')
+
+depth = 0
+brace_close = None
+for i in range(brace_open, len(s)):
+    c = s[i]
+    if c == '{':
+        depth += 1
+    elif c == '}':
+        depth -= 1
+        if depth == 0:
+            brace_close = i
+            break
+if brace_close is None:
+    raise SystemExit('PATCH ERROR: function closing brace not found')
+
+body = s[brace_open:brace_close + 1]
+returns = list(re.finditer(r'(?m)^(\s*)return\s+best_cpu\s*;\s*$', body))
+if not returns:
+    raise SystemExit('PATCH ERROR: return best_cpu not found inside find_best_cpu')
+r = returns[-1]
+indent = r.group(1)
+replacement = (
+    f'{indent}if (apple_final_keep_prev(env, best_cpu))\n'
+    f'{indent}\tbest_cpu = task_cpu(env->p);\n\n'
+    f'{indent}return best_cpu;'
+)
+body = body[:r.start()] + replacement + body[r.end():]
+s = s[:brace_open] + body + s[brace_close + 1:]
 
 p.write_text(s)
 print('APPLE FINAL EMS 3x3 patch applied:', p)
