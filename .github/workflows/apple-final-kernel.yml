@@ -13,6 +13,10 @@ on:
       - 'apple-final/**'
       - '.github/workflows/apple-final-kernel.yml'
 
+concurrency:
+  group: apple-final-kernel-build
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-22.04
