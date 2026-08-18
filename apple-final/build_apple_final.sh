@@ -15,7 +15,6 @@ git clone --filter=blob:none --no-checkout --single-branch --branch "$SOURCE_BRA
 
 # Find the newest revision in Samsung's rebased-11 lineage for which BOTH are
 # true: kernel SUBLEVEL is exactly 242 and Samsung EMS cpu_select.c exists.
-# This avoids the earlier generic 5.4.242 merge, which had no Exynos EMS tree.
 SRC_COMMIT=''
 while read -r C; do
   [ -n "$C" ] || continue
@@ -45,9 +44,7 @@ grep -q '{  0, 18, 45 }' src/kernel/sched/ems/cpu_select.c
 grep -q '{ 28,  0, 25 }' src/kernel/sched/ems/cpu_select.c
 grep -q '{ 55, 35,  0 }' src/kernel/sched/ems/cpu_select.c
 
-# Android clang r383902 is the exact compiler generation printed by the HZA6
-# stock Image. Sparse-checkout ONLY that toolchain from the official Android
-# prebuilt repository instead of downloading every Clang generation.
+# Exact compiler generation printed by HZA6 stock Image.
 git clone --filter=blob:none --no-checkout --depth=1 --branch android11-release \
   https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
   toolchain/clang-repo
@@ -57,12 +54,10 @@ git -C toolchain/clang-repo checkout
 CLANG="$PWD/toolchain/clang-repo/clang-r383902/bin"
 if [ ! -x "$CLANG/clang" ]; then
   echo 'clang-r383902 missing from official Android android11-release' >&2
-  find toolchain/clang-repo -maxdepth 3 -type f -name clang -print >&2 || true
   exit 32
 fi
 "$CLANG/clang" --version | tee out/clang-version.txt
 
-# GNU 4.9 cross tools are still referenced by portions of this Samsung tree.
 git clone --depth=1 --branch android11-release \
   https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
   toolchain/gcc49
@@ -72,9 +67,6 @@ export SUBARCH=arm64
 export PLATFORM_VERSION=11
 export ANDROID_MAJOR_VERSION=r
 export PATH="$CLANG:$PWD/toolchain/gcc49/bin:$PATH"
-# This Samsung Makefile ignores environment CC unless LLVM is non-empty and
-# otherwise hard-selects $(CROSS_COMPILE)gcc. Force the intended HZA6 Clang
-# path for Kconfig and the full build.
 export LLVM=1
 export LLVM_IAS=1
 export CC=clang
@@ -90,12 +82,10 @@ export KBUILD_BUILD_USER=applefinal
 export KBUILD_BUILD_HOST=HZA6
 export KBUILD_BUILD_TIMESTAMP='Wed Jan 21 13:36:52 KST 2026'
 
-# Reconstruct the exact HZA6 IKCONFIG extracted from the user's stock Image.
+# Reconstruct exact HZA6 IKCONFIG extracted from stock Image.
 cat apple-final/HZA6_exact.config.gz.b64.part* | base64 -d | gzip -dc > out/.config
 CONFIG_ORIGIN=IKCONFIG_exact_HZA6
 
-# HZA6 modules use this exact release string. Disable automatic git suffixes so
-# vermagic can be compared directly with the live/audio vendor modules.
 if grep -q '^CONFIG_LOCALVERSION=' out/.config; then
   sed -i 's/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-30958140-abG991BXXSJHZA6"/' out/.config
 else
@@ -107,16 +97,28 @@ fi
 
 cp out/.config out/config.before
 make -C src O="$PWD/out" ARCH=arm64 olddefconfig
+
+# Samsung's production config references an internal build-server-only GKI
+# whitelist (/home/dpi/.../gki/abi_symbollist.raw). That file is not part of
+# the released source. Do NOT substitute a partial whitelist: it could trim
+# exports needed by other vendor modules. For the reproducible public build,
+# disable unused-ksym trimming entirely. This only broadens the exported-symbol
+# set; MODVERSIONS CRC compatibility is still enforced below against the real
+# HZA6 modules before any artifact can pass.
+sed -i 's/^CONFIG_TRIM_UNUSED_KSYMS=y/# CONFIG_TRIM_UNUSED_KSYMS is not set/' out/.config
+sed -i 's|^CONFIG_UNUSED_KSYMS_WHITELIST=.*|CONFIG_UNUSED_KSYMS_WHITELIST=""|' out/.config
+make -C src O="$PWD/out" ARCH=arm64 olddefconfig
+
 cp out/.config out/config.after
 diff -u out/config.before out/config.after > out/config.diff || true
 
-# Configuration gates for the exact design/ABI we depend on.
 grep -q '^CONFIG_SCHED_EMS=y' out/.config
 grep -q '^CONFIG_SCHED_EMS_TUNE=y' out/.config
 grep -q '^CONFIG_MODVERSIONS=y' out/.config
 grep -q '^CONFIG_MODULES=y' out/.config
 grep -q '^CONFIG_LTO_CLANG=y' out/.config
 grep -q '^CONFIG_CFI_CLANG=y' out/.config
+grep -q '^# CONFIG_TRIM_UNUSED_KSYMS is not set' out/.config
 
 # No frequency table/PLL OC patch is applied anywhere in APPLE FINAL.
 if git -C src diff -- kernel/sched/ems/cpu_select.c | grep -Ei 'mali|g3d|pll|1001000|1000000|936000|975000'; then
@@ -167,6 +169,7 @@ gpu_max_target_kHz=858000
 cpu_oc=NO
 mif_oc=NO
 thermal_bypass=NO
+trim_unused_ksyms=NO
 kmi_gate=PASS
 EOF
 
