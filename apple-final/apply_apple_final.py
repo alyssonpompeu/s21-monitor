@@ -8,14 +8,13 @@ s = p.read_text()
 marker = '/* APPLE FINAL EMS 3x3 */'
 if marker in s:
     print('APPLE FINAL patch already present')
-    raise SystemExit(0)
+else:
+    fn_re = re.compile(r'\bint\s+find_best_cpu\s*\(\s*struct\s+tp_env\s*\*\s*env\s*\)\s*\{')
+    m = fn_re.search(s)
+    if not m:
+        raise SystemExit('PATCH ERROR: find_best_cpu(struct tp_env *env) not found')
 
-fn_re = re.compile(r'\bint\s+find_best_cpu\s*\(\s*struct\s+tp_env\s*\*\s*env\s*\)\s*\{')
-m = fn_re.search(s)
-if not m:
-    raise SystemExit('PATCH ERROR: find_best_cpu(struct tp_env *env) not found')
-
-helpers = r'''/* APPLE FINAL EMS 3x3
+    helpers = r'''/* APPLE FINAL EMS 3x3
  *
  * Native Exynos2100 task-placement hysteresis and cache-locality layer.
  * Samsung EMS remains the primary placement/energy engine. This layer only
@@ -122,47 +121,61 @@ static bool apple_final_keep_prev(struct tp_env *env, int best_cpu)
 
 '''
 
-# Insert immediately before the actual function, independent of Samsung's
-# surrounding comment/banner formatting in that historical revision.
-insert_at = m.start()
-s = s[:insert_at] + helpers + s[insert_at:]
+    # Insert immediately before the actual function, independent of Samsung's
+    # surrounding comment/banner formatting in that historical revision.
+    insert_at = m.start()
+    s = s[:insert_at] + helpers + s[insert_at:]
 
-# Re-find the function after insertion and brace-scan only its body. This avoids
-# accidentally modifying a similarly named return in another EMS function.
-m = fn_re.search(s, insert_at + len(helpers))
-if not m:
-    raise SystemExit('PATCH ERROR: find_best_cpu disappeared after insertion')
-brace_open = s.find('{', m.start(), m.end() + 1)
-if brace_open < 0:
-    raise SystemExit('PATCH ERROR: function opening brace not found')
+    # Re-find the function after insertion and brace-scan only its body. This avoids
+    # accidentally modifying a similarly named return in another EMS function.
+    m = fn_re.search(s, insert_at + len(helpers))
+    if not m:
+        raise SystemExit('PATCH ERROR: find_best_cpu disappeared after insertion')
+    brace_open = s.find('{', m.start(), m.end() + 1)
+    if brace_open < 0:
+        raise SystemExit('PATCH ERROR: function opening brace not found')
 
-depth = 0
-brace_close = None
-for i in range(brace_open, len(s)):
-    c = s[i]
-    if c == '{':
-        depth += 1
-    elif c == '}':
-        depth -= 1
-        if depth == 0:
-            brace_close = i
-            break
-if brace_close is None:
-    raise SystemExit('PATCH ERROR: function closing brace not found')
+    depth = 0
+    brace_close = None
+    for i in range(brace_open, len(s)):
+        c = s[i]
+        if c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0:
+                brace_close = i
+                break
+    if brace_close is None:
+        raise SystemExit('PATCH ERROR: function closing brace not found')
 
-body = s[brace_open:brace_close + 1]
-returns = list(re.finditer(r'(?m)^(\s*)return\s+best_cpu\s*;\s*$', body))
-if not returns:
-    raise SystemExit('PATCH ERROR: return best_cpu not found inside find_best_cpu')
-r = returns[-1]
-indent = r.group(1)
-replacement = (
-    f'{indent}if (apple_final_keep_prev(env, best_cpu))\n'
-    f'{indent}\tbest_cpu = task_cpu(env->p);\n\n'
-    f'{indent}return best_cpu;'
-)
-body = body[:r.start()] + replacement + body[r.end():]
-s = s[:brace_open] + body + s[brace_close + 1:]
+    body = s[brace_open:brace_close + 1]
+    returns = list(re.finditer(r'(?m)^(\s*)return\s+best_cpu\s*;\s*$', body))
+    if not returns:
+        raise SystemExit('PATCH ERROR: return best_cpu not found inside find_best_cpu')
+    r = returns[-1]
+    indent = r.group(1)
+    replacement = (
+        f'{indent}if (apple_final_keep_prev(env, best_cpu))\n'
+        f'{indent}\tbest_cpu = task_cpu(env->p);\n\n'
+        f'{indent}return best_cpu;'
+    )
+    body = body[:r.start()] + replacement + body[r.end():]
+    s = s[:brace_open] + body + s[brace_close + 1:]
 
-p.write_text(s)
-print('APPLE FINAL EMS 3x3 patch applied:', p)
+    p.write_text(s)
+    print('APPLE FINAL EMS 3x3 patch applied:', p)
+
+# Samsung's cache.S has ENTRY(flush_cache_all) immediately followed by an
+# explicit flush_cache_all: label. ENTRY() already emits that symbol label;
+# LLVM's integrated assembler rejects the second definition. Keep the ENTRY()
+# annotation and remove only the redundant label.
+cache = Path('src/drivers/soc/samsung/debug/cache.S')
+cs = cache.read_text()
+dup = 'ENTRY(flush_cache_all)\nflush_cache_all:'
+if dup in cs:
+    cs = cs.replace(dup, 'ENTRY(flush_cache_all)', 1)
+    cache.write_text(cs)
+    print('APPLE FINAL asm compatibility patch applied:', cache)
+elif 'ENTRY(flush_cache_all)' not in cs:
+    raise SystemExit('PATCH ERROR: flush_cache_all ENTRY not found in Samsung cache.S')
