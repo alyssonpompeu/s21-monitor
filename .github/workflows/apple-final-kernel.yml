@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          bash apple-final/build_apple_final.sh 2>&1 | tee APPLE_FINAL_CI.log
+          bash apple-final/build_apple_final_resume.sh 2>&1 | tee APPLE_FINAL_CI.log
 
       - name: Upload APPLE FINAL diagnostics
         if: always()
