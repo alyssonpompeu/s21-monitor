@@ -2,11 +2,6 @@ name: Build APPLE FINAL Kernel
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ apple-final-kernel-build ]
-    paths:
-      - 'apple-final/**'
-      - '.github/workflows/apple-final-kernel.yml'
   pull_request:
     branches: [ main ]
     paths:
