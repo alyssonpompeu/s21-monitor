@@ -15,3 +15,7 @@ https://github.com/seemoo-lab/nexmon/pull/662
 https://github.com/seemoo-lab/nexmon/pull/663
 https://fccid.io/JNZA00072
 https://fccid.io/JNZA00073
+
+## v1.1.0 — prova binária (somente leitura)
+
+Novo botão ROOT: calcula Git blob SHA-1 do arquivo instalado `/vendor/firmware/bcmdhd_sta.bin_b1` e compara com a imagem Nexmon upstream `18_41_117_sta` (#662), que tem 1.297.036 bytes e Git blob `8ba9a17a2e75dcacb3d47e4bea58a76c006e7e1d`. Calcula SHA-256 e tamanhos dos firmwares STA, MON, MFG e HCDs SEMCO para preservar evidências. Tudo via shell read-only; nunca grava e nunca faz dump de EFS/NVRAM/IMEI. `BYTE_EXACT_MATCH` confirma somente igualdade de bytes com a imagem referência, não garante funcionamento do PR #663 e muito menos rádio Avnera.

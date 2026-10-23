@@ -27,7 +27,7 @@ public final class MainActivity extends Activity {
     private volatile boolean collecting = false;
 
     private static final String SUMMARY =
-        "G533 Bridge Preflight 1.0 — SOMENTE LEITURA\n" +
+        "G533 Bridge Preflight 1.1 — SOMENTE LEITURA\n" +
         "Alvo: Logitech G533 headset A-00072 e dongle A-00073.\n" +
         "RF documentado pela FCC: 2403,35 a 2477,35 MHz.\n" +
         "Firmware Logitech V1.13, cliente e host, extraído do updater.\n" +
@@ -49,7 +49,8 @@ public final class MainActivity extends Activity {
         root.addView(button("1. Diagnóstico sem root", v -> start(false)));
         root.addView(button("2. Diagnóstico ROOT — somente leitura", v -> start(true)));
         root.addView(button("3. Ver MAC-config do G533", v -> showMac()));
-        root.addView(button("4. Compartilhar relatório", v -> share()));
+        root.addView(button("4. Comparar firmware com Nexmon #662 (ROOT)", v -> fingerprint()));
+        root.addView(button("5. Compartilhar relatório", v -> share()));
         output = txt("", 12);
         output.setTextIsSelectable(true);
         root.addView(output);
@@ -68,6 +69,55 @@ public final class MainActivity extends Activity {
         log("O tipo de recurso 0x86 e comum. Campos de RF/pareamento ainda nao decodificados.");
         log("Client SHA256: c3624e58de9f93414ed94c0ab3690ccef35a82dbb525cf600b00ac5b68e67ba3");
         log("Host SHA256: 94f705f835e31f902dfbec77ef872c0fab5cf5339ccf756baa49173d85d5e7a2");
+    }
+
+
+    private void fingerprint() {
+        if (collecting) { log("Coleta em andamento."); return; }
+        collecting = true;
+        set("Calculando hashes dos firmwares (somente leitura)...");
+        worker.execute(() -> {
+            try {
+                log("=== REFERENCIA NEXMON BCM4375B1 18.41.117 / #662 ===");
+                log("Firmware upstream: 1.297.036 bytes, Git blob 8ba9a17a2e75dcacb3d47e4bea58a76c006e7e1d");
+                log("Comparacao de bytes, sem instalar ou modificar firmware.");
+                String cmd = """
+                    f=/vendor/firmware/bcmdhd_sta.bin_b1
+                    if [ -r "$f" ]; then
+                        n=$(stat -c %s "$f" 2>/dev/null)
+                        echo "STA_BYTES=$n"
+                        b=$({ printf 'blob %s\\000' "$n"; cat "$f"; } | sha1sum | cut -d ' ' -f 1)
+                        echo "STA_GIT_BLOB=$b"
+                        if [ "$n" = "1297036" ] && [ "$b" = "8ba9a17a2e75dcacb3d47e4bea58a76c006e7e1d" ]; then
+                            echo "NEXMON_REFERENCE=BYTE_EXACT_MATCH"
+                        else
+                            echo "NEXMON_REFERENCE=DIFFERENT_IMAGE_OR_HEADER"
+                        fi
+                    else
+                        echo "NEXMON_REFERENCE=STA_NOT_READABLE"
+                    fi
+                    for f in /vendor/firmware/bcmdhd_sta.bin_b1 /vendor/firmware/bcmdhd_mon.bin_b1 /vendor/firmware/bcmdhd_mfg.bin_b1 /vendor/firmware/bcm4375B1_semco.hcd /vendor/firmware/bcm4375B1_semco_sem.hcd; do
+                        if [ -r "$f" ]; then
+                            echo "FILE=$f"
+                            stat -c 'BYTES=%s' "$f" 2>/dev/null
+                            sha256sum "$f" 2>&1
+                        else
+                            echo "NOT_READABLE=$f"
+                        fi
+                    done
+                    """;
+                String result = shell(true, cmd);
+                log(result);
+                log("AVISO: hash diferente nao exclui compatibilidade; firmware identico nao prova recepcao Avnera.");
+                log("NENHUM COMANDO DE ESCRITA EXECUTADO. Compartilhe o relatorio.");
+                set("Hashes coletados. Compartilhe o relatorio.");
+            } catch (Exception e) {
+                log("ERRO SHA: " + e.getMessage());
+                set("Falha no hash.");
+            } finally {
+                collecting = false;
+            }
+        });
     }
 
     private void start(boolean root) {
