@@ -1,0 +1,40 @@
+name: Build G533 PHY Lab Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "g533phy/**"
+      - "settings.gradle"
+      - ".github/workflows/build-g533phy-apk.yml"
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Unit tests and APK
+        run: gradle :g533phy:testDebugUnitTest :g533phy:assembleDebug --stacktrace
+      - name: Package
+        run: cp g533phy/build/outputs/apk/debug/g533phy-debug.apk G533-PHY-Lab-S21.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: G533-PHY-Lab-S21-APK
+          path: G533-PHY-Lab-S21.apk
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: g533-phy-lab-latest
+          name: G533 PHY Lab Android
+          body: "Offline I/Q analyzer and synthetic DQPSK demo for the Galaxy S21. Does NOT scan RF nor connect the G533."
+          files: G533-PHY-Lab-S21.apk
+          make_latest: false
+          overwrite_files: true
