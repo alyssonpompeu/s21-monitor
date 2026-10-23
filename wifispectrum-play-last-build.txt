@@ -1,24 +1,14 @@
-run_id=39882622423
-head_sha=dd2aadfa7c3a0861cab92d28d183b05017b872d6
+run_id=39905678561
+head_sha=fe2db27b571f64f7d27c6ecb4dadc7dae1e0ef4c
 lint_exit_code=0
 bundle_exit_code=0
 --- lint log tail ---
-
-Welcome to Gradle 8.13!
-
-Here are the highlights of this release:
- - Daemon JVM auto-provisioning
- - Enhancements for Scala plugin and JUnit testing
- - Improvements for build authors and plugin developers
-
-For more details see https://docs.gradle.org/8.13/release-notes.html
-
 Starting a Gradle Daemon (subsequent builds will be faster)
 > Task :wifispectrum:preBuild UP-TO-DATE
 > Task :wifispectrum:preReleaseBuild UP-TO-DATE
-> Task :wifispectrum:javaPreCompileRelease
-> Task :wifispectrum:checkReleaseAarMetadata
 > Task :wifispectrum:generateReleaseResValues
+> Task :wifispectrum:checkReleaseAarMetadata
+> Task :wifispectrum:javaPreCompileRelease
 > Task :wifispectrum:mapReleaseSourceSetPaths
 > Task :wifispectrum:generateReleaseResources
 > Task :wifispectrum:packageReleaseResources
@@ -47,7 +37,7 @@ Note: Recompile with -Xlint:deprecation for details.
 Wrote HTML report to file:///home/runner/work/s21-monitor/s21-monitor/wifispectrum/build/reports/lint-results-release.html
 
 > Task :wifispectrum:lintRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/lint-1792717942082.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/lint-1792733148862.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
 
@@ -57,7 +47,7 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 58s
+BUILD SUCCESSFUL in 18s
 23 actionable tasks: 23 executed
 
 --- bundle log tail ---
@@ -85,13 +75,13 @@ BUILD SUCCESSFUL in 58s
 > Task :wifispectrum:dexBuilderRelease
 > Task :wifispectrum:desugarReleaseFileDependencies
 > Task :wifispectrum:mergeReleaseStartupProfile
-> Task :wifispectrum:mergeExtDexRelease
 > Task :wifispectrum:mergeReleaseShaders
 > Task :wifispectrum:compileReleaseShaders NO-SOURCE
 > Task :wifispectrum:generateReleaseAssets UP-TO-DATE
+> Task :wifispectrum:mergeExtDexRelease
 > Task :wifispectrum:mergeReleaseAssets
-> Task :wifispectrum:processReleaseJavaRes NO-SOURCE
 > Task :wifispectrum:mergeReleaseGlobalSynthetics
+> Task :wifispectrum:processReleaseJavaRes NO-SOURCE
 > Task :wifispectrum:mergeReleaseJniLibFolders
 > Task :wifispectrum:mergeReleaseNativeLibs NO-SOURCE
 > Task :wifispectrum:stripReleaseDebugSymbols NO-SOURCE
@@ -100,11 +90,11 @@ BUILD SUCCESSFUL in 58s
 > Task :wifispectrum:collectReleaseDependencies
 > Task :wifispectrum:configureReleaseDependencies
 > Task :wifispectrum:extractReleaseNativeSymbolTables NO-SOURCE
-> Task :wifispectrum:extractProguardFiles UP-TO-DATE
 > Task :wifispectrum:mergeReleaseJavaResource
+> Task :wifispectrum:extractProguardFiles UP-TO-DATE
 > Task :wifispectrum:generateReleaseLintVitalReportModel
-> Task :wifispectrum:mergeDexRelease
 > Task :wifispectrum:parseReleaseIntegrityConfig
+> Task :wifispectrum:mergeDexRelease
 > Task :wifispectrum:buildReleasePreBundle
 > Task :wifispectrum:compileReleaseArtProfile
 > Task :wifispectrum:lintVitalAnalyzeRelease
@@ -115,7 +105,7 @@ BUILD SUCCESSFUL in 58s
 > Task :wifispectrum:produceReleaseBundleIdeListingFile
 > Task :wifispectrum:createReleaseBundleListingFileRedirect
 > Task :wifispectrum:bundleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/bundle-1792717995809.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/bundle-1792733164920.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/s21-monitor/s21-monitor/build/reports/problems/problems-report.html
 
@@ -125,5 +115,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 4s
+BUILD SUCCESSFUL in 3s
 45 actionable tasks: 29 executed, 16 up-to-date
