@@ -23,7 +23,8 @@ jobs:
           gradle-version: '8.13'
       - name: Install Android SDK
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          SDKMANAGER="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}/cmdline-tools/latest/bin/sdkmanager"
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
       - name: Compile debug APK
         run: |
           gradle :appleocbench:assembleDebug --no-daemon --stacktrace
