@@ -42,7 +42,7 @@ static bool apple_gpuoc_acpm_valid_opp(int request)
         return false;
 
     /* GPU driver must have DT QoS and PM parameters for this OPP. */
-    if (!clk_info || request > clk_info->gpu_max_clock ||
+    if (!clk_info || request > clk_info->gpu_unlock_max_clock ||
         request > clk_info->gpu_max_clock_limit ||
         gpex_clock_get_table_idx(request) < 0)
         return false;
@@ -67,16 +67,17 @@ GPEX_STATIC ssize_t show_apple_gpuoc_caps(char *buf)
 {
     int fw_max = gpexbe_clock_get_max_freq();
     int dt_max = clk_info ? clk_info->gpu_max_clock : 0;
+    int unlocked_max = clk_info ? clk_info->gpu_unlock_max_clock : 0;
     int o910=apple_gpuoc_acpm_valid_opp(910000);
     int o936=apple_gpuoc_acpm_valid_opp(936000);
     int o975=apple_gpuoc_acpm_valid_opp(975000);
     int o1001=apple_gpuoc_acpm_valid_opp(1001000);
 
     return scnprintf(buf,PAGE_SIZE,
-        "mode=ACPM_ONLY\nfirmware_max_khz=%d\nplatform_dt_max_khz=%d\n"
+        "mode=ACPM_ONLY\nfirmware_max_khz=%d\nplatform_dt_max_khz=%d\nunlock_max_khz=%d\n"
         "fw_valid_910=%d\nfw_valid_936=%d\nfw_valid_975=%d\nfw_valid_1001=%d\n"
         "direct_pll_writes=DISABLED\n",
-        fw_max,dt_max,o910,o936,o975,o1001);
+        fw_max,dt_max,unlocked_max,o910,o936,o975,o1001);
 }
 CREATE_SYSFS_DEVICE_READ_FUNCTION(show_apple_gpuoc_caps)
 """
@@ -162,4 +163,104 @@ for a,b in steps:
 front.write_text(src)
 print("APPLE GPUOC V2: all clock setting errors now propagate to callers")
 
-print("APPLE GPUOC V2 patched; firmware/DT gating and ACPM route; no direct PLL programming")
+
+# FloppyKernel-inspired separation of stock GPU max and unlock GPU max.
+# Unlike the original V1 hack, candidates must be present in BOTH ASV and DT.
+internal=Path("src/drivers/gpu/arm/exynos/frontend/gpex_clock_internal.h")
+iv=internal.read_text()
+old="	int gpu_max_clock;\n"
+new="	int gpu_max_clock;\n	int gpu_stock_max_clock;\n	int gpu_unlock_max_clock;\n"
+if iv.count(old)!=1: raise SystemExit("Floppy-inspired struct anchor missing")
+internal.write_text(iv.replace(old,new,1))
+
+front=Path("src/drivers/gpu/arm/exynos/frontend/gpex_clock.c")
+fc=front.read_text()
+old="	clk_info.gpu_max_clock = gpexbe_devicetree_get_int(gpu_max_clock);\n"
+new="""	clk_info.gpu_max_clock = gpexbe_devicetree_get_int(gpu_max_clock);
+	clk_info.gpu_stock_max_clock = clk_info.gpu_max_clock;
+	clk_info.gpu_unlock_max_clock = clk_info.gpu_stock_max_clock;
+"""
+if fc.count(old)!=1:raise SystemExit("Max initialization missing")
+fc=fc.replace(old,new,1)
+old="if (cal_freq <= clk_info.gpu_max_clock && cal_freq >= clk_info.gpu_min_clock)"
+new="if (cal_freq <= clk_info.gpu_max_clock_limit && cal_freq >= clk_info.gpu_min_clock)"
+if fc.count(old)!=1:raise SystemExit("ASV max guard missing")
+fc=fc.replace(old,new,1)
+old="					clk_info.table[j].voltage = cal_vol;\n"
+new="""					clk_info.table[j].voltage = cal_vol;
+					/* Limit unlock to actual CAL/ASV+DT OPPs. */
+					if (cal_vol > 0 &&
+					    cal_freq > clk_info.gpu_unlock_max_clock)
+						clk_info.gpu_unlock_max_clock = cal_freq;
+"""
+if fc.count(old)!=1:raise SystemExit("GPU DT/ASV frequency-matching block missing")
+fc=fc.replace(old,new,1)
+needle="int gpex_clock_prepare_runtime_off()\n"
+method="""/*
+ * Floppy-style runtime cap selector, without altering the ACPM OPP table.
+ * All thermal/user QoS caps continue to apply independently.
+ */
+int gpex_clock_set_runtime_max_clock(int rate)
+{
+	int ret = 0;
+
+	if (rate != clk_info.gpu_stock_max_clock &&
+	    rate != clk_info.gpu_unlock_max_clock)
+		return -EINVAL;
+	if (gpex_clock_get_table_idx(rate) < 0)
+		return -EOPNOTSUPP;
+	mutex_lock(&clk_info.clock_lock);
+	clk_info.gpu_max_clock = rate;
+	mutex_unlock(&clk_info.clock_lock);
+	return ret;
+}
+
+"""
+if fc.count(needle)!=1:raise SystemExit("Runtime cap insertion missing")
+fc=fc.replace(needle,method+needle,1)
+front.write_text(fc)
+h=Path("src/drivers/gpu/arm/exynos/include/gpex_clock.h")
+hs=h.read_text()
+needle="int gpex_clock_set(int clk);\n"
+if hs.count(needle)!=1:raise SystemExit("Clock API insertion missing")
+hs=hs.replace(needle,needle+"int gpex_clock_set_runtime_max_clock(int rate);\n",1)
+h.write_text(hs)
+
+gp=Path("src/drivers/gpu/arm/exynos/frontend/gpex_clock_sysfs.c")
+gs=gp.read_text()
+needle="CREATE_SYSFS_DEVICE_READ_FUNCTION(show_apple_gpuoc_caps)\n"
+extra=r"""CREATE_SYSFS_DEVICE_READ_FUNCTION(show_apple_gpuoc_caps)
+
+/* Runtime governor cap toggle. It never creates a new frequency/voltage OPP. */
+GPEX_STATIC ssize_t show_apple_gpu_unlock(char *buf)
+{
+    return scnprintf(buf,PAGE_SIZE,"%d\n",
+        clk_info &&
+        clk_info->gpu_max_clock > clk_info->gpu_stock_max_clock);
+}
+CREATE_SYSFS_DEVICE_READ_FUNCTION(show_apple_gpu_unlock)
+
+GPEX_STATIC ssize_t set_apple_gpu_unlock(const char *buf,size_t count)
+{
+    int enable, max_khz, ret;
+    ret = kstrtoint(buf,0,&enable);
+    if (ret || (enable != 0 && enable != 1))
+        return -EINVAL;
+    if (!clk_info)
+        return -ENODEV;
+    max_khz = enable ? clk_info->gpu_unlock_max_clock :
+                       clk_info->gpu_stock_max_clock;
+    ret = gpex_clock_set_runtime_max_clock(max_khz);
+    return ret ? ret : count;
+}
+CREATE_SYSFS_DEVICE_WRITE_FUNCTION(set_apple_gpu_unlock)
+"""
+if gs.count(needle)!=1:raise SystemExit("Sysfs hook anchor missing")
+gs=gs.replace(needle,extra,1)
+needle="	GPEX_UTILS_SYSFS_DEVICE_FILE_ADD_RO(apple_gpuoc_caps,show_apple_gpuoc_caps);\n"
+if gs.count(needle)!=1:raise SystemExit("Caps sysfs register missing")
+gs=gs.replace(needle,needle+"	GPEX_UTILS_SYSFS_DEVICE_FILE_ADD(apple_gpu_unlock, show_apple_gpu_unlock, set_apple_gpu_unlock);\n",1)
+gp.write_text(gs)
+print("Floppy-style GPU runtime cap unlock added; strict CAL/ASV+DT+ACPM validation remains.")
+
+print("APPLE GPUOC V3 patched; native ACPM with Floppy-style runtime GPU unlock")
