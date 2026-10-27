@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
-    <application android:allowBackup="false" android:label="Apple Final GPU Lab" android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.NoActionBar">
+    <application android:allowBackup="false" android:label="Apple Final Tweaks" android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name=".VoltageLabActivity" android:exported="false" />
-        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
+        <activity android:name=".MainActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".MTweaksControlActivity" android:exported="true" android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
