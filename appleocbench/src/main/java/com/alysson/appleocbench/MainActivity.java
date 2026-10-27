@@ -25,6 +25,7 @@ public final class MainActivity extends Activity {
   TextView diagnostic, results;
   Button[] all;
   volatile boolean running=false, installed=false;
+  volatile boolean vendorVerified=false;
   volatile String node="";
   double reference=0;
   String report="";
@@ -64,19 +65,22 @@ public final class MainActivity extends Activity {
     LinearLayout r=panel();add(r,text("MEDIÇÕES / RELATÓRIO",13,0xff73b9ff),12);
     results=text("Execute uma referência original antes de comparar.",13,Color.WHITE);results.setTypeface(Typeface.MONOSPACE);add(r,results,12);
     Button refresh=button("Verificar novamente");add(r,refresh,8);refresh.setOnClickListener(v->scan());
+    Button verify=button("Verificar módulos no vendor_boot (somente leitura)");add(r,verify,8);
+    verify.setOnClickListener(v->verifyVendor());
     Button share=button("Compartilhar resultados");add(r,share,0);
     share.setOnClickListener(v->{Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_TEXT,report);startActivity(Intent.createChooser(i,"Relatório GPU"));});
     add(body,r,13);
     add(body,text("RISCO: clock acima de 858 MHz sem tensão validada pode congelar ou reiniciar o aparelho. Leitura de frequência reportada pelo driver não comprova estabilidade física. Teste curto não demonstra desempenho sustentado.",12,0xffadc0d0),0);
-    all=new Button[]{b0,b1,btn[0],btn[1],btn[2],btn[3],refresh,share};
+    all=new Button[]{b0,b1,btn[0],btn[1],btn[2],btn[3],refresh,verify,share};
     setContentView(scroll);
   }
   static class Cmd{int code;String out;Cmd(int c,String t){code=c;out=t;}}
-  static Cmd shell(String s){
+  static Cmd shell(String s){return shell(s,13);}
+  static Cmd shell(String s,int timeout){
     Process p=null;
     try{
       p=new ProcessBuilder("su","-c",s).redirectErrorStream(true).start();
-      if(!p.waitFor(13,TimeUnit.SECONDS)){p.destroyForcibly();return new Cmd(-1,"timeout root");}
+      if(!p.waitFor(timeout,TimeUnit.SECONDS)){p.destroyForcibly();return new Cmd(-1,"timeout root");}
       BufferedReader r=new BufferedReader(new InputStreamReader(p.getInputStream()));
       StringBuilder b=new StringBuilder();String l;while((l=r.readLine())!=null)if(b.length()<5000)b.append(l).append('\n');
       return new Cmd(p.exitValue(),b.toString().trim());
@@ -112,19 +116,63 @@ public final class MainActivity extends Activity {
     queue.execute(()->{
       Cmd id=shell("id");String model=get("getprop ro.product.model");String k=get("uname -r");
       String gpu=findClock();String m=moduleHash("mali_kbase.ko"),c=moduleHash("cmupmucal.ko");
-      int t=gpuTemp();boolean ok=id.code==0&&id.out.contains("uid=0")&&
-        "SM-G991B".equals(model)&&k.contains("G991BXXSJHZA6")&&MALI.equals(m)&&CMU.equals(c)&&!gpu.isEmpty();
+      int t=gpuTemp();boolean modulesFound=MALI.equals(m)&&CMU.equals(c);
+      boolean ok=id.code==0&&id.out.contains("uid=0")&&
+        "SM-G991B".equals(model)&&k.contains("G991BXXSJHZA6")&&
+        (modulesFound||vendorVerified)&&!gpu.isEmpty();
       installed=ok;node=gpu;
       String cur=gpu.isEmpty()?"—":MHz(get("cat "+q(gpu)));
       String out="Root: "+(id.out.contains("uid=0")?"OK":"não autorizado")+"\n"+
-        "Aparelho: "+model+"\nKernel: "+k+"\nMali GPUOC: "+(MALI.equals(m)?"OK":"não validado")+
-        "\nCMUPMUCAL: "+(CMU.equals(c)?"OK":"não validado")+
-        "\nSysfs: "+(gpu.isEmpty()?"não encontrado":gpu)+
+        "Aparelho: "+model+"\nKernel: "+k+"\nMali GPUOC: "+(MALI.equals(m)?"OK":"não visível no Android")+
+        "\nCMUPMUCAL: "+(CMU.equals(c)?"OK":"não visível no Android")+
+        "\nvendor_boot: "+(vendorVerified?"hashes de módulos confirmados":"não inspecionado")+\n        "\nSysfs: "+(gpu.isEmpty()?"não encontrado":gpu)+
         "\nClock atual: "+cur+"\nTemperatura GPU: "+cel(t)+
         "\nPulso OC: "+(ok?"LIBERADO (EXPERIMENTAL)":"BLOQUEADO");
       ui.post(()->{diagnostic.setText(out);enable(true);});
     });
   }
+  // Checks hashes INSIDE vendor_boot on the actual installed flash, never writes to it.
+  // Magiskboot unpack is performed in /data/local/tmp and removed after verification.
+  void verifyVendor(){
+    if(running)return;
+    enable(false);
+    results.setText("Lendo vendor_boot sem alterar nenhuma partição. Verificando os dois .ko...");
+    queue.execute(()->{
+      String script="mb=/data/adb/magisk/magiskboot; "+
+          "[ -x \"$mb\" ] || mb=$(command -v magiskboot 2>/dev/null); "+
+          "[ -n \"$mb\" ] && [ -x \"$mb\" ] || { echo 'ERRO=magiskboot indisponível'; exit 12; }; "+
+          "b=/dev/block/by-name/vendor_boot; "+
+          "[ -b \"$b\" ] || b=/dev/block/bootdevice/by-name/vendor_boot; "+
+          "[ -b \"$b\" ] || { echo 'ERRO=partição vendor_boot não encontrada'; exit 13; }; "+
+          "w=/data/local/tmp/apple_gpu_verify_$; mkdir -p \"$w\" || exit 14; "+
+          "trap 'rm -rf \"$w\"' EXIT; cd \"$w\" || exit 15; "+
+          "dd if=\"$b\" of=\"$w/vendor_boot.img\" bs=1048576 2>/dev/null || exit 16; "+
+          "\"$mb\" unpack -h \"$w/vendor_boot.img\" >/dev/null 2>&1; "+
+          "r=''; for f in ramdisk.cpio vendor_ramdisk/ramdisk.cpio vendor_ramdisk/init_boot.cpio; do "+
+          "[ -f \"$f\" ] && { r=\"$w/$f\"; break; }; done; "+
+          "[ -n \"$r\" ] || { echo 'ERRO=ramdisk não localizado'; exit 17; }; "+
+          "mkdir -p \"$w/modules\"; cd \"$w/modules\" || exit 18; "+
+          "\"$mb\" cpio \"$r\" extract >/dev/null 2>&1 || { echo 'ERRO=extração falhou'; exit 19; }; "+
+          "a=$(find . -name mali_kbase.ko -type f | head -n 1); "+
+          "c=$(find . -name cmupmucal.ko -type f | head -n 1); "+
+          "[ -n \"$a\" ] && [ -n \"$c\" ] || { echo 'ERRO=módulos não encontrados'; exit 20; }; "+
+          "echo MALI=$(sha256sum \"$a\" | cut -d' ' -f1); "+
+          "echo CMU=$(sha256sum \"$c\" | cut -d' ' -f1)";
+      Cmd x=shell(script,75);
+      boolean matches=x.code==0&&MALI.equals(field(x.out,"MALI"))&&CMU.equals(field(x.out,"CMU"));
+      vendorVerified=matches;
+      String msg="Inspeção somente leitura de vendor_boot:\n"+
+          "Processo: "+(x.code==0?"completo":"erro "+x.code)+"\n"+
+          "Mali: "+(MALI.equals(field(x.out,"MALI"))?"SHA exato":"não confirmado")+"\n"+
+          "CMUPMUCAL: "+(CMU.equals(field(x.out,"CMU"))?"SHA exato":"não confirmado")+"\n"+
+          "OC: "+(matches?"módulos confirmados; confira sysfs e temperatura":"bloqueado")+"\n"+
+          (x.code!=0?"Detalhes: "+x.out:"");
+      ui.post(()->{
+        results.setText(msg);report=msg;enable(true);scan();
+      });
+    });
+  }
+
   static String field(String out,String name){
     for(String l:out.split("\n"))if(l.startsWith(name+"="))return l.substring(name.length()+1);
     return "não confirmado";
@@ -146,6 +194,12 @@ public final class MainActivity extends Activity {
       String raw="";Cmd pulse=new Cmd(0,"");
       try{
         if(!ready.await(8,TimeUnit.SECONDS))throw new Exception("OpenGL ES não iniciou");
+        if(requested==0 && !node.isEmpty()){
+          String sample="sleep 0.2; echo CLK1=$(cat "+q(node)+" 2>/dev/null); "+
+            "sleep 0.35; echo CLK2=$(cat "+q(node)+" 2>/dev/null); "+
+            "sleep 0.35; echo CLK3=$(cat "+q(node)+" 2>/dev/null)";
+          raw=shell(sample).out;
+        }
         if(requested>0){
           String x="( printf '%s\\n' "+requested+" > "+q(node)+" ) & p=$!; "+
             "sleep 0.20; echo PICO=$(cat "+q(node)+" 2>/dev/null); "+
@@ -164,6 +218,10 @@ public final class MainActivity extends Activity {
         "\nBenchmark: "+(longRun?"5,0":"1,6")+" s / GPU OpenGL ES 3\n"+
         String.format(Locale.US,"Desenhos/s: %,.1f",d)+"\nShader: "+(score==null?"não finalizado":score.status)+
         "\nTemperatura: "+cel(startT)+" → "+cel(endT);
+      if(requested==0 && !raw.isEmpty()){
+        s+="\nClock sob carga (3 leituras): "+
+          MHz(field(raw,"CLK1"))+", "+MHz(field(raw,"CLK2"))+", "+MHz(field(raw,"CLK3"));
+      }
       if(requested>0){
         s+="\nRetorno de comando: "+(pulse.code==0?"OK":"erro "+pulse.code)+
           "\nLeitura durante pulso: "+MHz(field(raw,"PICO"))+
