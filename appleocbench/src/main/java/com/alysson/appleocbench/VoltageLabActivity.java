@@ -258,6 +258,10 @@ public final class VoltageLabActivity extends Activity {
   }
   private void confirmMargin(){
     if(!trustedKernel||!marginFound[domain]||domainMargins[domain]!=0||busy)return;
+    int t=temp();
+    if(t<0||t>=60000){Toast.makeText(this,"Teste bloqueado: sensor GPU ausente ou temperatura >=60 C",Toast.LENGTH_LONG).show();return;}
+    int bat=parseInt(read("cat /sys/class/power_supply/battery/capacity 2>/dev/null"),-1);
+    if(bat<40){Toast.makeText(this,"Teste bloqueado: bateria abaixo de 40% ou leitura indisponível",Toast.LENGTH_LONG).show();return;}
     final int id=domain;
     new AlertDialog.Builder(this)
       .setTitle("Teste REAL de margem ACPM")
