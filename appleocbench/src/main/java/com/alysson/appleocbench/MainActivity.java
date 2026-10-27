@@ -63,6 +63,10 @@ public final class MainActivity extends Activity {
   @Override public void onDestroy(){queue.shutdownNow();super.onDestroy();}
   void build(){
     ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xff0b1320);
+    scroll.setOnApplyWindowInsetsListener((v,insets)->{
+      v.setPadding(0,insets.getSystemWindowInsetTop(),0,insets.getSystemWindowInsetBottom());
+      return insets;
+    });
     LinearLayout body=new LinearLayout(this);body.setPadding(dp(17),dp(26),dp(17),dp(28));body.setOrientation(1);scroll.addView(body);
     TextView title=text("APPLE FINAL",28,Color.WHITE);title.setTypeface(null,Typeface.BOLD);add(body,title,2);
     add(body,text("GPU CLOCK & BENCH LAB  •  SM-G991B",12,0xff73b9ff),16);
