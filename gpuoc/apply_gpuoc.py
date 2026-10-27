@@ -141,4 +141,25 @@ target="GPEX_UTILS_SYSFS_DEVICE_FILE_ADD(clock, show_clock, set_clock);\n"
 if s.count(target)!=1:raise SystemExit("Unexpected sysfs registration")
 s=s.replace(target,target+"\tGPEX_UTILS_SYSFS_DEVICE_FILE_ADD_RO(apple_gpuoc_caps,show_apple_gpuoc_caps);\n",1)
 p.write_text(s)
+
+# Fix a latent Samsung GPU clock reporting issue: the stock frontend
+# discards the ACPM/CAL return code and reports success in some paths.
+# This is important for correct failure handling even at supported OPPs.
+front=Path("src/drivers/gpu/arm/exynos/frontend/gpex_clock.c")
+src=front.read_text()
+steps=[
+    ("	gpexbe_clock_set_rate(clk);\n\n	gpexbe_debug_dbg_snapshot_freq_out(",
+     "	ret = gpexbe_clock_set_rate(clk);\n	if (ret)\n		goto err;\n\n	gpexbe_debug_dbg_snapshot_freq_out("),
+    ("	set_clock_using_calapi(clock);\n\n	if (!is_up)",
+     "	ret = set_clock_using_calapi(clock);\n	if (ret)\n		return ret;\n\n	if (!is_up)"),
+    ("	gpex_clock_set_helper(target_clk);\n\n	ret = gpex_dvfs_set_clock_callback();",
+     "	ret = gpex_clock_set_helper(target_clk);\n	if (ret) {\n		mutex_unlock(&clk_info.clock_lock);\n		return ret;\n	}\n\n	ret = gpex_dvfs_set_clock_callback();"),
+]
+for a,b in steps:
+    if src.count(a)!=1:
+        raise SystemExit("Clock error-path patch source mismatch "+repr(a[:60]))
+    src=src.replace(a,b,1)
+front.write_text(src)
+print("APPLE GPUOC V2: all clock setting errors now propagate to callers")
+
 print("APPLE GPUOC V2 patched; firmware/DT gating and ACPM route; no direct PLL programming")
