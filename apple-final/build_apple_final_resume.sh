@@ -179,8 +179,8 @@ matrix_X1=55,35,0
 cache_locality=YES
 cross_cluster_hysteresis=YES
 x1_sprint_policy=YES
-gpu_oc=MANUAL_ONLY_EXPERIMENTAL
-gpu_max_target_kHz=1001000
+gpu_oc=DISABLED_DUE_TO_DEVICE_REBOOTS
+gpu_max_target_kHz=858000
 gpu_oc_validated=NO
 gpu_oc_boot_time=DISABLED
 cpu_oc=NO
@@ -209,8 +209,8 @@ cat > out/gpuoc/DO_NOT_FLASH.txt <<'EOF'
 APPLE FINAL GPUOC EXPERIMENTAL BUILD
 This archive is a developer artifact, not a TWRP installer.
 Boot-time GPU OC is disabled.
-GPU manual probes in sysfs: 910000, 936000, 975000, 1001000 kHz.
-Driver restores stock clock after 1 second.
+GPU clocks above 858000 kHz are deliberately blocked after repeat device reboots.
+The original HZA6 ACPM/PLL and stock GPU DVFS tables are preserved.
 No frequency above 858000 has been device-validated.
 Do NOT flash before matching HZA6 firmware, module ABI, Magisk ramdisk and vendor_boot repacking.
 Keep known-good boot and vendor_boot backups on an external storage medium.
