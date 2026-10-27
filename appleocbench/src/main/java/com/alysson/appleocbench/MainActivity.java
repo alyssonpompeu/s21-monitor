@@ -73,9 +73,9 @@ public final class MainActivity extends Activity {
     LinearLayout a=panel();add(a,text("DIAGNÓSTICO DO KERNEL",13,0xff73b9ff),12);
     diagnostic=text("Verificando root, módulos e temperatura...",14,Color.WHITE);add(a,diagnostic,2);add(body,a,13);
     LinearLayout z=panel();add(z,text("BENCHMARK REAL • OPENGL ES 3.0",13,0xff73b9ff),8);
-    add(z,text("Shader em GPU, resolução 512×512. Resultado em desenhos/segundo; não é FPS de jogo.",12,0xffb4c7d7),11);
-    Button b0=button("Referência original • 1,6 s");add(z,b0,9);b0.setOnClickListener(v->test(0,false));
-    Button b1=button("Benchmark original • 5 s");add(z,b1,0);b1.setOnClickListener(v->test(0,true));add(body,z,13);
+    add(z,text("Shader de 1024×1024, com leitura de pixels e amostras do clock durante 2 segundos. Não é FPS de jogo.",12,0xffb4c7d7),11);
+    Button b0=button("Benchmark GPU • carga real 2 s");add(z,b0,9);b0.setOnClickListener(v->test(0,false));
+    Button b1=button("Repetir benchmark GPU • 2 s");add(z,b1,0);b1.setOnClickListener(v->test(0,true));add(body,z,13);
     LinearLayout o=panel();add(o,text("GPU OC • PULSO OC COORDENADO PELO ACPM",13,0xffffc680),6);
     add(o,text("Só libera clocks presentes simultaneamente na tabela do firmware ACPM e na tabela do driver. Pulso de 100 ms, com retorno ao DVFS e diagnóstico de rejeição.",12,0xffb4c7d7),10);
     Button[] btn=new Button[FREQ.length];
@@ -191,7 +191,7 @@ public final class MainActivity extends Activity {
     }}
     enable(false);results.setText("Executando shader e medição...");
     queue.execute(()->{
-      int startT=gpuTemp();long ms=longRun?5000:1600;
+      int startT=gpuTemp();long ms=2000;
       CountDownLatch ready=new CountDownLatch(1);AtomicBoolean stop=new AtomicBoolean(false);
       final GpuBench.Result[] out=new GpuBench.Result[1];
       Thread render=new Thread(()->{try{out[0]=GpuBench.run(ms,ready,stop);}
@@ -201,10 +201,11 @@ public final class MainActivity extends Activity {
       try{
         if(!ready.await(8,TimeUnit.SECONDS))throw new Exception("OpenGL ES não iniciou");
         if(requested==0 && !node.isEmpty()){
-          String sample="sleep 0.2; echo CLK1=$(cat "+q(node)+" 2>/dev/null); "+
-            "sleep 0.35; echo CLK2=$(cat "+q(node)+" 2>/dev/null); "+
-            "sleep 0.35; echo CLK3=$(cat "+q(node)+" 2>/dev/null)";
-          raw=shell(sample).out;
+          String sample="f="+q(node)+"; i=0; printf 'CLOCKS='; "+
+            "while [ $i -lt 15 ]; do "+
+            "printf '%s,' \"$(cat \"$f\" 2>/dev/null)\"; "+
+            "i=$((i+1)); sleep 0.12; done; echo"; 
+          raw=shell(sample,8).out;
         }
         if(requested>0){
           String x="( printf '%s\\n' "+requested+" > "+q(node)+" ) & p=$!; "+
@@ -221,19 +222,30 @@ public final class MainActivity extends Activity {
       GpuBench.Result score=out[0];double d=score==null?0:score.drawsPerSecond;
       if(requested==0&&!longRun&&d>0)reference=d;
       String s="Modo: "+(requested==0?"ORIGINAL":requested/1000+" MHz OC")+
-        "\nBenchmark: "+(longRun?"5,0":"1,6")+" s / GPU OpenGL ES 3\n"+
+        "\nBenchmark: 2,0 s / GPU OpenGL ES 3\n"+
         String.format(Locale.US,"Desenhos/s: %,.1f",d)+"\nShader: "+(score==null?"não finalizado":score.status)+
         "\nTemperatura: "+cel(startT)+" → "+cel(endT);
       if(requested==0 && !raw.isEmpty()){
-        s+="\nClock sob carga (3 leituras): "+
-          MHz(field(raw,"CLK1"))+", "+MHz(field(raw,"CLK2"))+", "+MHz(field(raw,"CLK3"));
+        String v=field(raw,"CLOCKS");
+        int samples=0;long sum=0,max=0,min=Long.MAX_VALUE;
+        for(String item:v.split(",")){
+          try{long hz=Long.parseLong(item.trim());if(hz>0){
+            samples++;sum+=hz;max=Math.max(max,hz);min=Math.min(min,hz);
+          }}catch(Exception ignored){}
+        }
+        s+="\nGPU sob carga: "+samples+" amostras / 2 s"+
+           "\nClock médio: "+(samples>0?MHz(Long.toString(sum/samples)):"indisponível")+
+           " | máximo: "+(samples>0?MHz(Long.toString(max)):"indisponível")+
+           "\nClock mínimo ativo: "+(samples>0?MHz(Long.toString(min)):"indisponível")+
+           "\nLeituras: "+v;
+
       }
       if(requested>0){
         s+="\nRetorno de comando: "+(pulse.code==0?"OK":"erro "+pulse.code)+
           "\nLeitura durante pulso: "+MHz(field(raw,"PICO"))+
           "\nLeitura após pulso: "+MHz(field(raw,"APOS"));
         if(reference>0&&d>0)s+=String.format(Locale.US,"\nDiferença vs original curto: %+.2f%%",100*(d/reference-1));
-        s+="\nAviso: pulso ~100 ms em benchmark 1,6 s. Não interpretar pontuação como ganho OC sustentado.";
+        s+="\nAviso: pulso curto em benchmark 2 s; não representa estabilidade sustentada.";
       }
       if(endT>=75000)s+="\nALERTA: GPU >=75°C; não repetir OC.";
       String cur=node.isEmpty()?"—":MHz(get("cat "+q(node)));
