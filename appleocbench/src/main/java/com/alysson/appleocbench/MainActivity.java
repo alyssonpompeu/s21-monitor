@@ -10,6 +10,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.widget.*;
 import android.view.View;
+import android.view.MotionEvent;
+import android.view.HapticFeedbackConstants;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -42,11 +44,20 @@ public final class MainActivity extends Activity {
   void add(LinearLayout outer,android.view.View v,int bottom){
     LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(bottom);outer.addView(v,p);
   }
-  Button button(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setBackground(shape(0xff254768));return b;}
+  Button button(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setBackground(shape(0xff254768));
+    b.setOnTouchListener((v,e)->{
+      if(e.getActionMasked()==MotionEvent.ACTION_DOWN)v.animate().scaleX(.972f).scaleY(.972f).setDuration(90).start();
+      else if(e.getActionMasked()==MotionEvent.ACTION_UP){
+        v.animate().scaleX(1f).scaleY(1f).setDuration(150).start();
+        if(v.isEnabled())v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+      }else if(e.getActionMasked()==MotionEvent.ACTION_CANCEL)
+        v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
+      return false;
+    });return b;}
   void enable(boolean enabled){
     running=!enabled;
     for(Button b:all)b.setEnabled(enabled);
-    if(freqButtons!=null)for(int i=0;i<freqButtons.length;i++)freqButtons[i].setEnabled(enabled&&ocAllowed[i]);
+    if(freqButtons!=null)for(Button b:freqButtons)b.setEnabled(enabled);
   }
   @Override public void onCreate(Bundle b){super.onCreate(b);build();scan();}
   @Override public void onDestroy(){queue.shutdownNow();super.onDestroy();}
@@ -68,19 +79,17 @@ public final class MainActivity extends Activity {
       btn[i]=button(String.format(Locale.US,"%d MHz  •  +%.2f%%",freq/1000,(freq*100.0/STOCK)-100));
       add(o,btn[i],7);btn[i].setOnClickListener(v->test(freq,false));
     }
-    add(o,text("Se firmware HZA6 não anunciar a frequência e a respectiva tensão, botão bloqueado. Nenhuma escrita direta no PLL. Limite inicial de 65 °C.",12,0xffffc680),1);add(body,o,13);
+    add(o,text("Toque em qualquer clock para consultar o suporte do ACPM. Se não houver ponto de tensão/frequência, mostramos o motivo sem escrever no PLL.",12,0xffffc680),1);add(body,o,13);
     LinearLayout r=panel();add(r,text("MEDIÇÕES / RELATÓRIO",13,0xff73b9ff),12);
     results=text("Execute uma referência original antes de comparar.",13,Color.WHITE);results.setTypeface(Typeface.MONOSPACE);add(r,results,12);
     Button volt=button("VOLTAGE LAB • CPU/GPU & CURVAS");add(r,volt,8);volt.setOnClickListener(v->startActivity(new Intent(this,VoltageLabActivity.class)));
     Button refresh=button("Verificar novamente");add(r,refresh,8);refresh.setOnClickListener(v->scan());
-    Button verify=button("Verificar módulos no vendor_boot (somente leitura)");add(r,verify,8);
-    verify.setOnClickListener(v->verifyVendor());
     Button share=button("Compartilhar resultados");add(r,share,0);
     share.setOnClickListener(v->{Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_TEXT,report);startActivity(Intent.createChooser(i,"Relatório GPU"));});
     add(body,r,13);
     add(body,text("RISCO: clock acima de 858 MHz sem tensão validada pode congelar ou reiniciar o aparelho. Leitura de frequência reportada pelo driver não comprova estabilidade física. Teste curto não demonstra desempenho sustentado.",12,0xffadc0d0),0);
     freqButtons=btn;
-    all=new Button[]{b0,b1,btn[0],btn[1],btn[2],btn[3],refresh,verify,share};
+    all=new Button[]{b0,b1,btn[0],btn[1],btn[2],btn[3],refresh,share};
     setContentView(scroll);
   }
   static class Cmd{int code;String out;Cmd(int c,String t){code=c;out=t;}}
@@ -155,48 +164,6 @@ public final class MainActivity extends Activity {
       ui.post(()->{diagnostic.setText(diag);enable(true);});
     });
   }
-  // Checks hashes INSIDE vendor_boot on the actual installed flash, never writes to it.
-  // Magiskboot unpack is performed in /data/local/tmp and removed after verification.
-  void verifyVendor(){
-    if(running)return;
-    enable(false);
-    results.setText("Lendo vendor_boot sem alterar nenhuma partição. Verificando os dois .ko...");
-    queue.execute(()->{
-      String script="mb=/data/adb/magisk/magiskboot; "+
-          "[ -x \"$mb\" ] || mb=$(command -v magiskboot 2>/dev/null); "+
-          "[ -n \"$mb\" ] && [ -x \"$mb\" ] || { echo 'ERRO=magiskboot indisponível'; exit 12; }; "+
-          "b=/dev/block/by-name/vendor_boot; "+
-          "[ -b \"$b\" ] || b=/dev/block/bootdevice/by-name/vendor_boot; "+
-          "[ -b \"$b\" ] || { echo 'ERRO=partição vendor_boot não encontrada'; exit 13; }; "+
-          "w=/data/local/tmp/apple_gpu_verify_$; mkdir -p \"$w\" || exit 14; "+
-          "trap 'rm -rf \"$w\"' EXIT; cd \"$w\" || exit 15; "+
-          "dd if=\"$b\" of=\"$w/vendor_boot.img\" bs=1048576 2>/dev/null || exit 16; "+
-          "\"$mb\" unpack -h \"$w/vendor_boot.img\" >/dev/null 2>&1; "+
-          "r=''; for f in ramdisk.cpio vendor_ramdisk/ramdisk.cpio vendor_ramdisk/init_boot.cpio; do "+
-          "[ -f \"$f\" ] && { r=\"$w/$f\"; break; }; done; "+
-          "[ -n \"$r\" ] || { echo 'ERRO=ramdisk não localizado'; exit 17; }; "+
-          "mkdir -p \"$w/modules\"; cd \"$w/modules\" || exit 18; "+
-          "\"$mb\" cpio \"$r\" extract >/dev/null 2>&1 || { echo 'ERRO=extração falhou'; exit 19; }; "+
-          "a=$(find . -name mali_kbase.ko -type f | head -n 1); "+
-          "c=$(find . -name cmupmucal.ko -type f | head -n 1); "+
-          "[ -n \"$a\" ] && [ -n \"$c\" ] || { echo 'ERRO=módulos não encontrados'; exit 20; }; "+
-          "echo MALI=$(sha256sum \"$a\" | cut -d' ' -f1); "+
-          "echo CMU=$(sha256sum \"$c\" | cut -d' ' -f1)";
-      Cmd x=shell(script,75);
-      boolean matches=x.code==0&&MALI.equals(field(x.out,"MALI"))&&CMU.equals(field(x.out,"CMU"));
-      vendorVerified=matches;
-      String msg="Inspeção somente leitura de vendor_boot:\n"+
-          "Processo: "+(x.code==0?"completo":"erro "+x.code)+"\n"+
-          "Mali: "+(MALI.equals(field(x.out,"MALI"))?"SHA exato":"não confirmado")+"\n"+
-          "CMUPMUCAL: "+(CMU.equals(field(x.out,"CMU"))?"SHA exato":"não confirmado")+"\n"+
-          "OC: "+(matches?"módulos confirmados; confira sysfs e temperatura":"bloqueado")+"\n"+
-          (x.code!=0?"Detalhes: "+x.out:"");
-      ui.post(()->{
-        results.setText(msg);report=msg;enable(true);scan();
-      });
-    });
-  }
-
   static String field(String out,String name){
     for(String l:out.split("\n"))if(l.startsWith(name+"="))return l.substring(name.length()+1);
     return "não confirmado";
@@ -205,7 +172,14 @@ public final class MainActivity extends Activity {
     if(running)return;
     if(requested>0){int idx=-1;for(int i=0;i<FREQ.length;i++)if(FREQ[i]==requested)idx=i;
       if(idx<0||!installed||!ocAllowed[idx]){
-        Toast.makeText(this,"OC não autorizado pelas tabelas do firmware ACPM e do kernel.",Toast.LENGTH_LONG).show();return;
+        String reason="SOLICITAÇÃO: "+requested/1000+" MHz"+
+          "\nResultado: frequência não registrada no firmware/DT atual"+
+          "\nDriver: "+(capsInfo.contains("mode=ACPM_ONLY")?"ACPM V2":"interface V2 não detectada")+
+          "\n"+(capsInfo.isEmpty()?"Interface de capacidades ausente":capsInfo)+
+          "\nO firmware não oferece essa tensão/frequência.";
+        results.setText(reason);report=reason;
+        getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.REJECT);
+        Toast.makeText(this,"Firmware não possui OPP para "+requested/1000+" MHz",Toast.LENGTH_LONG).show();return;
       }
     }
     if(requested>0){int t=gpuTemp();if(t<0||t>=65000){
