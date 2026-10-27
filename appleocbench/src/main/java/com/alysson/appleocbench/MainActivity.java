@@ -71,6 +71,7 @@ public final class MainActivity extends Activity {
     add(o,text("Se firmware HZA6 não anunciar a frequência e a respectiva tensão, botão bloqueado. Nenhuma escrita direta no PLL. Limite inicial de 65 °C.",12,0xffffc680),1);add(body,o,13);
     LinearLayout r=panel();add(r,text("MEDIÇÕES / RELATÓRIO",13,0xff73b9ff),12);
     results=text("Execute uma referência original antes de comparar.",13,Color.WHITE);results.setTypeface(Typeface.MONOSPACE);add(r,results,12);
+    Button volt=button("VOLTAGE LAB • CPU/GPU & CURVAS");add(r,volt,8);volt.setOnClickListener(v->startActivity(new Intent(this,VoltageLabActivity.class)));
     Button refresh=button("Verificar novamente");add(r,refresh,8);refresh.setOnClickListener(v->scan());
     Button verify=button("Verificar módulos no vendor_boot (somente leitura)");add(r,verify,8);
     verify.setOnClickListener(v->verifyVendor());
