@@ -80,6 +80,10 @@ public final class VoltageLabActivity extends Activity {
   @Override public void onDestroy(){executor.shutdownNow();super.onDestroy();}
   private void createUI(){
     ScrollView sc=new ScrollView(this);sc.setBackgroundColor(BG);sc.setFillViewport(true);
+    sc.setOnApplyWindowInsetsListener((v,insets)->{
+      v.setPadding(0,insets.getSystemWindowInsetTop(),0,insets.getSystemWindowInsetBottom());
+      return insets;
+    });
     LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);
     body.setPadding(dp(16),dp(26),dp(16),dp(25));sc.addView(body);
     item(body,text("VOLTAGE LAB",29,WHITE,true),2);
