@@ -1,0 +1,36 @@
+name: Build Apple Final GPU Lab APK
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - apple-final-gpuoc-app-20261026
+    paths:
+      - 'appleocbench/**'
+      - '.github/workflows/apple-final-gpuoc-apk.yml'
+      - 'settings.gradle'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install Android SDK
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Compile debug APK
+        run: |
+          gradle :appleocbench:assembleDebug --no-daemon --stacktrace
+      - name: Rename
+        run: cp appleocbench/build/outputs/apk/debug/appleocbench-debug.apk Apple-Final-GPU-Lab.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Apple-Final-GPU-Lab-APK
+          path: Apple-Final-GPU-Lab.apk
+          retention-days: 7
