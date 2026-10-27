@@ -30,6 +30,7 @@ public final class MainActivity extends Activity {
   volatile boolean vendorVerified=false;
   volatile boolean[] ocAllowed={false,false,false,false};
   Button[] freqButtons;
+  Button gpuUnlockButton;
   volatile String capsInfo="";
   volatile String node="";
   double reference=0;
@@ -58,6 +59,7 @@ public final class MainActivity extends Activity {
     running=!enabled;
     for(Button b:all)b.setEnabled(enabled);
     if(freqButtons!=null)for(Button b:freqButtons)b.setEnabled(enabled);
+    if(gpuUnlockButton!=null)gpuUnlockButton.setEnabled(enabled);
   }
   @Override public void onCreate(Bundle b){super.onCreate(b);build();scan();}
   @Override public void onDestroy(){queue.shutdownNow();super.onDestroy();}
@@ -83,7 +85,10 @@ public final class MainActivity extends Activity {
       btn[i]=button(String.format(Locale.US,"%d MHz  •  +%.2f%%",freq/1000,(freq*100.0/STOCK)-100));
       add(o,btn[i],7);btn[i].setOnClickListener(v->test(freq,false));
     }
-    add(o,text("Toque em qualquer clock para consultar o suporte do ACPM. Se não houver ponto de tensão/frequência, mostramos o motivo sem escrever no PLL.",12,0xffffc680),1);add(body,o,13);
+    add(o,text("Candidatos acima do stock só podem funcionar se o ACPM oferecer um OPP. Ative o modo unlock quando o kernel compatível estiver instalado.",12,0xffffc680),8);
+    gpuUnlockButton=button("GPU UNLOCK • consultar / alternar");
+    add(o,gpuUnlockButton,0);gpuUnlockButton.setOnClickListener(v->toggleGpuUnlock());
+    add(body,o,13);
     LinearLayout r=panel();add(r,text("MEDIÇÕES / RELATÓRIO",13,0xff73b9ff),12);
     results=text("Execute uma referência original antes de comparar.",13,Color.WHITE);results.setTypeface(Typeface.MONOSPACE);add(r,results,12);
     Button volt=button("VOLTAGE LAB • CPU/GPU & CURVAS");add(r,volt,8);volt.setOnClickListener(v->startActivity(new Intent(this,VoltageLabActivity.class)));
@@ -141,11 +146,53 @@ public final class MainActivity extends Activity {
        "find /sys/devices/platform -maxdepth 6 -name apple_gpuoc_caps 2>/dev/null | head -n 1");
     return path.startsWith("/sys/")?path:"";
   }
+  static String unlockPath(){
+    String path=get("for f in /sys/devices/platform/*mali*/apple_gpu_unlock "+
+      "/sys/devices/platform/*gpu*/apple_gpu_unlock "+
+      "/sys/devices/platform/18500000.mali/apple_gpu_unlock; do "+
+      "[ -f \"$f\" ] && { echo \"$f\"; exit 0; }; done; "+
+      "find /sys/devices/platform -maxdepth 6 -name apple_gpu_unlock 2>/dev/null | head -n 1");
+    return path.startsWith("/sys/")?path:"";
+  }
+  void toggleGpuUnlock(){
+    if(running)return;
+    enable(false);
+    results.setText("Lendo o seletor Floppy-style de limite GPU...");
+    queue.execute(()->{
+      String path=unlockPath();
+      if(path.isEmpty()){
+        String reason="Kernel sem interface apple_gpu_unlock.\n"+
+          "Instale somente um build que realmente contenha a integração V3.\n"+
+          "O app não altera clocks por conta própria.";
+        ui.post(()->{results.setText(reason);report=reason;enable(true);});
+        return;
+      }
+      String before=get("cat "+q(path));
+      int target="1".equals(before.trim())?0:1;
+      Cmd x=shell("p="+q(path)+"; echo BEFORE=$(cat \"$p\"); "+
+        "printf '%s\\n' "+target+" > \"$p\"; ret=$?; "+
+        "echo WRITE_RC=$ret; echo AFTER=$(cat \"$p\"); exit $ret");
+      String after=field(x.out,"AFTER");
+      boolean success=x.code==0&&after.equals(Integer.toString(target));
+      String text="GPU UNLOCK • "+(success?"registro atualizado":"não confirmado")+
+        "\nAnterior: "+before+" | pedido: "+target+" | atual: "+after+
+        "\nResposta do driver: "+x.code+
+        "\nModo "+(target==1?"limite desbloqueado":"limite stock")+
+        "\nO clock efetivo depende do governador e das tabelas CAL/ASV/DT.";
+      ui.post(()->{
+        results.setText(text);report=text;enable(true);
+        getWindow().getDecorView().performHapticFeedback(
+          success?android.view.HapticFeedbackConstants.CONFIRM:android.view.HapticFeedbackConstants.REJECT);
+        scan();
+      });
+    });
+  }
   void scan(){
     if(running)return;enable(false);diagnostic.setText("Lendo root, firmware ACPM e clocks...");
     queue.execute(()->{
       Cmd id=shell("id");String model=get("getprop ro.product.model"),k=get("uname -r");
       String gpu=findClock(),path=capsPath(),caps=path.isEmpty()?"":get("cat "+q(path));
+      String unlock=unlockPath();String unlockVal=unlock.isEmpty()?"não disponível":get("cat "+q(unlock));
       boolean rootOk=id.code==0&&id.out.contains("uid=0");
       boolean v2=caps.contains("mode=ACPM_ONLY")&&caps.contains("direct_pll_writes=DISABLED");
       boolean modelOk="SM-G991B".equals(model)&&k.contains("G991BXXSJHZA6");
@@ -163,7 +210,8 @@ public final class MainActivity extends Activity {
         "\nModo firmware: "+(v2?"ACPM V2":"kernel V2 não encontrado")+
         "\nClock atual: "+(gpu.isEmpty()?"—":MHz(get("cat "+q(gpu))))+
         "\nGPU: "+cel(t)+
-        "\nFirmware/DT aceitam OC: "+count+" de 4\n"+
+        "\nFirmware/DT aceitam OC: "+count+" de 4"+
+        "\nGPU unlock: "+unlockVal+"\n"+
         (caps.isEmpty()?"Sem interface apple_gpuoc_caps. OC bloqueado.":caps);
       ui.post(()->{diagnostic.setText(diag);enable(true);});
     });
