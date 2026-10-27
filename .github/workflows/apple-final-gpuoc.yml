@@ -1,0 +1,46 @@
+name: Build Apple Final GPUOC (experimental source validation)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - apple-final-gpuoc-experimental-20261026
+    paths:
+      - 'gpuoc/**'
+      - 'apple-final/**'
+      - '.github/workflows/apple-final-gpuoc.yml'
+
+concurrency:
+  group: apple-final-gpuoc-experimental
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compilation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential cpio flex git libelf-dev libssl-dev python3 rsync unzip xz-utils
+      - name: Rebuild integrated Image, Mali, CMUPMUCAL and KMI
+        shell: bash
+        run: |
+          set -o pipefail
+          bash apple-final/build_apple_final_resume.sh 2>&1 | tee GPUOC_CI.log
+      - name: Upload diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: APPLE-FINAL-GPUOC-LOGS
+          path: GPUOC_CI.log
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Upload unified developer build (not TWRP flashable)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: APPLE-FINAL-GPUOC-INTEGRATED-BUILD
+          path: APPLE_FINAL_GPUOC_BUILD.tar.gz
+          retention-days: 7
+          if-no-files-found: error
