@@ -1,9 +1,9 @@
-name: Build Apple Final GPUOC (experimental source validation)
+name: Build Apple Final GPUOC safety hotfix
 on:
   workflow_dispatch:
   push:
     branches:
-      - apple-final-gpuoc-experimental-20261026
+      - apple-final-gpuoc-safe-guard-20261027
     paths:
       - 'gpuoc/**'
       - 'apple-final/**'
