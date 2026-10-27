@@ -29,6 +29,12 @@ public final class VoltageLabActivity extends Activity {
   private int domain=0, mode=0, curveEndMv=-15, expo10=20, selectedIdx=0;
   private volatile boolean busy=false;
   private boolean trustedKernel=false;
+  private final int[] initialMargins={0,0,0,0};
+  private final boolean[] initialSet={false,false,false,false};
+  private EditText percentInput;
+  private Button resetButton;
+  private TextView actionLog;
+  private String lastAction="Nenhum comando executado";
   private TextView metrics, status, summary, value, exptxt, editTitle;
   private SeekBar mvSeek, exponentSeek;
   private Spinner domainSpinner, freqSpinner;
@@ -51,8 +57,21 @@ public final class VoltageLabActivity extends Activity {
   private void item(LinearLayout l,View v,int bottom){
     LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(bottom);l.addView(v,p);
   }
-  private Button button(String name){Button b=new Button(this);b.setText(name);b.setAllCaps(false);
-    b.setTextColor(WHITE);b.setBackground(rect(0xff24506a,11));return b;
+  private Button button(String name){
+    Button b=new Button(this);b.setText(name);b.setAllCaps(false);
+    b.setTextColor(WHITE);b.setBackground(rect(0xff24506a,11));
+    b.setOnTouchListener((v,e)->{
+      if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
+        v.animate().scaleX(0.974f).scaleY(0.974f).setDuration(90).start();
+      }else if(e.getActionMasked()==MotionEvent.ACTION_UP){
+        v.animate().scaleX(1f).scaleY(1f).setDuration(130).start();
+        if(v.isEnabled())v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+      }else if(e.getActionMasked()==MotionEvent.ACTION_CANCEL){
+        v.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
+      }
+      return false;
+    });
+    return b;
   }
   @Override public void onCreate(Bundle b){super.onCreate(b);
     for(int i=0;i<4;i++){clocks[i]=new ArrayList<>();edits[i]=new HashMap<>();baseUv[i]=new HashMap<>();}
@@ -128,15 +147,25 @@ public final class VoltageLabActivity extends Activity {
     item(body,edit,12);
 
     LinearLayout real=panel();
-    item(real,text("CONTROLE REAL • MARGEM ACPM",12,CYAN,true),7);
-    status=text("Verificando margem real...",13,WHITE,false);item(real,status,9);
-    item(real,text("A Samsung expõe uma margem percentual por domínio. É diferente de escolher milivolts em um clock. O valor lido não é uma medição independente do regulador.",12,SUB,false),12);
-    applyButton=button("Testar margem real +1% por 3 segundos");
-    applyButton.setEnabled(false);item(real,applyButton,7);
-    applyButton.setOnClickListener(v->confirmMargin());
-    Button reload=button("Atualizar leitura real");item(real,reload,0);reload.setOnClickListener(v->refresh());
+    item(real,text("TENSÃO REAL • MARGEM ACPM",12,CYAN,true),7);
+    status=text("Lendo tensão/offset via kernel...",13,WHITE,false);item(real,status,9);
+    item(real,text("Controle real de margem por domínio. Não é uma tensão em mV nem permite aplicar a curva separadamente por frequência.",12,SUB,false),8);
+    item(real,text("Ajuste percentual (−100 a +100)",13,SUB,false),4);
+    percentInput=new EditText(this);percentInput.setSingleLine(true);
+    percentInput.setTextColor(WHITE);percentInput.setTextSize(20);
+    percentInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);
+    percentInput.setText("0");percentInput.setSelectAllOnFocus(true);
+    item(real,percentInput,9);
+    applyButton=button("APLICAR NO ACPM");item(real,applyButton,6);
+    applyButton.setEnabled(false);applyButton.setOnClickListener(v->confirmMargin());
+    resetButton=button("RESTAURAR VALOR INICIAL");item(real,resetButton,9);
+    resetButton.setOnClickListener(v->applyMargin(domain,initialMargins[domain],true));
+    actionLog=text("Nenhum comando executado.",12,GREEN,false);
+    item(real,actionLog,10);
+    Button reload=button("Atualizar leituras");item(real,reload,0);
+    reload.setOnClickListener(v->refresh());
     item(body,real,12);
-    item(body,text("Limites de engenharia: sem aplicação automática no boot; nenhuma alteração acima de 1% nesta fase; sem tensão arbitrária; sem alteração de proteção térmica. Recuperação automática solicitada após 3 segundos, mas não é garantida se o kernel travar.",12,WARN,false),0);
+    item(body,text("Modo manual: escrita através do controle real da Samsung. O aplicativo informa solicitação, código de retorno e registro lido. Não é uma leitura elétrica independente. Alterações não são aplicadas no boot.",12,SUB,false),0);
     setContentView(sc);
     updateEditControls();
   }
@@ -171,6 +200,9 @@ public final class VoltageLabActivity extends Activity {
         marginValues[i]=r.out;
         marginFound[i]=r.code==0 && parseInt(r.out,999)!=999;
         domainMargins[i]=parseInt(r.out,0);
+        if(marginFound[i]&&!initialSet[i]){
+          initialMargins[i]=domainMargins[i];initialSet[i]=true;
+        }
         clocks[i].clear();baseUv[i].clear();
         if(i==0){
           String output=read("find /sys/devices/platform -maxdepth 6 -type f -name asv_table 2>/dev/null | "+
@@ -215,10 +247,13 @@ public final class VoltageLabActivity extends Activity {
     selectedIdx=Math.min(selectedIdx,labels.length-1);freqSpinner.setSelection(selectedIdx);
     updateEditControls();updateSummary();
     String path="/sys/kernel/percent_margin/"+MARGINS[domain];
-    status.setText((marginFound[domain]?"Margem atualmente registrada: "+domainMargins[domain]+"%":"Controle de margem não encontrado")+
-      "\n"+path+"\n"+
-      (trustedKernel?"Driver V2 ACPM identificado":"Driver V2 não confirmado. Teste real desabilitado."));
-    applyButton.setEnabled(marginFound[domain]&&trustedKernel&&!busy&&domainMargins[domain]==0);
+    status.setText((marginFound[domain]?"Margem registrada pelo kernel: "+domainMargins[domain]+"%":"Controle ACPM não encontrado")+
+      "\n"+path+"\n"+(trustedKernel?"GPUOC V2 detectado":"Controle de tensão independente da versão GPUOC"));
+    if(percentInput!=null&&!percentInput.hasFocus()&&marginFound[domain])
+      percentInput.setText(Integer.toString(domainMargins[domain]));
+    applyButton.setEnabled(marginFound[domain]&&!busy);
+    if(resetButton!=null)resetButton.setEnabled(marginFound[domain]&&initialSet[domain]&&!busy);
+    if(actionLog!=null)actionLog.setText(lastAction);
     curveView.invalidate();
   }
   private void updateEditControls(){
@@ -257,41 +292,63 @@ public final class VoltageLabActivity extends Activity {
     if(value!=null)value.setText((o>0?"+":"")+o+" mV • SIMULAÇÃO, NÃO APLICADO");
   }
   private void confirmMargin(){
-    if(!trustedKernel||!marginFound[domain]||domainMargins[domain]!=0||busy)return;
-    int t=temp();
-    if(t<0||t>=60000){Toast.makeText(this,"Teste bloqueado: sensor GPU ausente ou temperatura >=60 C",Toast.LENGTH_LONG).show();return;}
-    int bat=parseInt(read("cat /sys/class/power_supply/battery/capacity 2>/dev/null"),-1);
-    if(bat<40){Toast.makeText(this,"Teste bloqueado: bateria abaixo de 40% ou leitura indisponível",Toast.LENGTH_LONG).show();return;}
+    if(busy)return;
+    if(!marginFound[domain]){
+      Toast.makeText(this,"Este kernel não oferece controle de margem para este domínio.",Toast.LENGTH_LONG).show();
+      return;
+    }
+    int target;
+    try{target=Integer.parseInt(percentInput.getText().toString().trim());}
+    catch(Exception e){percentInput.setError("Digite uma porcentagem");return;}
+    if(target < -100 || target > 100){
+      percentInput.setError("Intervalo do driver Samsung: -100 a +100");
+      return;
+    }
     final int id=domain;
     new AlertDialog.Builder(this)
-      .setTitle("Teste REAL de margem ACPM")
-      .setMessage("Solicitar +1% na tensão do domínio "+TITLES[id]+" durante 3 segundos e depois solicitar 0%. "+
-          "Isto é uma solicitação ao firmware, NÃO uma leitura do regulador. Pode reiniciar o aparelho. "+
-          "Sem alteração ao iniciar. Deseja executar?")
+      .setTitle("ACPM • Aplicar margem real")
+      .setMessage("Domínio: "+TITLES[id]+
+        "\nRegistrada: "+domainMargins[id]+"%\nSolicitada: "+target+"%\n\n"+
+        "A mudança permanece nesta sessão até ser restaurada ou o firmware a redefinir. "+
+        "O readback confirma apenas o registro do kernel, não a tensão física.")
       .setNegativeButton("Cancelar",null)
-      .setPositiveButton("Testar 3 s",(dialog,which)->applyMargin(id))
+      .setPositiveButton("APLICAR",(d,w)->applyMargin(id,target,false))
       .show();
   }
-  private void applyMargin(int id){
-    if(busy)return;busy=true;applyButton.setEnabled(false);
-    status.setText("Solicitando +1% no ACPM; restauração programada após 3 segundos...");
+  private void applyMargin(int id,int target,boolean restoring){
+    if(busy||!marginFound[id])return;
+    busy=true;applyButton.setEnabled(false);resetButton.setEnabled(false);
+    String domainTitle=TITLES[id];
+    lastAction="Enviando "+target+"% para "+domainTitle+"...";
+    actionLog.setText(lastAction);
     executor.execute(()->{
       String node="/sys/kernel/percent_margin/"+MARGINS[id];
-      String shell="f="+q(node)+"; before=$(cat \"$f\" 2>/dev/null) || exit 12; "+
-        "[ \"$before\" = 0 ] || exit 13; "+
-        "printf '1\\n' > \"$f\" || exit 14; "+
-        "echo DURANTE=$(cat \"$f\" 2>/dev/null); "+
-        "sleep 3; printf '0\\n' > \"$f\"; ret=$?; "+
-        "echo RESTORE_RC=$ret; echo APOS=$(cat \"$f\" 2>/dev/null); exit $ret";
-      Run x=run(shell,9);
-      int recorded=parseInt(extract(x.out,"APOS"),999);
+      String command="f="+q(node)+"; echo BEFORE=$(cat \"$f\" 2>/dev/null); "+
+        "printf '%s\\n' "+target+" > \"$f\"; rc=$?; "+
+        "echo WRITE_RC=$rc; echo AFTER=$(cat \"$f\" 2>/dev/null); exit $rc";
+      Run ret=run(command,12);
+      int after=parseInt(extract(ret.out,"AFTER"),999);
+      int writeRc=parseInt(extract(ret.out,"WRITE_RC"),999);
+      boolean success=ret.code==0 && writeRc==0 && after==target;
+      String text=(success?"✓ APLICADO":"✕ NÃO CONFIRMADO")+" • "+domainTitle+
+        "\nSolicitado: "+target+"%"+
+        " | retorno: "+ret.code+" / write: "+writeRc+
+        "\nRegistro antes: "+extract(ret.out,"BEFORE")+"%"+
+        " → depois: "+extract(ret.out,"AFTER")+"%"+
+        "\nAplicação via ACPM; tensão física não medida."+
+        (!success?"\nDiagnóstico: "+ret.out:"");
       main.post(()->{
-        busy=false;
-        status.setText("Teste finalizado. Comando: "+(x.code==0?"retornou":"falhou")+
-          "\nDurante: "+extract(x.out,"DURANTE")+"% (registro no driver)"+
-          "\nDepois: "+extract(x.out,"APOS")+"%"+
-          "\nATENÇÃO: isso não mede tensão física."+
-          (recorded!=0?"\nNÃO FOI POSSÍVEL CONFIRMAR RESTAURAÇÃO. Reinicie sem novos testes.":""));
+        busy=false;lastAction=text;actionLog.setText(text);
+        actionLog.setTextColor(success?GREEN:WARN);
+        actionLog.announceForAccessibility(success?"Margem registrada":"Falha ao aplicar margem");
+        if(success) {
+          getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM);
+          Toast.makeText(this,restoring?"Margem restaurada":"Margem registrada: "+target+"%",Toast.LENGTH_SHORT).show();
+        } else {
+          getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.REJECT);
+          Toast.makeText(this,"Falha ou confirmação indisponível: confira o relatório",Toast.LENGTH_LONG).show();
+        }
+        percentInput.clearFocus();
         refresh();
       });
     });
