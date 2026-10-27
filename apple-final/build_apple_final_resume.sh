@@ -1,193 +1,78 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
-KERNEL_RELEASE='5.4.242-30958140-abG991BXXSJHZA6'
-SOURCE_BRANCH='rebased-11'
-SRC_COMMIT='d26be7c85bf2e84881ffefa46daddcf9e0e0aa1f'
+# Apple Final rebased onto FloppyKernel. This builds a complete matched
+# kernel+modules+DTBO+vendor_boot; it does NOT reuse HZA6 old kernel Image.
+FLOP_REPO="https://github.com/FlopKernel-Series/flop_exynos2100_kernel.git"
+FLOP_BRANCH="floppy-main"
+FLOP_COMMIT="4553117a5014928dff55595f46627e0d77bcf133"
+OLD_KERNEL="5.4.242-30958140-abG991BXXSJHZA6"
 
-rm -rf src out toolchain
-mkdir -p out toolchain src
+echo "== APPLE FINAL ON FLOPPYKERNEL EXYNOS2100 =="
+echo "Pinned Floppy: $FLOP_COMMIT"
+echo "Original Apple release (not reused): $OLD_KERNEL"
+rm -rf src
+git clone --no-checkout --depth=1 --filter=blob:none --branch "$FLOP_BRANCH" "$FLOP_REPO" src
+git -C src checkout --detach "$FLOP_COMMIT"
+test "$(git -C src rev-parse HEAD)" = "$FLOP_COMMIT" || {
+  echo "ERROR: wrong Floppy tree" >&2; exit 20;
+}
+grep -q '^SUBLEVEL = 304$' src/Makefile || {
+  echo "ERROR: expected 5.4.304" >&2; exit 21;
+}
 
-git -C src init
-git -C src remote add origin https://github.com/xfwdrev/android_kernel_samsung_ex2100.git
-git -C src fetch --depth=1 origin "$SRC_COMMIT"
-git -C src checkout --detach FETCH_HEAD
-
-echo "Pinned Samsung EMS 5.4.242 source: $SRC_COMMIT"
-grep -q '^SUBLEVEL[[:space:]]*=[[:space:]]*242$' src/Makefile
-[ -f src/kernel/sched/ems/cpu_select.c ]
-
-python3 apple-final/apply_apple_final.py
-
+# Avoid fetching enormous NetHunter firmware submodule for vanilla build.
+git -C src submodule update --init --depth=1 build/mkbootimg
+python3 apple-final/apply_apple_final_floppy.py
 grep -q 'APPLE FINAL EMS 3x3' src/kernel/sched/ems/cpu_select.c
-grep -q '{  0, 18, 45 }' src/kernel/sched/ems/cpu_select.c
-grep -q '{ 28,  0, 25 }' src/kernel/sched/ems/cpu_select.c
-grep -q '{ 55, 35,  0 }' src/kernel/sched/ems/cpu_select.c
+grep -q 'apple_final_keep_prev(env, best_cpu)' src/kernel/sched/ems/cpu_select.c
+grep -q 'gpu_unlock' src/drivers/gpu/arm/exynos/frontend/gpex_clock_sysfs.c
+grep -q 'gpu_stock_max_clock' src/drivers/gpu/arm/exynos/frontend/gpex_clock.c
 
-# Robustly replace only the Samsung FMP ELF section-name parser function.
-# Run #32 failed because the previous compatibility patch matched an exact
-# whitespace block. This version anchors on the Python function boundary.
-python3 - <<'PY'
-from pathlib import Path
-import re
-
-p = Path('src/scripts/fmp/ELF.py')
-s = p.read_text()
-pat = re.compile(r'(?ms)^\tdef find_section_names\(self\):\n.*?(?=^\tdef |\Z)')
-m = pat.search(s)
-if not m:
-    raise SystemExit('FMP find_section_names() function not found')
-
-new = '''\tdef find_section_names(self):
-\t\t# APPLE FINAL: e_shstrndx is the authoritative ELF section-name table.
-\t\t# Clang 11 may not leave a literal .shstrtab marker in the table itself,
-\t\t# so the historical Samsung string-search heuristic can fail.
-\t\t__idx = self.ehdr.e_shstrndx
-\t\tif __idx <= 0 or __idx >= len(self.shdr):
-\t\t\tlog_e(" ERROR: invalid ELF section-name string-table index ")
-\t\t\traise RuntimeError
-\t\t__sh_strtab = self.shdr[__idx]
-\t\tif __sh_strtab.sh_type != SHT_STRTAB:
-\t\t\tlog_e(" ERROR: ELF section-name table is not SHT_STRTAB ")
-\t\t\traise RuntimeError
-\t\tfor __shdr in self.shdr:
-\t\t\t__shdr.sh_set_name(self.binary_img[__sh_strtab.sh_offset:
-\t\t\t\t\t\t\t\t\t__sh_strtab.sh_offset + __sh_strtab.sh_size ])
-
-'''
-
-p.write_text(s[:m.start()] + new + s[m.end():])
-PY
-
-grep -q 'APPLE FINAL: e_shstrndx' src/scripts/fmp/ELF.py
-python3 -m py_compile src/scripts/fmp/ELF.py
-
-# Exact compiler generation printed by HZA6 stock Image.
-git clone --filter=blob:none --no-checkout --depth=1 --branch android11-release \
-  https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
-  toolchain/clang-repo
-git -C toolchain/clang-repo sparse-checkout init --cone
-git -C toolchain/clang-repo sparse-checkout set clang-r383902
-git -C toolchain/clang-repo checkout
-CLANG="$PWD/toolchain/clang-repo/clang-r383902/bin"
-if [ ! -x "$CLANG/clang" ]; then
-  echo 'clang-r383902 missing from official Android android11-release' >&2
-  exit 32
-fi
-"$CLANG/clang" --version | tee out/clang-version.txt
-
-git clone --depth=1 --branch android11-release \
-  https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
-  toolchain/gcc49
-
-export ARCH=arm64
-export SUBARCH=arm64
-export PLATFORM_VERSION=11
-export ANDROID_MAJOR_VERSION=r
-export PATH="$CLANG:$PWD/toolchain/gcc49/bin:$PATH"
-export LLVM=1
-export LLVM_IAS=1
-export CC=clang
-export LD=ld.lld
-export AR=llvm-ar
-export NM=llvm-nm
-export OBJCOPY=llvm-objcopy
-export OBJDUMP=llvm-objdump
-export STRIP=llvm-strip
-export CROSS_COMPILE=aarch64-linux-android-
-export CLANG_TRIPLE=aarch64-linux-gnu-
+echo "Compiling full Floppy kernel and matched modules, DTB/DTBO, native AnyKernel3"
+export WP="$PWD"
+cd src
+export USE_CCACHE=0
+export DO_TAR=0
+export DO_ZIP=1
+export AK3_BRANCH=floppy-unity
+export DEFAULT_DEFCONFIG=exynos2100-unified_defconfig
 export KBUILD_BUILD_USER=applefinal
-export KBUILD_BUILD_HOST=HZA6
-export KBUILD_BUILD_TIMESTAMP='Wed Jan 21 13:36:52 KST 2026'
+export KBUILD_BUILD_HOST=Floppy-G991B
+# q: Quiet output, vanilla root variant; root remains external to the kernel.
+bash do_build.sh q
+cd ..
 
-cat apple-final/HZA6_exact.config.gz.b64.part* | base64 -d | gzip -dc > out/.config
-CONFIG_ORIGIN=IKCONFIG_exact_HZA6
+ZIP="$(find src/build -maxdepth 1 -type f -name 'Floppy_*Vanilla*.zip' | head -n 1)"
+test -n "$ZIP" && test -s "$ZIP" || {
+  echo "ERROR: missing complete Floppy AnyKernel ZIP" >&2; exit 34;
+}
+IMG=src/out/arch/arm64/boot/Image
+test -s "$IMG"
+test -s src/out/Module.symvers
+sha256sum "$IMG" "$ZIP" | tee APPLE_FINAL_FLOPPY_SHA256SUMS.txt
 
-if grep -q '^CONFIG_LOCALVERSION=' out/.config; then
-  sed -i 's/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-30958140-abG991BXXSJHZA6"/' out/.config
-else
-  echo 'CONFIG_LOCALVERSION="-30958140-abG991BXXSJHZA6"' >> out/.config
-fi
-if grep -q '^CONFIG_LOCALVERSION_AUTO=y' out/.config; then
-  sed -i 's/^CONFIG_LOCALVERSION_AUTO=y/# CONFIG_LOCALVERSION_AUTO is not set/' out/.config
-fi
-
-cp out/.config out/config.before
-make -C src O="$PWD/out" ARCH=arm64 olddefconfig
-
-sed -i 's/^CONFIG_TRIM_UNUSED_KSYMS=y/# CONFIG_TRIM_UNUSED_KSYMS is not set/' out/.config
-sed -i 's|^CONFIG_UNUSED_KSYMS_WHITELIST=.*|CONFIG_UNUSED_KSYMS_WHITELIST=""|' out/.config
-make -C src O="$PWD/out" ARCH=arm64 olddefconfig
-
-cp out/.config out/config.after
-diff -u out/config.before out/config.after > out/config.diff || true
-
-grep -q '^CONFIG_SCHED_EMS=y' out/.config
-grep -q '^CONFIG_SCHED_EMS_TUNE=y' out/.config
-grep -q '^CONFIG_MODVERSIONS=y' out/.config
-grep -q '^CONFIG_MODULES=y' out/.config
-grep -q '^CONFIG_LTO_CLANG=y' out/.config
-grep -q '^CONFIG_CFI_CLANG=y' out/.config
-grep -q '^# CONFIG_TRIM_UNUSED_KSYMS is not set' out/.config
-
-mkdir -p src/arch/arm64/configs
-cp out/.config src/arch/arm64/configs/exynos2100-p3sxxx_defconfig
-cmp -s out/.config src/arch/arm64/configs/exynos2100-p3sxxx_defconfig
-
-if git -C src diff -- kernel/sched/ems/cpu_select.c | grep -Ei 'mali|g3d|pll|1001000|1000000|936000|975000'; then
-  echo 'Unexpected GPU/PLL material in APPLE FINAL diff' >&2
-  exit 41
-fi
-
-make -C src O="$PWD/out" ARCH=arm64 -j"$(nproc)" Image modules
-
-IMG=out/arch/arm64/boot/Image
-[ -s "$IMG" ]
-strings "$IMG" | grep -m1 'Linux version' | tee out/linux-version.txt
-sha256sum "$IMG" | tee out/Image.sha256
-[ -s out/Module.symvers ]
-
-# The compiled release must be exact before KMI evaluation.
-grep -q "Linux version ${KERNEL_RELEASE}" out/linux-version.txt
-
-python3 apple-final/check_kmi.py \
-  apple-final/HZA6_KMI_CRITICAL.txt \
-  out/Module.symvers \
-  out/APPLE_FINAL_KMI_REPORT.txt
-
-grep -q '^gate=PASS$' out/APPLE_FINAL_KMI_REPORT.txt
-
-cp out/Module.symvers out/APPLE_FINAL_Module.symvers
-cp out/.config out/APPLE_FINAL.config
-cp "$IMG" out/APPLE_FINAL.Image
-git -C src diff > out/APPLE_FINAL_source.patch
-
-git -C src show -s --format='%H%n%P%n%cd%n%s' "$SRC_COMMIT" > out/source-commit.txt
-
-cat > out/APPLE_FINAL_BUILD_INFO.txt <<EOF
-name=APPLE FINAL
-source_repo=xfwdrev/android_kernel_samsung_ex2100
-source_branch=$SOURCE_BRANCH
-source_commit=$SRC_COMMIT
-target_release=$KERNEL_RELEASE
-config_origin=$CONFIG_ORIGIN
-ems_3x3=YES
-matrix_A55=0,18,45
-matrix_A78=28,0,25
-matrix_X1=55,35,0
-cache_locality=YES
-cross_cluster_hysteresis=YES
-x1_sprint_policy=YES
-gpu_oc=NO
-gpu_max_target_kHz=858000
-cpu_oc=NO
-mif_oc=NO
-thermal_bypass=NO
-trim_unused_ksyms=NO
-kmi_gate=PASS
+cat > APPLE_FINAL_FLOPPY_README.txt <<EOF
+APPLE FINAL x FLOPPYKERNEL - DEVELOPER BUILD
+Kernel source: $FLOP_REPO
+Base commit: $FLOP_COMMIT
+Linux version: $(make -s -C src kernelversion)
+Apple EMS 3x3 task migration layer: APPLIED
+Original HZA6 Image reused: NO
+GPU driver: native FloppyKernel, GPU unlock and CAL/ACPM
+Artificial 910-1001 MHz OPPs added: NO
+Old direct-PLL GPU OC patch: NOT APPLIED
+Build variant: Vanilla
+Hardware boot / GPU overclock validation: NOT PERFORMED
+Different from old HZA6 5.4.242 ABI: full Image+vendor_boot+DTBO required
+Back up boot, vendor_boot and dtbo before hardware testing.
 EOF
 
-tar -C out -czf APPLE_FINAL_BUILD.tar.gz \
-  APPLE_FINAL.Image APPLE_FINAL_Module.symvers APPLE_FINAL.config \
-  APPLE_FINAL_BUILD_INFO.txt APPLE_FINAL_source.patch APPLE_FINAL_KMI_REPORT.txt \
-  Image.sha256 linux-version.txt clang-version.txt config.diff source-commit.txt
+mkdir -p apple_floppy_artifact
+cp "$ZIP" apple_floppy_artifact/
+cp "$IMG" apple_floppy_artifact/Image
+cp src/out/Module.symvers apple_floppy_artifact/
+cp APPLE_FINAL_FLOPPY_README.txt APPLE_FINAL_FLOPPY_SHA256SUMS.txt apple_floppy_artifact/
+git -C src diff -- kernel/sched/ems/cpu_select.c > apple_floppy_artifact/APPLE_FINAL_EMS_PORT.patch
+tar -czf APPLE_FINAL_BUILD.tar.gz -C apple_floppy_artifact .
+echo "Floppy-based Apple Final full kernel build completed."
