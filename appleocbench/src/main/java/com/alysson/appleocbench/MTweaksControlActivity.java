@@ -21,6 +21,11 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import org.json.JSONObject;
+import org.json.JSONArray;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -141,7 +146,11 @@ public final class MTweaksControlActivity extends Activity {
         row.addView(oldLab,rp);
         refresh.setOnClickListener(v->scan());
         oldLab.setOnClickListener(v->startActivity(new Intent(this,MainActivity.class)));
-        add(hero,row,0);add(body,hero,17);
+        add(hero,row,9);
+        Button mtImport=button("INSTALAR CONTROLES NO MTWEAKS ORIGINAL",true);
+        add(hero,mtImport,0);
+        mtImport.setOnClickListener(v->confirmMtweaksImport());
+        add(body,hero,17);
 
         count=text("CARREGANDO PARÂMETROS...",13,BLUE,true);add(body,count,10);
         HorizontalScrollView strip=new HorizontalScrollView(this);strip.setHorizontalScrollBarEnabled(false);
@@ -205,14 +214,14 @@ public final class MTweaksControlActivity extends Activity {
         }
         count.setText("PARÂMETROS: "+usable+" DISPONÍVEIS DE "+DEFINITIONS.length+" · "+tab);
     }
-    private static String quote(String input){
+    static String quote(String input){
         return "'"+input.replace("'","'\\''")+"'";
     }
-    private static final class Cmd {
+    static final class Cmd {
         final int rc;final String out;
         Cmd(int rc,String out){this.rc=rc;this.out=out;}
     }
-    private static Cmd root(String command){
+    static Cmd root(String command){
         Process proc=null;
         try{
             proc=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
@@ -221,7 +230,7 @@ public final class MTweaksControlActivity extends Activity {
             }
             StringBuilder sb=new StringBuilder();String line;
             BufferedReader reader=new BufferedReader(new InputStreamReader(proc.getInputStream()));
-            while((line=reader.readLine())!=null&&sb.length()<32000)sb.append(line).append("\n");
+            while((line=reader.readLine())!=null&&sb.length()<262144)sb.append(line).append("\n");
             return new Cmd(proc.exitValue(),sb.toString().trim());
         }catch(Exception e){return new Cmd(-1,e.toString());}
         finally{if(proc!=null)proc.destroy();}
@@ -340,6 +349,111 @@ public final class MTweaksControlActivity extends Activity {
             .setPositiveButton(restore?"RESTAURAR":"APLICAR",(d,w)->apply(def,value))
             .show();
     }
+
+    private void confirmMtweaksImport(){
+        new AlertDialog.Builder(this)
+          .setTitle("Instalar no MTweaks V2.17.0")
+          .setMessage("Importa 24 controles Apple Final para o banco privado do MTweaks original com root."+
+              "\n\nMantém os controles preexistentes e cria cópia em controls.json.applefinal.bak."+
+              "\n\nFeche o MTweaks antes de instalar. Caso ele esteja aberto, reinicie o app.")
+          .setNegativeButton("CANCELAR",null)
+          .setPositiveButton("IMPORTAR",(d,w)->importMtweaks())
+          .show();
+    }
+    private void importMtweaks(){
+        if(busy)return;
+        busy=true;
+        log.setText("Lendo banco de controles do MTweaks original...");
+        worker.execute(()->{
+            String target="/data/user/0/com.moro.mtweaks/files/controls.json";
+            String dir="/data/user/0/com.moro.mtweaks/files";
+            String readCmd="if [ -d "+quote(dir)+" ]; then "+
+                "if [ -f "+quote(target)+" ]; then cat "+quote(target)+"; "+
+                "else printf '%s' '{\"version\":1,\"database\":[]}'; fi; "+
+                "else echo 'MTWEAKS_NOT_INSTALLED'; exit 13; fi";
+            Cmd existing=root(readCmd);
+            String status;boolean success=false;
+            if(existing.rc!=0||existing.out.contains("MTWEAKS_NOT_INSTALLED")){
+                status="MTweaks não localizado no armazenamento privado. Instale o MTweaks original e abra uma vez.";
+            } else {
+                try{
+                    JSONObject data=new JSONObject(existing.out);
+                    if(data.optInt("version",0)!=1)
+                      throw new Exception("Versão de controles não reconhecida: "+data.optInt("version"));
+                    JSONArray entries=data.optJSONArray("database");
+                    if(entries==null)entries=new JSONArray();
+                    int additions=0,skipped=0;
+                    java.util.HashSet<String> used=new java.util.HashSet<>();
+                    for(int i=0;i<entries.length();i++){
+                        JSONObject item=entries.optJSONObject(i);
+                        if(item!=null) used.add(item.optString("title",""));
+                    }
+                    for(int i=0;i<DEFINITIONS.length;i++){
+                        String[] def=DEFINITIONS[i];String title="Apple Final • "+def[1];
+                        if(used.contains(title)){skipped++;continue;}
+                        String node=def[2];
+                        JSONObject item=new JSONObject();
+                        boolean toggle=def[3].equals("switch");
+                        item.put("id",toggle?"switch":"generic");
+                        item.put("title",title);
+                        item.put("description",def[4]);
+                        item.put("uniqueId",80001+i);
+                        item.put("onboot",false);
+                        item.put("arguments","");
+                        String valueReader="#!/system/bin/sh\ncat "+node+
+                            " 2>/dev/null | head -n 1 || echo 0\n";
+                        if(toggle)item.put("enable",valueReader);
+                        else item.put("value",valueReader);
+                        String script="#!/system/bin/sh\np="+node+"\nv=\"$1\"\n"+
+                            "[ -w \"$p\" ] || { echo 'Nó indisponível' >&2; exit 12; }\n"+
+                            "case \"$v\" in *[!a-zA-Z0-9_.+-]*|'') exit 15;; esac\n"+
+                            "printf '%s\\n' \"$v\" > \"$p\" || exit 18\n"+
+                            "cat \"$p\" 2>/dev/null\n";
+                        item.put("apply",script);
+                        entries.put(item);additions++;
+                    }
+                    data.put("database",entries);
+                    File tmp=new File(getFilesDir(),"mtweaks_applefinal_merged.json");
+                    try(OutputStreamWriter writer=new OutputStreamWriter(new FileOutputStream(tmp),"UTF-8")){
+                        writer.write(data.toString());writer.flush();
+                    }
+                    String cmd="target="+quote(target)+"; "+
+                        "source="+quote(tmp.getAbsolutePath())+"; "+
+                        "if [ ! -d "+quote(dir)+" ]; then exit 11; fi; "+
+                        "if [ -f \"$target\" ]; then "+
+                        "cp -p \"$target\" \"$target.applefinal.bak\" || exit 12; "+
+                        "owner=$(stat -c '%u:%g' \"$target\" 2>/dev/null); "+
+                        "else owner=$(stat -c '%u:%g' "+quote(dir)+"); fi; "+
+                        "cat \"$source\" > \"$target\" || exit 18; "+
+                        "[ -z \"$owner\" ] || chown \"$owner\" \"$target\"; "+
+                        "chmod 600 \"$target\"; "+
+                        "echo 'WRITE_DONE'; wc -c < \"$target\"";
+                    Cmd res=root(cmd);
+                    if(res.rc==0&&res.out.contains("WRITE_DONE")){
+                        Cmd verify=root("cat "+quote(target));
+                        JSONObject roundtrip=new JSONObject(verify.out);
+                        if(roundtrip.getJSONArray("database").length()==entries.length()){
+                            success=true;
+                            status="MTweaks atualizado: "+additions+" controles novos, "+skipped+
+                                " já existentes. Total no banco: "+entries.length()+
+                                "\nBackup: "+target+".applefinal.bak"+
+                                "\nFeche e abra novamente o MTweaks para atualizar a lista.";
+                        } else status="Escrita não confirmou o total esperado. Restaure o backup.";
+                    }else status="Erro ao gravar banco original (root "+res.rc+"): "+res.out;
+                }catch(Exception ex){status="Importação interrompida. "+ex.toString();}
+            }
+            final boolean ok=success;final String info=status;
+            ui.post(()->{
+                busy=false;log.setText((ok?"IMPORTAÇÃO CONFIRMADA\n":"IMPORTAÇÃO NÃO CONFIRMADA\n")+info);
+                log.setTextColor(ok?GOOD:BAD);
+                getWindow().getDecorView().performHapticFeedback(
+                    ok?HapticFeedbackConstants.CONFIRM:HapticFeedbackConstants.REJECT);
+                Toast.makeText(this,ok?"Controles adicionados ao MTweaks":"Veja o diagnóstico da importação",Toast.LENGTH_LONG).show();
+                render();
+            });
+        });
+    }
+
     private void apply(String[] def,String value){
         if(busy)return;
         busy=true;
