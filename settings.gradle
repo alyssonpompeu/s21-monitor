@@ -30,3 +30,5 @@ include ':s21lab'
 include ':g533bridge'
 include ':g533phy'
 include ':g533connect'
+
+include ':appleocbench'
