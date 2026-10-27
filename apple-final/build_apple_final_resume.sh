@@ -18,6 +18,7 @@ grep -q '^SUBLEVEL[[:space:]]*=[[:space:]]*242$' src/Makefile
 [ -f src/kernel/sched/ems/cpu_select.c ]
 
 python3 apple-final/apply_apple_final.py
+python3 gpuoc/apply_gpuoc.py
 
 grep -q 'APPLE FINAL EMS 3x3' src/kernel/sched/ems/cpu_select.c
 grep -q '{  0, 18, 45 }' src/kernel/sched/ems/cpu_select.c
@@ -178,8 +179,10 @@ matrix_X1=55,35,0
 cache_locality=YES
 cross_cluster_hysteresis=YES
 x1_sprint_policy=YES
-gpu_oc=NO
-gpu_max_target_kHz=858000
+gpu_oc=MANUAL_ONLY_EXPERIMENTAL
+gpu_max_target_kHz=1001000
+gpu_oc_validated=NO
+gpu_oc_boot_time=DISABLED
 cpu_oc=NO
 mif_oc=NO
 thermal_bypass=NO
@@ -191,3 +194,26 @@ tar -C out -czf APPLE_FINAL_BUILD.tar.gz \
   APPLE_FINAL.Image APPLE_FINAL_Module.symvers APPLE_FINAL.config \
   APPLE_FINAL_BUILD_INFO.txt APPLE_FINAL_source.patch APPLE_FINAL_KMI_REPORT.txt \
   Image.sha256 linux-version.txt clang-version.txt config.diff source-commit.txt
+
+# GPUOC unified outputs: module and Image must be from EXACTLY this build.
+mkdir -p out/gpuoc
+cp out/APPLE_FINAL.Image out/gpuoc/Image
+cp out/APPLE_FINAL_Module.symvers out/gpuoc/Module.symvers
+cp out/APPLE_FINAL.config out/gpuoc/APPLE_FINAL.config
+cp out/APPLE_FINAL_KMI_REPORT.txt out/gpuoc/KMI_REPORT.txt
+cp out/drivers/gpu/arm/bv_r38p0/mali_kbase.ko out/gpuoc/mali_kbase.ko
+cp out/drivers/soc/samsung/cal-if/cmupmucal.ko out/gpuoc/cmupmucal.ko
+cp out/APPLE_FINAL_source.patch out/gpuoc/INTEGRATED_SOURCE.patch
+cp out/APPLE_FINAL_BUILD_INFO.txt out/gpuoc/BUILD_INFO.txt
+cat > out/gpuoc/DO_NOT_FLASH.txt <<'EOF'
+APPLE FINAL GPUOC EXPERIMENTAL BUILD
+This archive is a developer artifact, not a TWRP installer.
+Boot-time GPU OC is disabled.
+GPU manual probes in sysfs: 910000, 936000, 975000, 1001000 kHz.
+Driver restores stock clock after 1 second.
+No frequency above 858000 has been device-validated.
+Do NOT flash before matching HZA6 firmware, module ABI, Magisk ramdisk and vendor_boot repacking.
+Keep known-good boot and vendor_boot backups on an external storage medium.
+EOF
+(cd out/gpuoc && sha256sum Image Module.symvers mali_kbase.ko cmupmucal.ko > SHA256SUMS)
+tar -C out/gpuoc -czf APPLE_FINAL_GPUOC_BUILD.tar.gz .
