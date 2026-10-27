@@ -101,11 +101,11 @@ public final class VoltageLabActivity extends Activity {
     item(edit,singleControls,4);
 
     curveControls=new LinearLayout(this);curveControls.setOrientation(LinearLayout.VERTICAL);
-    item(curveControls,text("Expoente da curva (1,0 a 3,0)",12,SUB,false),4);
+    item(curveControls,text("Curvatura exponencial (1,0 a 3,0)",12,SUB,false),4);
     exponentSeek=new SeekBar(this);exponentSeek.setMax(20);exponentSeek.setProgress(10);item(curveControls,exponentSeek,2);
-    exptxt=text("Expoente 2,0 • variação cresce nos clocks altos",12,SUB,false);item(curveControls,exptxt,4);
+    exptxt=text("Curvatura 2,0 • variação cresce nos clocks altos",12,SUB,false);item(curveControls,exptxt,4);
     exponentSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-      @Override public void onProgressChanged(SeekBar s,int p,boolean user){expo10=10+p;exptxt.setText(String.format(Locale.US,"Expoente %.1f • variação concentrada nos clocks altos",expo10/10f));curveView.invalidate();updateSummary();}
+      @Override public void onProgressChanged(SeekBar s,int p,boolean user){expo10=10+p;exptxt.setText(String.format(Locale.US,"Curvatura %.1f • variação concentrada nos clocks altos",expo10/10f));curveView.invalidate();updateSummary();}
       @Override public void onStartTrackingTouch(SeekBar s){}
       @Override public void onStopTrackingTouch(SeekBar s){}
     });
@@ -238,8 +238,11 @@ public final class VoltageLabActivity extends Activity {
     if(mode==0)return edits[i].containsKey(freq)?edits[i].get(freq):0;
     if(clocks[i].isEmpty())return 0;
     int max=clocks[i].get(clocks[i].size()-1);
-    double ratio=(double)freq/Math.max(1,max);
-    return (int)Math.round(curveEndMv*Math.pow(ratio,expo10/10.0));
+    int min=clocks[i].get(0);
+    double x=(double)(freq-min)/Math.max(1,max-min);
+    double k=expo10/10.0;
+    double y=Math.expm1(k*x)/Math.expm1(k);
+    return (int)Math.round(curveEndMv*y);
   }
   private void updateSummary(){
     if(summary==null)return;
@@ -247,7 +250,7 @@ public final class VoltageLabActivity extends Activity {
     int n=clocks[idx].size(); if(n==0){summary.setText("Sem dados suficientes para desenhar uma curva real.");return;}
     int min=clocks[idx].get(0),max=clocks[idx].get(n-1);
     summary.setText(String.format(Locale.US,"%d pontos • %.0f–%.0f MHz\n",n,min/1000.0,max/1000.0)+
-      (mode==0?"Offsets manuais por frequência":"Modelo exponencial: potência "+String.format(Locale.US,"%.1f",expo10/10.0))+
+      (mode==0?"Offsets manuais por frequência":"Modelo exponencial: curvatura "+String.format(Locale.US,"%.1f",expo10/10.0))+
       " • alterações apenas na prévia");
     int f=clocks[idx].get(Math.min(selectedIdx,n-1));
     int o=mode==0?offset(idx,f):curveEndMv;
