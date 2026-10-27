@@ -125,7 +125,8 @@ public final class MainActivity extends Activity {
       String out="Root: "+(id.out.contains("uid=0")?"OK":"não autorizado")+"\n"+
         "Aparelho: "+model+"\nKernel: "+k+"\nMali GPUOC: "+(MALI.equals(m)?"OK":"não visível no Android")+
         "\nCMUPMUCAL: "+(CMU.equals(c)?"OK":"não visível no Android")+
-        "\nvendor_boot: "+(vendorVerified?"hashes de módulos confirmados":"não inspecionado")+\n        "\nSysfs: "+(gpu.isEmpty()?"não encontrado":gpu)+
+        "\nvendor_boot: "+(vendorVerified?"hashes de módulos confirmados":"não inspecionado")+
+        "\nSysfs: "+(gpu.isEmpty()?"não encontrado":gpu)+
         "\nClock atual: "+cur+"\nTemperatura GPU: "+cel(t)+
         "\nPulso OC: "+(ok?"LIBERADO (EXPERIMENTAL)":"BLOQUEADO");
       ui.post(()->{diagnostic.setText(out);enable(true);});
