@@ -1,9 +1,9 @@
-name: Build Apple Final GPUOC safety hotfix
+name: Build Apple Final GPUOC V2 ACPM firmware-gated
 on:
   workflow_dispatch:
   push:
     branches:
-      - apple-final-gpuoc-safe-guard-20261027
+      - apple-final-gpuoc-acpm-v2-20261027
     paths:
       - 'gpuoc/**'
       - 'apple-final/**'
