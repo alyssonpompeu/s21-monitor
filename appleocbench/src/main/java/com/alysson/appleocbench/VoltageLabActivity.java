@@ -35,11 +35,11 @@ public final class VoltageLabActivity extends Activity {
   private Button resetButton;
   private TextView actionLog;
   private String lastAction="Nenhum comando executado";
-  private TextView metrics, status, summary, value, exptxt, editTitle;
+  private TextView metrics, status, summary, value, exptxt, editTitle, frequencyInfo;
   private SeekBar mvSeek, exponentSeek;
   private Spinner domainSpinner, freqSpinner;
   private RadioGroup modes;
-  private Curve curveView;
+
   private Button applyButton;
   private LinearLayout curveControls, singleControls;
   private int dp(float n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
@@ -100,61 +100,17 @@ public final class VoltageLabActivity extends Activity {
     metrics=text("Verificando tabela ASV / DVFS...",13,WHITE,false);item(top,metrics,3);
     item(body,top,12);
 
-    LinearLayout chart=panel();
-    item(chart,text("CURVA DE FREQUÊNCIA × TENSÃO",12,CYAN,true),8);
-    curveView=new Curve(this);item(chart,curveView,8);
-    summary=text("Escolha um domínio para visualizar.",13,SUB,false);item(chart,summary,2);
-    item(body,chart,12);
-
-    LinearLayout edit=panel();
-    item(edit,text("EDITOR DE PERFIL",12,CYAN,true),8);
-    modes=new RadioGroup(this);modes.setOrientation(RadioGroup.HORIZONTAL);
-    RadioButton per=new RadioButton(this);per.setText("Por clock");per.setTextColor(WHITE);per.setId(777);
-    RadioButton exp=new RadioButton(this);exp.setText("Exponencial");exp.setTextColor(WHITE);exp.setId(778);
-    modes.addView(per);modes.addView(exp);modes.check(777);
-    item(edit,modes,12);
-    modes.setOnCheckedChangeListener((g,id)->{mode=id==777?0:1;updateEditControls();});
-    singleControls=new LinearLayout(this);singleControls.setOrientation(LinearLayout.VERTICAL);
-    editTitle=text("Ponto de operação",12,SUB,false);item(singleControls,editTitle,6);
-    freqSpinner=new Spinner(this);item(singleControls,freqSpinner,8);
-    freqSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
-      @Override public void onItemSelected(android.widget.AdapterView<?> p,View v,int idx,long id){selectedIdx=idx;updateEditControls();}
-      @Override public void onNothingSelected(android.widget.AdapterView<?> p){}
-    });
-    item(edit,singleControls,4);
-
-    curveControls=new LinearLayout(this);curveControls.setOrientation(LinearLayout.VERTICAL);
-    item(curveControls,text("Curvatura exponencial (1,0 a 3,0)",12,SUB,false),4);
-    exponentSeek=new SeekBar(this);exponentSeek.setMax(20);exponentSeek.setProgress(10);item(curveControls,exponentSeek,2);
-    exptxt=text("Curvatura 2,0 • variação cresce nos clocks altos",12,SUB,false);item(curveControls,exptxt,4);
-    exponentSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-      @Override public void onProgressChanged(SeekBar s,int p,boolean user){expo10=10+p;exptxt.setText(String.format(Locale.US,"Curvatura %.1f • variação concentrada nos clocks altos",expo10/10f));curveView.invalidate();updateSummary();}
-      @Override public void onStartTrackingTouch(SeekBar s){}
-      @Override public void onStopTrackingTouch(SeekBar s){}
-    });
-    item(edit,curveControls,4);
-    value=text("Offset -15 mV • apenas simulação",15,GREEN,true);item(edit,value,6);
-    mvSeek=new SeekBar(this);mvSeek.setMax(20);mvSeek.setProgress(7);item(edit,mvSeek,12);
-    mvSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-      @Override public void onProgressChanged(SeekBar sb,int progress,boolean user){
-        int mv=(progress-10)*5;
-        if(mode==0 && !clocks[domain].isEmpty()){
-          int idx=Math.min(selectedIdx,clocks[domain].size()-1);
-          edits[domain].put(clocks[domain].get(idx),mv);
-        }else if(mode==1){curveEndMv=mv;}
-        updateSummary();curveView.invalidate();
-      }
-      @Override public void onStartTrackingTouch(SeekBar sb){}
-      @Override public void onStopTrackingTouch(SeekBar sb){}
-    });
-    item(edit,text("Por clock e curva exponencial são modelos de edição. A interface Samsung disponível não permite escrever valores individuais por OPP. Os offsets acima NÃO são aplicados ao chip.",12,WARN,false),2);
-    item(body,edit,12);
+    LinearLayout table=panel();
+    item(table,text("FREQUÊNCIAS REAIS IDENTIFICADAS",12,CYAN,true),9);
+    frequencyInfo=text("Carregando tabela ASV / frequências...",13,WHITE,false);
+    item(table,frequencyInfo,4);
+    item(body,table,12);
 
     LinearLayout real=panel();
     item(real,text("TENSÃO REAL • MARGEM ACPM",12,CYAN,true),7);
     status=text("Lendo tensão/offset via kernel...",13,WHITE,false);item(real,status,9);
     item(real,text("Controle real de margem por domínio. Não é uma tensão em mV nem permite aplicar a curva separadamente por frequência.",12,SUB,false),8);
-    item(real,text("Ajuste percentual (−100 a +100)",13,SUB,false),4);
+    item(real,text("Margem real por domínio (%) • ajuste no ACPM",13,SUB,false),4);
     percentInput=new EditText(this);percentInput.setSingleLine(true);
     percentInput.setTextColor(WHITE);percentInput.setTextSize(20);
     percentInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);
@@ -169,9 +125,8 @@ public final class VoltageLabActivity extends Activity {
     Button reload=button("Atualizar leituras");item(real,reload,0);
     reload.setOnClickListener(v->refresh());
     item(body,real,12);
-    item(body,text("Modo manual: escrita através do controle real da Samsung. O aplicativo informa solicitação, código de retorno e registro lido. Não é uma leitura elétrica independente. Alterações não são aplicadas no boot.",12,SUB,false),0);
+    item(body,text("Aplicar envia a margem por domínio ao driver Samsung. Restaurar volta ao valor identificado quando o Lab iniciou. Não altera tensões individualmente por frequência. O valor é solicitado ao ACPM, não medido fisicamente.",12,SUB,false),0);
     setContentView(sc);
-    updateEditControls();
   }
   private static class Run {final int code;final String out;Run(int x,String s){code=x;out=s;}}
   private static Run run(String script,int limitSec){
@@ -236,64 +191,34 @@ public final class VoltageLabActivity extends Activity {
     });
   }
   private void updateUI(){
-    if(metrics==null)return;
+    if(metrics==null || frequencyInfo==null)return;
     ArrayList<Integer> list=clocks[domain];
-    metrics.setText("Frequências detectadas: "+list.size()+
-        (domain==0?"\nTabela ASV GPU: "+baseUv[0].size()+" pontos de tensão nominal":"\nTensão por clock de CPU: não exposta nesta interface")+
-        "\nMargem registrada: "+(marginFound[domain]?domainMargins[domain]+"%":"não disponível"));
-    String[] labels=new String[Math.max(list.size(),1)];
-    if(list.isEmpty())labels[0]="Nenhuma frequência disponível";
-    for(int i=0;i<list.size();i++){
-      int f=list.get(i);Integer uv=baseUv[domain].get(f);
-      labels[i]=String.format(Locale.US,"%.0f MHz%s",f/1000f,uv==null?"":String.format(Locale.US," • %.1f mV",uv/1000f));
+    metrics.setText("Frequências: "+list.size()+
+        (domain==0?" | ASV nominal: "+baseUv[0].size()+" pontos":" | CPU freq: cpufreq")+
+        "\nMargem atual do domínio: "+
+        (marginFound[domain]?domainMargins[domain]+"%":"sem interface"));
+    StringBuilder b=new StringBuilder();
+    if(list.isEmpty()){
+      b.append("O driver não expôs a lista. Verifique a tabela ASV ou cpufreq.");
+    } else{
+      // Frequencies shown below were read from the kernel, never fabricated.
+      int count=0;
+      for(int i=list.size()-1;i>=0;i--){
+        int f=list.get(i);Integer uv=baseUv[domain].get(f);
+        b.append(String.format(Locale.US,"%.0f MHz",f/1000f));
+        if(uv!=null)b.append(String.format(Locale.US,"  |  %.1f mV nominal",uv/1000f));
+        b.append("\n"); if(++count>=28){b.append("...");break;}
+      }
     }
-    freqSpinner.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));
-    selectedIdx=Math.min(selectedIdx,labels.length-1);freqSpinner.setSelection(selectedIdx);
-    updateEditControls();updateSummary();
+    frequencyInfo.setText(b.toString().trim());
     String path="/sys/kernel/percent_margin/"+MARGINS[domain];
-    status.setText((marginFound[domain]?"Margem registrada pelo kernel: "+domainMargins[domain]+"%":"Controle ACPM não encontrado")+
-      "\n"+path+"\n"+(trustedKernel?"GPUOC V2 detectado":"Controle de tensão independente da versão GPUOC"));
+    status.setText((marginFound[domain]?"Margem registrada: "+domainMargins[domain]+"%":"Controle ACPM indisponível")+
+      "\n"+path+"\n"+(trustedKernel?"Driver GPUOC V2 detectado":"Sem identificação GPUOC V2; margem Samsung é independente"));
     if(percentInput!=null&&!percentInput.hasFocus()&&marginFound[domain])
       percentInput.setText(Integer.toString(domainMargins[domain]));
     applyButton.setEnabled(marginFound[domain]&&!busy);
     if(resetButton!=null)resetButton.setEnabled(marginFound[domain]&&initialSet[domain]&&!busy);
     if(actionLog!=null)actionLog.setText(lastAction);
-    curveView.invalidate();
-  }
-  private void updateEditControls(){
-    if(curveControls==null)return;
-    singleControls.setVisibility(mode==0?View.VISIBLE:View.GONE);
-    curveControls.setVisibility(mode==1?View.VISIBLE:View.GONE);
-    int current=curveEndMv;
-    if(mode==0&&!clocks[domain].isEmpty()){
-      int f=clocks[domain].get(Math.min(selectedIdx,clocks[domain].size()-1));
-      current=edits[domain].containsKey(f)?edits[domain].get(f):0;
-    }
-    int progress=(current/5)+10;
-    if(mvSeek!=null)mvSeek.setProgress(Math.max(0,Math.min(20,progress)));
-    updateSummary();
-  }
-  private int offset(int i,int freq){
-    if(mode==0)return edits[i].containsKey(freq)?edits[i].get(freq):0;
-    if(clocks[i].isEmpty())return 0;
-    int max=clocks[i].get(clocks[i].size()-1);
-    int min=clocks[i].get(0);
-    double x=(double)(freq-min)/Math.max(1,max-min);
-    double k=expo10/10.0;
-    double y=Math.expm1(k*x)/Math.expm1(k);
-    return (int)Math.round(curveEndMv*y);
-  }
-  private void updateSummary(){
-    if(summary==null)return;
-    int idx=domain;
-    int n=clocks[idx].size(); if(n==0){summary.setText("Sem dados suficientes para desenhar uma curva real.");return;}
-    int min=clocks[idx].get(0),max=clocks[idx].get(n-1);
-    summary.setText(String.format(Locale.US,"%d pontos • %.0f–%.0f MHz\n",n,min/1000.0,max/1000.0)+
-      (mode==0?"Offsets manuais por frequência":"Modelo exponencial: curvatura "+String.format(Locale.US,"%.1f",expo10/10.0))+
-      " • alterações apenas na prévia");
-    int f=clocks[idx].get(Math.min(selectedIdx,n-1));
-    int o=mode==0?offset(idx,f):curveEndMv;
-    if(value!=null)value.setText((o>0?"+":"")+o+" mV • SIMULAÇÃO, NÃO APLICADO");
   }
   private void confirmMargin(){
     if(busy)return;
@@ -334,12 +259,12 @@ public final class VoltageLabActivity extends Activity {
       int after=parseInt(extract(ret.out,"AFTER"),999);
       int writeRc=parseInt(extract(ret.out,"WRITE_RC"),999);
       boolean success=ret.code==0 && writeRc==0 && after==target;
-      String text=(success?"✓ APLICADO":"✕ NÃO CONFIRMADO")+" • "+domainTitle+
+      String text=(success?"✓ REGISTRO ATUALIZADO":"✕ NÃO CONFIRMADO")+" • "+domainTitle+
         "\nSolicitado: "+target+"%"+
         " | retorno: "+ret.code+" / write: "+writeRc+
         "\nRegistro antes: "+extract(ret.out,"BEFORE")+"%"+
         " → depois: "+extract(ret.out,"AFTER")+"%"+
-        "\nAplicação via ACPM; tensão física não medida."+
+        "\nReadback do driver, não é confirmação elétrica de tensão."+
         (!success?"\nDiagnóstico: "+ret.out:"");
       main.post(()->{
         busy=false;lastAction=text;actionLog.setText(text);
@@ -358,45 +283,4 @@ public final class VoltageLabActivity extends Activity {
     });
   }
   private static String extract(String s,String key){for(String l:s.split("\n"))if(l.startsWith(key+"="))return l.substring(key.length()+1);return "não confirmado";}
-  private final class Curve extends View {
-    final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-    Curve(Activity c){super(c);setMinimumHeight(dp(190));}
-    @Override protected void onMeasure(int w,int h){
-      super.onMeasure(w,View.MeasureSpec.makeMeasureSpec(dp(190),View.MeasureSpec.EXACTLY));
-    }
-    @Override protected void onDraw(Canvas c){
-      super.onDraw(c);float w=getWidth(),h=getHeight(),left=dp(27),right=w-dp(12),top=dp(16),bottom=h-dp(25);
-      p.setStrokeWidth(dp(1));p.setColor(0xff314155);
-      for(int i=0;i<5;i++){float y=top+(bottom-top)*i/4f;c.drawLine(left,y,right,y,p);}
-      p.setColor(SUB);p.setTextSize(dp(10));p.setStyle(Paint.Style.FILL);
-      c.drawText("mV",dp(4),top+dp(6),p);
-      c.drawText("MHz",right-dp(21),h-dp(7),p);
-      ArrayList<Integer> list=clocks[domain];
-      if(list.size()<2)return;
-      float[] xs=new float[list.size()],ys=new float[list.size()];
-      double min=Double.MAX_VALUE,max=-Double.MAX_VALUE;
-      double[] vals=new double[list.size()];
-      boolean uv=baseUv[domain].size()==list.size();
-      for(int i=0;i<list.size();i++){
-        int f=list.get(i);double base=uv?baseUv[domain].get(f)/1000.0:0;
-        vals[i]=uv?base+offset(domain,f):offset(domain,f);
-        min=Math.min(min,vals[i]);max=Math.max(max,vals[i]);
-      }
-      if(max-min<20){max+=10;min-=10;}
-      int lo=list.get(0),hi=list.get(list.size()-1);
-      for(int i=0;i<list.size();i++){
-        xs[i]=left+(list.get(i)-lo)/(float)(hi-lo)*(right-left);
-        ys[i]=bottom-(float)((vals[i]-min)/(max-min))*(bottom-top);
-      }
-      Path path=new Path();path.moveTo(xs[0],ys[0]);
-      for(int i=1;i<list.size();i++)path.lineTo(xs[i],ys[i]);
-      p.setColor(CYAN);p.setStrokeWidth(dp(2.5f));p.setStyle(Paint.Style.STROKE);c.drawPath(path,p);
-      p.setStyle(Paint.Style.FILL);
-      int jump=Math.max(1,list.size()/14);
-      for(int i=0;i<list.size();i+=jump)c.drawCircle(xs[i],ys[i],dp(2.6f),p);
-      p.setColor(SUB);p.setTextSize(dp(10));
-      c.drawText(String.format(Locale.US,"%.0f",min),dp(2),bottom,p);
-      c.drawText(String.format(Locale.US,"%.0f",max),dp(2),top+dp(12),p);
-    }
-  }
 }
