@@ -40,7 +40,7 @@ public final class MainActivity extends Activity {
     LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(bottom);outer.addView(v,p);
   }
   Button button(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setBackground(shape(0xff254768));return b;}
-  void enable(boolean enabled){running=!enabled;for(Button b:all)b.setEnabled(enabled);}
+  void enable(boolean enabled){running=!enabled;for(int i=0;i<all.length;i++)all[i].setEnabled(enabled && !(i>=2 && i<=5));}
   @Override public void onCreate(Bundle b){super.onCreate(b);build();scan();}
   @Override public void onDestroy(){queue.shutdownNow();super.onDestroy();}
   void build(){
@@ -54,8 +54,8 @@ public final class MainActivity extends Activity {
     add(z,text("Shader em GPU, resolução 512×512. Resultado em desenhos/segundo; não é FPS de jogo.",12,0xffb4c7d7),11);
     Button b0=button("Referência original • 1,6 s");add(z,b0,9);b0.setOnClickListener(v->test(0,false));
     Button b1=button("Benchmark original • 5 s");add(z,b1,0);b1.setOnClickListener(v->test(0,true));add(body,z,13);
-    LinearLayout o=panel();add(o,text("GPU OC • PULSO EXPERIMENTAL DE 1 S",13,0xffffc680),6);
-    add(o,text("Cada teste liga a carga 3D, solicita o clock por 1 segundo, captura o readback e volta ao DVFS original. Exige root e módulos exatos.",12,0xffb4c7d7),10);
+    LinearLayout o=panel();add(o,text("GPU OC DESATIVADO • REINÍCIOS DETECTADOS",13,0xffffc680),6);
+    add(o,text("Os quatro testes acima de 858 MHz causaram congelamento e reinício. O acesso a estes botões está desabilitado até corrigirmos a transição PLL/ACPM.",12,0xffb4c7d7),10);
     Button[] btn=new Button[FREQ.length];
     for(int i=0;i<FREQ.length;i++){final int freq=FREQ[i];
       btn[i]=button(String.format(Locale.US,"%d MHz  •  +%.2f%%",freq/1000,(freq*100.0/STOCK)-100));
@@ -67,11 +67,12 @@ public final class MainActivity extends Activity {
     Button refresh=button("Verificar novamente");add(r,refresh,8);refresh.setOnClickListener(v->scan());
     Button verify=button("Verificar módulos no vendor_boot (somente leitura)");add(r,verify,8);
     verify.setOnClickListener(v->verifyVendor());
+    Button crash=button("COLETAR REGISTROS DO REINÍCIO (somente leitura)");add(r,crash,8);crash.setOnClickListener(v->collectCrash());
     Button share=button("Compartilhar resultados");add(r,share,0);
     share.setOnClickListener(v->{Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_TEXT,report);startActivity(Intent.createChooser(i,"Relatório GPU"));});
     add(body,r,13);
     add(body,text("RISCO: clock acima de 858 MHz sem tensão validada pode congelar ou reiniciar o aparelho. Leitura de frequência reportada pelo driver não comprova estabilidade física. Teste curto não demonstra desempenho sustentado.",12,0xffadc0d0),0);
-    all=new Button[]{b0,b1,btn[0],btn[1],btn[2],btn[3],refresh,verify,share};
+    all=new Button[]{b0,b1,btn[0],btn[1],btn[2],btn[3],refresh,verify,crash,share};
     setContentView(scroll);
   }
   static class Cmd{int code;String out;Cmd(int c,String t){code=c;out=t;}}
@@ -174,12 +175,38 @@ public final class MainActivity extends Activity {
     });
   }
 
+  void collectCrash(){
+    if(running)return;
+    enable(false);results.setText("Coletando registros persistentes do kernel... Não modifica arquivos.");
+    queue.execute(()->{
+      String script="echo '=== CAUSA DE REINICIO ==='; "+
+          "echo sys.boot.reason=$(getprop sys.boot.reason); "+
+          "echo ro.boot.bootreason=$(getprop ro.boot.bootreason); "+
+          "echo kernel=$(uname -r); "+
+          "echo '=== PERSISTENT CRASH LOGS ==='; count=0; "+
+          "for f in /sys/fs/pstore/* /proc/last_kmsg; do "+
+          "[ -f \"$f\" ] || continue; "+
+          "echo FILE=$f; count=$((count+1)); "+
+          "tail -c 524288 \"$f\" 2>/dev/null | "+
+          "grep -iE 'mali|g3d|pll|acpm|dvfs|smmu|fault|watchdog|panic|serror|timeout|gpu|reset' "+
+          "| tail -n 18; done; "+
+          "[ \"$count\" -gt 0 ] || echo 'Nao ha pstore/last_kmsg disponivel'; "+
+          "echo '=== KERNEL LOG ATUAL (apenas diagnostico) ==='; "+
+          "dmesg 2>/dev/null | grep -iE 'mali|g3d|pll|acpm|dvfs|smmu|fault|watchdog|panic' | tail -n 15";
+      Cmd c=shell(script,30);
+      String out="GPUOC: relatorio somente leitura\n"
+          +"Resultado da coleta: "+(c.code==0?"OK":"codigo "+c.code)+"\n\n"
+          +c.out+"\n\nAVISO: ausencia de pstore nao descarta panic ou watchdog.";
+      ui.post(()->{results.setText(out);report=out;enable(true);});
+    });
+  }
   static String field(String out,String name){
     for(String l:out.split("\n"))if(l.startsWith(name+"="))return l.substring(name.length()+1);
     return "não confirmado";
   }
   void test(int requested,boolean longRun){
     if(running)return;
+    if(requested>0){Toast.makeText(this,"GPU OC DESABILITADO: o aparelho reiniciou com todos os clocks experimentais.",Toast.LENGTH_LONG).show();return;}
     if(requested>0&&!installed){Toast.makeText(this,"OC bloqueado: drivers GPUOC ou root não identificados.",Toast.LENGTH_LONG).show();return;}
     if(requested>0){int t=gpuTemp();if(t<0||t>=65000){
       Toast.makeText(this,"OC bloqueado: temperatura GPU ≥65°C ou sensor ausente.",Toast.LENGTH_LONG).show();return;
