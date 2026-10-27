@@ -91,7 +91,7 @@ public final class MainActivity extends Activity {
     add(body,o,13);
     LinearLayout r=panel();add(r,text("MEDIÇÕES / RELATÓRIO",13,0xff73b9ff),12);
     results=text("Execute uma referência original antes de comparar.",13,Color.WHITE);results.setTypeface(Typeface.MONOSPACE);add(r,results,12);
-    Button volt=button("VOLTAGE LAB • CPU/GPU & CURVAS");add(r,volt,8);volt.setOnClickListener(v->startActivity(new Intent(this,VoltageLabActivity.class)));
+    Button volt=button("VOLTAGE LAB • TENSÃO REAL CPU/GPU");add(r,volt,8);volt.setOnClickListener(v->startActivity(new Intent(this,VoltageLabActivity.class)));
     Button refresh=button("Verificar novamente");add(r,refresh,8);refresh.setOnClickListener(v->scan());
     Button share=button("Compartilhar resultados");add(r,share,0);
     share.setOnClickListener(v->{Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_TEXT,report);startActivity(Intent.createChooser(i,"Relatório GPU"));});
@@ -147,7 +147,7 @@ public final class MainActivity extends Activity {
     return path.startsWith("/sys/")?path:"";
   }
   static String unlockPath(){
-    String path=get("for f in /sys/devices/platform/*mali*/apple_gpu_unlock "+
+    String path=get("for f in /sys/kernel/gpu/gpu_unlock /sys/devices/platform/*mali*/apple_gpu_unlock "+
       "/sys/devices/platform/*gpu*/apple_gpu_unlock "+
       "/sys/devices/platform/18500000.mali/apple_gpu_unlock; do "+
       "[ -f \"$f\" ] && { echo \"$f\"; exit 0; }; done; "+
@@ -161,8 +161,8 @@ public final class MainActivity extends Activity {
     queue.execute(()->{
       String path=unlockPath();
       if(path.isEmpty()){
-        String reason="Kernel sem interface apple_gpu_unlock.\n"+
-          "Instale somente um build que realmente contenha a integração V3.\n"+
+        String reason="Nem GPU Unlock Floppy nem Apple GPU Unlock encontrados.\n"+
+          "A consulta procura /sys/kernel/gpu/gpu_unlock e a interface antiga Apple.\n"+
           "O app não altera clocks por conta própria.";
         ui.post(()->{results.setText(reason);report=reason;enable(true);});
         return;
@@ -193,26 +193,32 @@ public final class MainActivity extends Activity {
       Cmd id=shell("id");String model=get("getprop ro.product.model"),k=get("uname -r");
       String gpu=findClock(),path=capsPath(),caps=path.isEmpty()?"":get("cat "+q(path));
       String unlock=unlockPath();String unlockVal=unlock.isEmpty()?"não disponível":get("cat "+q(unlock));
+      boolean floppy=unlock.equals("/sys/kernel/gpu/gpu_unlock");
+      String freqTable=floppy?get("cat /sys/kernel/gpu/gpu_freq_table"):"";
       boolean rootOk=id.code==0&&id.out.contains("uid=0");
       boolean v2=caps.contains("mode=ACPM_ONLY")&&caps.contains("direct_pll_writes=DISABLED");
-      boolean modelOk="SM-G991B".equals(model)&&k.contains("G991BXXSJHZA6");
+      boolean modelOk="SM-G991B".equals(model)&&(floppy||k.contains("G991BXXSJHZA6"));
       String[] flags={"fw_valid_910","fw_valid_936","fw_valid_975","fw_valid_1001"};
       boolean[] accepted={false,false,false,false};int count=0;
       for(int i=0;i<flags.length;i++){
-        accepted[i]=rootOk&&modelOk&&v2&&!gpu.isEmpty()&&
-          caps.contains(flags[i]+"=1");
+        boolean nativeOpp=false;
+        if(floppy)for(String f:freqTable.trim().split("\\s+"))if(f.equals(Integer.toString(FREQ[i])))nativeOpp=true;
+        accepted[i]=rootOk&&modelOk&&!gpu.isEmpty()&&
+          (floppy?nativeOpp:(v2&&caps.contains(flags[i]+"=1")));
         if(accepted[i])count++;
       }
-      ocAllowed=accepted;installed=count>0;node=gpu;capsInfo=caps;
+      ocAllowed=accepted;installed=count>0;node=gpu;
+      capsInfo=floppy?"FloppyKernel (tabela real):\n"+freqTable:caps;
       int t=gpuTemp();
       String diag="Root: "+(rootOk?"OK":"não autorizado")+
         "\nAparelho: "+model+"\nKernel: "+k+
-        "\nModo firmware: "+(v2?"ACPM V2":"kernel V2 não encontrado")+
+        "\nModo firmware: "+(floppy?"FloppyKernel nativo":v2?"Apple ACPM V2":"não reconhecido")+
         "\nClock atual: "+(gpu.isEmpty()?"—":MHz(get("cat "+q(gpu))))+
         "\nGPU: "+cel(t)+
         "\nFirmware/DT aceitam OC: "+count+" de 4"+
-        "\nGPU unlock: "+unlockVal+"\n"+
-        (caps.isEmpty()?"Sem interface apple_gpuoc_caps. OC bloqueado.":caps);
+        "\nGPU unlock: "+unlockVal+" | interface: "+(unlock.isEmpty()?"ausente":unlock)+"\n"+
+        (floppy?"Tabela GPU Floppy:\n"+freqTable:
+          caps.isEmpty()?"Sem interface apple_gpuoc_caps.":caps);
       ui.post(()->{diagnostic.setText(diag);enable(true);});
     });
   }
