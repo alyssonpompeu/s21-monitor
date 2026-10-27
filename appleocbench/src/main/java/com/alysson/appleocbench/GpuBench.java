@@ -30,7 +30,7 @@ final class GpuBench {
 
         int[] ctxAttr = { EGL14.EGL_CONTEXT_CLIENT_VERSION, 3, EGL14.EGL_NONE };
         EGLContext ctx = EGL14.eglCreateContext(display, cfg[0], EGL14.EGL_NO_CONTEXT, ctxAttr, 0);
-        int[] surfAttr = { EGL14.EGL_WIDTH, 512, EGL14.EGL_HEIGHT, 512, EGL14.EGL_NONE };
+        int[] surfAttr = { EGL14.EGL_WIDTH, 1024, EGL14.EGL_HEIGHT, 1024, EGL14.EGL_NONE };
         EGLSurface surf = EGL14.eglCreatePbufferSurface(display, cfg[0], surfAttr, 0);
         if (ctx == EGL14.EGL_NO_CONTEXT || surf == EGL14.EGL_NO_SURFACE ||
                 !EGL14.eglMakeCurrent(display, surf, surf, ctx)) {
@@ -42,8 +42,8 @@ final class GpuBench {
                 "layout(location=0) in vec2 p;\n" +
                 "void main(){gl_Position=vec4(p,0.0,1.0);}\n";
         String fs = "#version 300 es\nprecision highp float;\nout vec4 c;\n" +
-                "void main(){vec2 uv=gl_FragCoord.xy/512.0; float x=uv.x+uv.y;" +
-                "for(int i=0;i<28;i++){x=sin(x*1.013+0.17)*cos(x*0.997+0.11)+sqrt(abs(x)+0.001);}" +
+                "uniform float seed;\nvoid main(){vec2 uv=gl_FragCoord.xy/1024.0; float x=uv.x+uv.y+seed;" +
+                "for(int i=0;i<54;i++){x=sin(x*1.013+0.17)*cos(x*0.997+0.11)+sqrt(abs(x)+0.001);}" +
                 "c=vec4(fract(x),fract(x*1.37),fract(x*1.91),1.0);}\n";
 
         int prog;
@@ -65,18 +65,24 @@ final class GpuBench {
         GLES30.glEnableVertexAttribArray(0);
         GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, 0, 0);
         GLES30.glUseProgram(prog);
-        GLES30.glViewport(0, 0, 512, 512);
+        GLES30.glViewport(0, 0, 1024, 1024);
+        int seedLoc=GLES30.glGetUniformLocation(prog,"seed");
+        ByteBuffer pixel=ByteBuffer.allocateDirect(4);
 
         if (ready != null) ready.countDown();
         long start = System.nanoTime();
         long end = start + ms * 1_000_000L;
         long draws = 0;
         while (System.nanoTime() < end && (stop == null || !stop.get())) {
-            for (int i = 0; i < 16; i++) {
+            for (int i = 0; i < 2; i++) {
+                GLES30.glUniform1f(seedLoc,((draws % 97)+1)*0.013f);
                 GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3);
                 draws++;
             }
             GLES30.glFinish();
+            // Force observed pixel completion on the actual GPU.
+            pixel.position(0);
+            GLES30.glReadPixels((int)(draws%1024),512,1,1,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,pixel);
         }
         long elapsed = System.nanoTime() - start;
 
