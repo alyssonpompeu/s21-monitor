@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - apple-final-gpuoc-app-20261026
+      - apple-final-gpuoc-acpm-app-v2-20261027
     paths:
       - 'appleocbench/**'
       - '.github/workflows/apple-final-gpuoc-apk.yml'
