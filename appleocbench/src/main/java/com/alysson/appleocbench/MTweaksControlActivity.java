@@ -45,6 +45,10 @@ public final class MTweaksControlActivity extends Activity {
         {"GPU","Frequência máxima · kHz","/sys/kernel/gpu/gpu_max_clock","number","Limite máximo da tabela que o kernel disponibiliza"},
         {"GPU","Frequência mínima · kHz","/sys/kernel/gpu/gpu_min_clock","number","Limite mínimo da tabela que o kernel disponibiliza"},
         {"GPU","GPU clamp · kHz","/sys/kernel/gpu/gpu_clamp","number","0 remove o clamp; outra frequência deve constar na tabela"},
+        {"TENSÃO","UV nativo GPU · redução (%)","/sys/kernel/exynos_uv/gpu_uv_percent","number","Percentual positivo 7 equivale ao pedido de -7% ao ACPM; não mede tensão elétrica"},
+        {"TENSÃO","UV nativo A55 · redução (%)","/sys/kernel/exynos_uv/cpucl0_uv_percent","number","Percentual positivo 9 equivale ao pedido de -9% ao ACPM"},
+        {"TENSÃO","UV nativo A78 · redução (%)","/sys/kernel/exynos_uv/cpucl1_uv_percent","number","Percentual positivo 10 equivale ao pedido de -10% ao ACPM"},
+        {"TENSÃO","UV nativo X1 · redução (%)","/sys/kernel/exynos_uv/cpucl2_uv_percent","number","Percentual positivo 8 equivale ao pedido de -8% ao ACPM"},
         {"TENSÃO","Margem GPU G3D · %","/sys/kernel/percent_margin/g3d_margin_percent","number","Margem percentual encaminhada ao ACPM; não é medição de tensão"},
         {"TENSÃO","Margem CPU A55 · %","/sys/kernel/percent_margin/cpucl0_margin_percent","number","Margem percentual do cluster de eficiência"},
         {"TENSÃO","Margem CPU A78 · %","/sys/kernel/percent_margin/cpucl1_margin_percent","number","Margem percentual do cluster intermediário"},
@@ -90,7 +94,7 @@ public final class MTweaksControlActivity extends Activity {
     private final Map<String,TextView> availabilityLabels=new LinkedHashMap<>();
     private final Map<String,Button> restoreButtons=new LinkedHashMap<>();
     private LinearLayout cards, tabs;
-    private TextView banner, log, count;
+    private TextView banner, kernelSummary, log, count;
     private String tab="TODOS";
     private volatile boolean busy=false;
     private volatile boolean rootOk=false;
@@ -147,10 +151,12 @@ public final class MTweaksControlActivity extends Activity {
 
         TextView subtitle=text("KERNEL CONTROL · EXYNOS 2100",12,TEAL,true);add(body,subtitle,5);
         add(body,text("Apple Final × MTweaks",26,TEXT,true),5);
-        add(body,text("FloppyKernel · 24 controles reais · root",13,MUTED,false),15);
+        add(body,text("FloppyKernel · Apple 1.4 UV · 949 MHz · controle root",13,MUTED,false),15);
 
         LinearLayout hero=column();hero.setBackground(bg(CARD,15));hero.setPadding(dp(15),dp(14),dp(15),dp(14));
-        banner=text("Detectando kernel e permissões...",13,TEXT,false);add(hero,banner,11);
+        banner=text("Detectando kernel e permissões...",13,TEXT,false);add(hero,banner,9);
+        kernelSummary=text("Lendo perfil Apple 1.4 UV e limite GPU...",13,TEAL,true);
+        add(hero,kernelSummary,12);
         LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);
         Button refresh=button("ATUALIZAR",true);
         Button oldLab=button("GPU LAB",false);
@@ -299,7 +305,28 @@ public final class MTweaksControlActivity extends Activity {
                 busy=false;
                 banner.setText("Root: "+(rootOk?"ATIVO":"INATIVO")+
                    "   |   Aparelho: "+model+"\nKernel: "+linux+
-                   "\nFonte: nós sysfs realmente expostos. Ajustes indisponíveis ficam identificados.");
+                   "\nFonte: interfaces reais do kernel; sem alterações simuladas.");
+                String gp="/sys/kernel/gpu/";
+                String unlock=seen.get(gp+"gpu_unlock");
+                String maximum=seen.get(gp+"gpu_max_clock");
+                String prefix="/sys/kernel/exynos_uv/";
+                String margin="/sys/kernel/percent_margin/";
+                int uvMatched=0;
+                if("9".equals(seen.get(prefix+"cpucl0_uv_percent")))uvMatched++;
+                if("10".equals(seen.get(prefix+"cpucl1_uv_percent")))uvMatched++;
+                if("8".equals(seen.get(prefix+"cpucl2_uv_percent")))uvMatched++;
+                if("7".equals(seen.get(prefix+"gpu_uv_percent")))uvMatched++;
+                if("-6".equals(seen.get(margin+"mif_margin_percent")))uvMatched++;
+                if("-6".equals(seen.get(margin+"dsu_margin_percent")))uvMatched++;
+                if("-6".equals(seen.get(margin+"int_margin_percent")))uvMatched++;
+                String gpuStatus="1".equals(unlock)&&"949".equals(maximum)?
+                    "949 MHz DESBLOQUEADOS no driver":
+                    "desbloqueio="+(unlock==null?"indisponível":unlock)+
+                    " | limite="+(maximum==null?"indisponível":maximum)+" MHz";
+                kernelSummary.setText("GPU: "+gpuStatus+
+                    "\nApple UV 1.4: "+uvMatched+"/7 registros correspondem ao perfil"+
+                    "\nSysfs mostra o pedido do driver; não mede tensão elétrica.");
+                kernelSummary.setTextColor(uvMatched==7&&"1".equals(unlock)?GOOD:TEAL);
                 render();
             });
         });
