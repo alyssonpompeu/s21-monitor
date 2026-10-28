@@ -431,6 +431,28 @@ public final class MTweaksControlActivity extends Activity {
                 for(String line:res.out.split("\n"))
                     if(line.startsWith("READBACK="))read=line.substring(9).trim();
                 boolean accepted=res.rc==0&&read.equals(value);
+                // Floppy exposes a separate native UV percentage (positive
+                // magnitude). Synchronize both interfaces when available.
+                // Otherwise the native UI could show the boot value even after
+                // the ACPM percent-margin request has changed it.
+                if(accepted && (d[0].equals("A55")||d[0].equals("A78")||
+                     d[0].equals("X1")||d[0].equals("GPU"))){
+                    String uvPath="/sys/kernel/exynos_uv/"+
+                         (d[0].equals("A55")?"cpucl0_uv_percent":
+                          d[0].equals("A78")?"cpucl1_uv_percent":
+                          d[0].equals("X1")?"cpucl2_uv_percent":"gpu_uv_percent");
+                    String magnitude=value.startsWith("-")?value.substring(1):value;
+                    String nativeCmd="p="+quote(uvPath)+"; v="+quote(magnitude)+
+                        "; if [ ! -e \"$p\" ]; then echo 'NATIVE_ABSENT'; exit 0; fi; "+
+                        "[ -w \"$p\" ] || exit 12; "+
+                        "printf '%s\\n' \"$v\" > \"$p\" || exit 18; "+
+                        "echo NATIVE_READBACK=$(cat \"$p\" 2>/dev/null)";
+                    Cmd nativeRes=root(nativeCmd);
+                    if(nativeRes.rc!=0 || (!nativeRes.out.contains("NATIVE_ABSENT") &&
+                           !nativeRes.out.contains("NATIVE_READBACK="+magnitude))){
+                        accepted=false;
+                    }
+                }
                 if(accepted)okCount++;else failCount++;
                 report.append("\n").append(d[0]).append(" -> ")
                   .append(value).append("% | registrado: ")
