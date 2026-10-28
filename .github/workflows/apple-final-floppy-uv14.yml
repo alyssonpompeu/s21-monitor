@@ -1,0 +1,46 @@
+name: Build Apple Final FloppyKernel UV14
+on:
+  workflow_dispatch:
+  push:
+    branches: [ apple-final-floppy-uv14-20261028 ]
+    paths:
+      - 'apple-final/**'
+      - '.github/workflows/apple-final-floppy-uv14.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kernel dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bc bison build-essential cpio flex git libelf-dev libssl-dev python3 rsync unzip xz-utils lz4 brotli kmod zip ccache aria2 binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu
+      - name: Validate Apple UV 1.4 port script
+        run: python3 -m py_compile apple-final/apply_apple_uv_floppy.py apple-final/apply_apple_final_floppy.py
+      - name: Build full FloppyKernel 5.4.304 with native Apple UV 1.4
+        shell: bash
+        run: |
+          set -o pipefail
+          bash apple-final/build_apple_final_resume.sh 2>&1 | tee APPLE_FINAL_FLOPPY_UV14_CI.log
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: APPLE-FINAL-FLOPPY-UV14-DIAGNOSTICS
+          path: |
+            APPLE_FINAL_FLOPPY_UV14_CI.log
+            APPLE_FINAL_FLOPPY_README.txt
+            APPLE_FINAL_FLOPPY_SHA256SUMS.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload FloppyKernel Apple UV14 flashable build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: APPLE-FINAL-FLOPPY-UV14-TWRP
+          path: src/build/Floppy_*Vanilla*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
