@@ -49,6 +49,9 @@ public final class MTweaksControlActivity extends Activity {
         {"TENSÃO","Margem CPU A55 · %","/sys/kernel/percent_margin/cpucl0_margin_percent","number","Margem percentual do cluster de eficiência"},
         {"TENSÃO","Margem CPU A78 · %","/sys/kernel/percent_margin/cpucl1_margin_percent","number","Margem percentual do cluster intermediário"},
         {"TENSÃO","Margem CPU X1 · %","/sys/kernel/percent_margin/cpucl2_margin_percent","number","Margem percentual do núcleo de desempenho"},
+        {"TENSÃO","Margem MIF · %","/sys/kernel/percent_margin/mif_margin_percent","number","Margem percentual do controlador de memória via CAL/ACPM"},
+        {"TENSÃO","Margem DSU · %","/sys/kernel/percent_margin/dsu_margin_percent","number","Margem do barramento de coerência via CAL/ACPM"},
+        {"TENSÃO","Margem INT · %","/sys/kernel/percent_margin/int_margin_percent","number","Margem do barramento interno via CAL/ACPM"},
         {"CPU","A55 · frequência máxima · kHz","/sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq","number","CPU0-3"},
         {"CPU","A55 · frequência mínima · kHz","/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq","number","CPU0-3"},
         {"CPU","A55 · governador","/sys/devices/system/cpu/cpufreq/policy0/scaling_governor","text","Valores em scaling_available_governors"},
@@ -67,6 +70,16 @@ public final class MTweaksControlActivity extends Activity {
         {"BARRAMENTO","INT · frequência máxima","/sys/class/devfreq/17000020.devfreq_int/max_freq","number","Unidade indicada pelo próprio nó"}
     };
     private static final String[] TABS={"TODOS","GPU","TENSÃO","CPU","BARRAMENTO"};
+    // Absolute Samsung CAL percent-margin values, not voltage arithmetic.
+    private static final String[][] APPLE_UV14={
+        {"A55", "cpucl0_margin_percent","-9"},
+        {"A78", "cpucl1_margin_percent","-10"},
+        {"X1",  "cpucl2_margin_percent","-8"},
+        {"GPU", "g3d_margin_percent","-7"},
+        {"MIF", "mif_margin_percent","-6"},
+        {"DSU", "dsu_margin_percent","-6"},
+        {"INT", "int_margin_percent","-6"}
+    };
     private final Handler ui=new Handler(Looper.getMainLooper());
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final Map<String,String> originals=new LinkedHashMap<>();
@@ -147,6 +160,10 @@ public final class MTweaksControlActivity extends Activity {
         refresh.setOnClickListener(v->scan());
         oldLab.setOnClickListener(v->startActivity(new Intent(this,MainActivity.class)));
         add(hero,row,9);
+        Button applyUv=button("APLICAR APPLE 1.4 UV • 7 DOMÍNIOS",true);
+        add(hero,applyUv,8);applyUv.setOnClickListener(v->confirmUv14(false));
+        Button clearUv=button("ZERAR MARGENS • STOCK 0%",false);
+        add(hero,clearUv,9);clearUv.setOnClickListener(v->confirmUv14(true));
         Button mtImport=button("INSTALAR CONTROLES NO MTWEAKS ORIGINAL",true);
         add(hero,mtImport,0);
         mtImport.setOnClickListener(v->confirmMtweaksImport());
@@ -348,6 +365,65 @@ public final class MTweaksControlActivity extends Activity {
             .setNegativeButton("CANCELAR",null)
             .setPositiveButton(restore?"RESTAURAR":"APLICAR",(d,w)->apply(def,value))
             .show();
+    }
+
+    private void confirmUv14(boolean stock){
+        if(busy || !rootOk){
+            Toast.makeText(this,"Root indisponível ou outra operação em andamento.",Toast.LENGTH_LONG).show();
+            return;
+        }
+        StringBuilder specs=new StringBuilder();
+        for(String[] d:APPLE_UV14) specs.append(d[0]).append(": ")
+            .append(stock?"0":d[2]).append("%\n");
+        new AlertDialog.Builder(this)
+            .setTitle(stock?"Zerar margens no CAL":"Aplicar Apple 1.4 UV")
+            .setMessage(specs+"\nSerá aplicado nesta sessão, sem mudar o boot."+
+                "\nO perfil foi validado no Samsung HZA6 anterior, NÃO nesta versão Floppy."+
+                "\nO readback confirma apenas o registro do driver, não a tensão física.")
+            .setNegativeButton("CANCELAR",null)
+            .setPositiveButton(stock?"ZERAR":"APLICAR",(dialog,which)->applyUv14(stock))
+            .show();
+    }
+    private void applyUv14(boolean stock){
+        if(busy)return;
+        busy=true;
+        log.setText("Aplicando perfil CAL/ACPM...\n"+(stock?"Stock 0%":"Apple 1.4 UV"));
+        worker.execute(()->{
+            StringBuilder report=new StringBuilder();
+            report.append(stock?"MARGENS ZERADAS (STOCK)":"APPLE 1.4 UV • 7 DOMÍNIOS");
+            String prefix="/sys/kernel/percent_margin/";
+            int okCount=0,failCount=0;
+            for(String[] d:APPLE_UV14){
+                String path=prefix+d[1],value=stock?"0":d[2];
+                String cmd="p="+quote(path)+"; v="+quote(value)+"; "+
+                  "[ -w \"$p\" ] || { echo 'WRITE_RC=12'; exit 12; }; "+
+                  "printf '%s\\n' \"$v\" > \"$p\"; rc=$?; "+
+                  "echo WRITE_RC=$rc; echo READBACK=$(cat \"$p\" 2>/dev/null); exit $rc";
+                Cmd res=root(cmd);
+                String read="";
+                for(String line:res.out.split("\n"))
+                    if(line.startsWith("READBACK="))read=line.substring(9).trim();
+                boolean accepted=res.rc==0&&read.equals(value);
+                if(accepted)okCount++;else failCount++;
+                report.append("\n").append(d[0]).append(" -> ")
+                  .append(value).append("% | registrado: ")
+                  .append(read.isEmpty()?"sem leitura":read).append("% | ")
+                  .append(accepted?"OK":"FALHA ("+res.rc+")");
+            }
+            report.append("\n").append(okCount).append("/7 registros conferidos.")
+                .append("\nACPM: registro do driver, não comprovação de tensão elétrica.");
+            int accepted=okCount,failures=failCount;
+            String message=report.toString();
+            ui.post(()->{
+                busy=false;
+                log.setText(message);
+                log.setTextColor(failures==0?GOOD:BAD);
+                getWindow().getDecorView().performHapticFeedback(
+                   failures==0?HapticFeedbackConstants.CONFIRM:HapticFeedbackConstants.REJECT);
+                Toast.makeText(this,accepted+"/7 margens registradas",Toast.LENGTH_LONG).show();
+                scan();
+            });
+        });
     }
 
     private void confirmMtweaksImport(){
