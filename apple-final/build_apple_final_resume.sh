@@ -53,7 +53,11 @@ export DEFAULT_DEFCONFIG=exynos2100-unified_defconfig
 export KBUILD_BUILD_USER=applefinal
 export KBUILD_BUILD_HOST=Floppy-G991B
 # q: Quiet output, vanilla root variant; root remains external to the kernel.
-bash do_build.sh q
+if ! bash do_build.sh q; then
+  echo '=== KERNEL COMPILER ERRORS: src/log.txt ===' >&2
+  tail -n 220 log.txt >&2 || true
+  exit 42
+fi
 cd ..
 
 ZIP="$(find src/build -maxdepth 1 -type f -name 'Floppy_*Vanilla*.zip' | head -n 1)"
