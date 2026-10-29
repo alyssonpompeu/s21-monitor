@@ -178,5 +178,22 @@ rep='''\tif (data->devfreq_type == APPLE_MIF_LAB_DOMAIN) {
 \t}
 \tsysfs_remove_file(&data->devfreq->dev.kobj, &dev_attr_scaling_devfreq_min.attr);'''
 sub(rem,rep)
+# Android/Floppy builds exynos-devfreq as a module. The original Samsung
+# ACPM rate getter is defined but not exported, causing modpost undefined
+# symbol. This only exports the existing readback function; it changes
+# no clock/voltage programming or boot state.
+acpm=Path("src/drivers/soc/samsung/cal-if/acpm_dvfs.c")
+acpm_source=acpm.read_text()
+old="""\treturn config.cmd[1];
+}
+
+int exynos_acpm_set_volt_margin(unsigned int id, int volt)"""
+new="""\treturn config.cmd[1];
+}
+EXPORT_SYMBOL_GPL(exynos_acpm_get_rate);
+
+int exynos_acpm_set_volt_margin(unsigned int id, int volt)"""
+assert acpm_source.count(old) == 1, "Missing Samsung ACPM getter export anchor"
+acpm.write_text(acpm_source.replace(old, new, 1))
 p.write_text(s)
 print("Apple Final MIF Lab only: raw ACPM 3672000 request, on-demand, 10-second revert.")
