@@ -1,0 +1,47 @@
+name: Build Apple Final MIF 3672 Experimental + Rollback
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - apple-final-mif-3672-lab-20261028
+    paths:
+      - 'apple-final/**'
+      - '.github/workflows/apple-final-mif-3672-lab.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kernel dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bc bison build-essential cpio flex git libelf-dev libssl-dev python3 rsync unzip xz-utils lz4 brotli kmod zip ccache aria2 binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu
+      - name: Validate MIF lab patch
+        run: python3 -m py_compile apple-final/apply_apple_final_floppy.py apple-final/apply_apple_uv_floppy.py apple-final/apply_apple_gpu949_default.py apple-final/apply_apple_mif_lab.py
+      - name: Build Apple Final full FloppyKernel MIF lab Image and vendor_boot DTBO
+        shell: bash
+        run: |
+          set -o pipefail
+          bash apple-final/build_apple_final_resume.sh 2>&1 | tee APPLE_FINAL_MIF3672_BUILD.log
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: APPLE-FINAL-MIF3672-DIAGNOSTICS
+          path: |
+            APPLE_FINAL_MIF3672_BUILD.log
+            APPLE_FINAL_FLOPPY_README.txt
+            APPLE_FINAL_FLOPPY_SHA256SUMS.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload experimental TWRP zip
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: APPLE-FINAL-MIF3672-EXPERIMENTAL-TWRP
+          path: src/build/Floppy_*Vanilla*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
