@@ -55,7 +55,12 @@ export KBUILD_BUILD_HOST=Floppy-G991B
 # q: Quiet output, vanilla root variant; root remains external to the kernel.
 if ! bash do_build.sh q; then
   echo '=== KERNEL COMPILER ERRORS: src/log.txt ===' >&2
-  tail -n 220 log.txt >&2 || true
+  echo '=== COMPILER ERROR LINES ===' >&2
+  grep -nEi '(^|[[:space:]])(fatal )?error:|undefined (reference|symbol)|ld.lld:|failed to|make\[[0-9]+\]: \*\*\*' log.txt | tail -n 80 >&2 || true
+  echo '=== FIRST 160 COMPILER LINES ===' >&2
+  head -n 160 log.txt >&2 || true
+  echo '=== TAIL 70 COMPILER LINES ===' >&2
+  tail -n 70 log.txt >&2 || true
   exit 42
 fi
 cd ..
