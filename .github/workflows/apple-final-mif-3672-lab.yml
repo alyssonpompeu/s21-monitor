@@ -1,9 +1,9 @@
-name: Build Apple Final MIF 3672 Experimental + Rollback
+name: Build Apple Final MIF 3672 Experimental V2
 on:
   workflow_dispatch:
   push:
     branches:
-      - apple-final-mif-3672-lab-20261028
+      - apple-final-mif-3672-lab-v2-20261029
     paths:
       - 'apple-final/**'
       - '.github/workflows/apple-final-mif-3672-lab.yml'
@@ -29,7 +29,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: APPLE-FINAL-MIF3672-DIAGNOSTICS
+          name: APPLE-FINAL-MIF3672-V2-DIAGNOSTICS
           path: |
             APPLE_FINAL_MIF3672_BUILD.log
             APPLE_FINAL_FLOPPY_README.txt
@@ -40,7 +40,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: APPLE-FINAL-MIF3672-EXPERIMENTAL-TWRP
+          name: APPLE-FINAL-MIF3672-V2-EXPERIMENTAL-TWRP
           path: src/build/Floppy_*Vanilla*.zip
           if-no-files-found: error
           compression-level: 0
