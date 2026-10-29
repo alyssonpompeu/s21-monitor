@@ -24,6 +24,26 @@ static unsigned long apple_mif_original;
 static unsigned long apple_mif_cal;
 static bool apple_mif_active;
 static int apple_mif_rc = -ENODATA;
+/* CAL's cached vclk read can return 0 for an ACPM clock. Prefer direct
+ * ACPM FREQ_GET and fall back to devfreq's known normal OPP for rollback.
+ */
+static unsigned long apple_mif_read_acpm(struct exynos_devfreq_data *d)
+{
+    return exynos_acpm_get_rate(APPLE_MIF_LAB_DOMAIN);
+}
+static unsigned long apple_mif_rollback_rate(struct exynos_devfreq_data *d)
+{
+    unsigned long v = apple_mif_read_acpm(d);
+    if (v && v <= d->max_freq)
+        return v;
+    v = d->old_freq;
+    if (v && v <= d->max_freq)
+        return v;
+    v = d->previous_freq;
+    if (v && v <= d->max_freq)
+        return v;
+    return 0;
+}
 static void apple_mif_revert_locked(void)
 {
     struct exynos_devfreq_data *d = apple_mif_data;
@@ -33,7 +53,7 @@ static void apple_mif_revert_locked(void)
     rc = cal_dfs_set_rate(d->dfs_id, apple_mif_original);
     if (rc)
         apple_mif_rc = rc;
-    apple_mif_cal = cal_dfs_get_rate(d->dfs_id);
+    apple_mif_cal = apple_mif_read_acpm(d);
     d->devfreq_disabled = false;
     apple_mif_active = false;
     pr_warn("apple_mif_lab restore target=%lu cal=%lu rc=%d\n",
@@ -64,10 +84,10 @@ static ssize_t apple_mif_3672_show(struct device *dev,
     if (!d)
         return -ENODEV;
     mutex_lock(&apple_mif_mutex);
-    now = cal_dfs_get_rate(d->dfs_id);
+    now = apple_mif_read_acpm(d);
     n = scnprintf(buf, PAGE_SIZE,
         "request_khz=3672000\nnormal_max_khz=%u\nactive=%d\n"
-        "saved_khz=%lu\nreported_cal_khz=%lu\nlast_rc=%d\n"
+        "saved_khz=%lu\nreported_acpm_khz=%lu\nlast_rc=%d\n"
         "last_readback_khz=%lu\nwindow_seconds=10\nboot_auto=0\n"
         "physical_dram_frequency_verified=NO\n",
         d->max_freq, apple_mif_active, apple_mif_original,
@@ -99,8 +119,11 @@ static ssize_t apple_mif_3672_store(struct device *dev,
         mutex_unlock(&apple_mif_mutex);
         return -EBUSY;
     }
-    apple_mif_original = cal_dfs_get_rate(d->dfs_id);
+    apple_mif_original = apple_mif_rollback_rate(d);
     if (!apple_mif_original || apple_mif_original > d->max_freq) {
+        apple_mif_rc = -ERANGE;
+        pr_warn("apple_mif_lab baseline unavailable: old=%u previous=%u max=%u\n",
+                d->old_freq, d->previous_freq, d->max_freq);
         mutex_unlock(&apple_mif_mutex);
         return -ERANGE;
     }
@@ -110,15 +133,15 @@ static ssize_t apple_mif_3672_store(struct device *dev,
     schedule_delayed_work(&apple_mif_revert_work, 10 * HZ);
     rc = cal_dfs_set_rate(d->dfs_id, req);
     apple_mif_rc = rc;
-    apple_mif_cal = cal_dfs_get_rate(d->dfs_id);
+    apple_mif_cal = apple_mif_read_acpm(d);
     if (rc || apple_mif_cal != req) {
-        pr_warn("apple_mif_lab REJECTED rc=%d CAL=%lu\n", rc, apple_mif_cal);
+        pr_warn("apple_mif_lab REJECTED rc=%d ACPM=%lu\n", rc, apple_mif_cal);
         apple_mif_revert_locked();
         cancel_delayed_work(&apple_mif_revert_work);
         mutex_unlock(&apple_mif_mutex);
         return rc ? rc : -EOPNOTSUPP;
     }
-    pr_warn("apple_mif_lab ACPM reports 3672000; DRAM clock unverified; timed restore in 10s\n");
+    pr_warn("apple_mif_lab ACPM FREQ_GET reports 3672000; DRAM/PHY unverified; timed restore in 10s\n");
     mutex_unlock(&apple_mif_mutex);
     return count;
 }
