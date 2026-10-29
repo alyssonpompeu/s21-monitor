@@ -26,6 +26,7 @@ git -C src submodule update --init --depth=1 build/mkbootimg
 python3 apple-final/apply_apple_final_floppy.py
 python3 apple-final/apply_apple_uv_floppy.py
 python3 apple-final/apply_apple_gpu949_default.py
+python3 apple-final/apply_apple_mif_lab.py
 grep -q 'APPLE FINAL EMS 3x3' src/kernel/sched/ems/cpu_select.c
 grep -q 'apple_final_keep_prev(env, best_cpu)' src/kernel/sched/ems/cpu_select.c
 grep -q 'gpu_unlock' src/drivers/gpu/arm/exynos/frontend/gpex_clock_sysfs.c
@@ -38,6 +39,8 @@ grep -q '^static int margin_mif = -6;' src/drivers/soc/samsung/cal-if/fvmap.c
 grep -q '^static int margin_dsu = -6;' src/drivers/soc/samsung/cal-if/fvmap.c
 grep -q '^static int margin_int = -6;' src/drivers/soc/samsung/cal-if/fvmap.c
 grep -q 'Apple Final: 949 MHz GPU unlock is default' src/drivers/gpu/arm/exynos/frontend/gpex_clock.c
+grep -q 'APPLE FINAL MIF LAB' src/drivers/devfreq/exynos/exynos-devfreq.c
+grep -q 'DEVICE_ATTR(apple_mif_3672' src/drivers/devfreq/exynos/exynos-devfreq.c
 
 echo "Compiling full Floppy kernel and matched modules, DTB/DTBO, native AnyKernel3"
 export WP="$PWD"
@@ -70,6 +73,9 @@ Linux version: $(make -s -C src kernelversion)
 Apple EMS 3x3 task migration layer: APPLIED
 APPLE 1.4 UV: native Floppy CAL/ACPM margins at boot.
 GPU 949 MHz: enabled at startup only when valid CAL/ASV+DT OPP; DVFS active.
+MIF LAB 3672: experimental *on demand* raw CAL/ACPM request, 10-second revert.
+MIF boot clock and ECT OPPs unchanged, no LPDDR5 timing/training edits.
+Not validated on hardware, ACPM may reject or hard-lock; rollback TWRP.
 /sys/kernel/gpu/gpu_unlock=0 returns to original Floppy stock max.
 CPU A55 -9%; CPU A78 -10%; CPU X1 -8%; GPU G3D -7%.
 MIF -6%; DSU -6%; INT -6%.
