@@ -1,9 +1,9 @@
-name: Build Apple Final V4 MIF 3672 Experimental
+name: Build Apple Final V5 MIF Geometric Experimental
 on:
   workflow_dispatch:
   push:
     branches:
-      - apple-final-mif3672-unlocked-v4-20261030
+      - apple-final-mif-v5-geometric-design-20261030
     paths:
       - 'apple-final/**'
       - '.github/workflows/apple-final-mif-3672-lab.yml'
@@ -19,7 +19,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y bc bison build-essential cpio flex git libelf-dev libssl-dev python3 rsync unzip xz-utils lz4 brotli kmod zip ccache aria2 binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu
       - name: Validate MIF lab patch
-        run: python3 -m py_compile apple-final/apply_apple_final_floppy.py apple-final/apply_apple_uv_floppy.py apple-final/apply_apple_gpu949_default.py apple-final/apply_apple_mif_lab.py apple-final/apply_apple_mif_v3.py apple-final/estimate_mif_voltage.py apple-final/apply_apple_mif_3672_v4.py
+        run: python3 -m py_compile apple-final/apply_apple_final_floppy.py apple-final/apply_apple_uv_floppy.py apple-final/apply_apple_gpu949_default.py apple-final/apply_apple_mif_lab.py apple-final/apply_apple_mif_v3.py apple-final/estimate_mif_voltage.py apple-final/apply_apple_mif_3672_v4.py apple-final/apply_apple_mif_v5_geometric.py apple-final/v5/compute_mif_v5.py
       - name: Build Apple Final full FloppyKernel MIF lab Image and vendor_boot DTBO
         shell: bash
         run: |
