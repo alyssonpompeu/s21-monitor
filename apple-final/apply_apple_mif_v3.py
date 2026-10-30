@@ -15,7 +15,7 @@ def sub(old, new):
     if n == 0:
         # V2 injected sysfs boilerplate with tabs, not spaces.
         def to_tabs(text):
-            return re.sub(r"(?m)^( {4})+", lambda m: "\\t" * (len(m.group(0)) // 4), text)
+            return re.sub(r"(?m)^( {4})+", lambda m: "\t" * (len(m.group(0)) // 4), text)
         old, new = to_tabs(old), to_tabs(new)
         n = s.count(old)
     assert n == 1, (old[:100], n)
