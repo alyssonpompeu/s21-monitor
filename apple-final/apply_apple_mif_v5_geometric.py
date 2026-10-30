@@ -98,9 +98,11 @@ j = s.find("static int exynos_devfreq_reboot(", i)
 assert 0 < i < j, "FVP function scope changed"
 section = s[i:j]
 a = "i < data->max_state; i++"
-n = section.count(a)
-assert n == 2, ("Expected two FVP state loops", n)
+b = "j < data->max_state; j++"
+assert section.count(a) == 1, ("Expected FVP no-constraint loop", section.count(a))
+assert section.count(b) == 1, ("Expected FVP constraint loop", section.count(b))
 section = section.replace(a, "i < data->max_state - (data->devfreq_type == DEVFREQ_MIF ? 12 : 0); i++")
+section = section.replace(b, "j < data->max_state - (data->devfreq_type == DEVFREQ_MIF ? 12 : 0); j++")
 s = s[:i] + section + s[j:]
 
 # V4's ACPM readback path was restricted to 3672. Expand it to all V5
