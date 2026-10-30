@@ -8,6 +8,7 @@ ACPM ultimately chooses physical frequency. Guard every novel attempt by
 FREQ_GET and revert to the previously known rate if not acknowledged.
 """
 from pathlib import Path
+import re
 
 p = Path("src/drivers/devfreq/exynos/exynos-devfreq.c")
 s = p.read_text()
@@ -15,6 +16,11 @@ s = p.read_text()
 def sub(a, b):
     global s
     n = s.count(a)
+    if n == 0:
+        def to_tabs(text):
+            return re.sub(r"(?m)^( {4})+", lambda m: "\\t" * (len(m.group(0)) // 4), text)
+        a, b = to_tabs(a), to_tabs(b)
+        n = s.count(a)
     assert n == 1, ("Patch anchor mismatch", a[:110], n)
     s = s.replace(a, b, 1)
 
