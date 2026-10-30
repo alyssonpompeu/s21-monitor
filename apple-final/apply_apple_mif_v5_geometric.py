@@ -18,7 +18,7 @@ def sub(a, b):
     n = s.count(a)
     if n == 0:
         def to_tabs(text):
-            return re.sub(r"(?m)^( {4})+", lambda m: "\\t" * (len(m.group(0)) // 4), text)
+            return re.sub(r"(?m)^( {4})+", lambda m: "\t" * (len(m.group(0)) // 4), text)
         a, b = to_tabs(a), to_tabs(b)
         n = s.count(a)
     assert n == 1, ("Patch anchor mismatch", a[:110], n)
