@@ -30,6 +30,7 @@ python3 apple-final/apply_apple_mif_lab.py
 python3 apple-final/apply_apple_mif_v3.py
 python3 apple-final/apply_apple_mif_3672_v4.py
 python3 apple-final/apply_apple_mif_v5_geometric.py
+python3 apple-final/apply_apple_mif_v6_alt_dvfs.py
 grep -q 'APPLE FINAL EMS 3x3' src/kernel/sched/ems/cpu_select.c
 grep -q 'apple_final_keep_prev(env, best_cpu)' src/kernel/sched/ems/cpu_select.c
 grep -q 'gpu_unlock' src/drivers/gpu/arm/exynos/frontend/gpex_clock_sysfs.c
@@ -47,6 +48,7 @@ grep -q 'DEVICE_ATTR(apple_mif_3672' src/drivers/devfreq/exynos/exynos-devfreq.c
 grep -q 'DEVICE_ATTR_RO(apple_mif_cal_opps)' src/drivers/devfreq/exynos/exynos-devfreq.c
 grep -q 'APPLE FINAL V5: 13-point GEOMETRIC candidate curve' src/drivers/devfreq/exynos/exynos-devfreq.c
 grep -q 'DEVICE_ATTR_RO(apple_mif_v5_geometric)' src/drivers/devfreq/exynos/exynos-devfreq.c
+grep -q 'apple_mif_v6: default ALT-DVFS MIF target_load ceiling' src/drivers/devfreq/exynos/exynos-devfreq.c
 
 echo "Compiling full Floppy kernel and matched modules, DTB/DTBO, native AnyKernel3"
 export WP="$PWD"
@@ -88,7 +90,9 @@ Linux version: $(make -s -C src kernelversion)
 Apple EMS 3x3 task migration layer: APPLIED
 APPLE 1.4 UV: native Floppy CAL/ACPM margins at boot.
 GPU 949 MHz: enabled at startup only when valid CAL/ASV+DT OPP; DVFS active.
-MIF LAB V5: geometric 13-point experimental curve (421-3672 MHz), with ACPM FREQ_GET readback.
+MIF LAB V6: geometric 13-point experimental curve (421-3672 MHz), with ACPM FREQ_GET readback.
+MIF ALT-DVFS default-mode governor target_load ceiling extended from 3172000 to 3672000 kHz at build time.
+User ALT target_load table and other ALT modes retain their original behavior. Overclock is workload-triggered, not boot-forced.
 Original Samsung 13 ECT points are retained internally as firmware/boot/suspend fallback.
 12 non-stock candidate frequencies are added to devfreq; the 13th (421 MHz) already exists.
 New geometric CAL/ASV voltages are only Linux OPP model estimates; they are NOT PMIC/DRAM voltage writes.
@@ -108,7 +112,7 @@ Artificial 910-1001 MHz OPPs added: NO
 Old direct-PLL GPU OC patch: NOT APPLIED
 Build variant: Vanilla
 Hardware boot / GPU overclock / MIF 3672 validation: NOT PERFORMED
-V5 is an experimental firmware-dependent kernel; retain original V4 TWRP rollback.
+V6 is an experimental firmware-dependent kernel; retain V5 and original V4 TWRP rollback.
 Different from old HZA6 5.4.242 ABI: full Image+vendor_boot+DTBO required
 Back up boot, vendor_boot and dtbo before hardware testing.
 EOF
