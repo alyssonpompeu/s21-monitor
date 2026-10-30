@@ -105,7 +105,7 @@ for v in ("i","j"):
     old=v+" < data->max_state - (data->devfreq_type == DEVFREQ_MIF ? 12 : 0); "+v+"++"
     assert sec.count(old)==1,old
     sec=sec.replace(old,v+" < data->max_state; "+v+"++")
-for v,n in (("i",3),("j",2)):
+for v,n in (("i",2),("j",2)):
     old="data->opp_list["+v+"].freq"
     assert sec.count(old)==n,(old,sec.count(old))
     sec=sec.replace(old,"(data->devfreq_type == DEVFREQ_MIF ? apple_mif_v7_stock_ect_khz["+v+"] : data->opp_list["+v+"].freq)")
@@ -121,7 +121,7 @@ anchor="""\tif (of_property_read_u32(np, "dfs_id", &data->dfs_id) &&
 insert=r'''
 	if (data->devfreq_type == DEVFREQ_MIF) {
 		u32 boot_khz = cal_dfs_get_boot_freq(data->dfs_id);
-		u32 best_delta = U32_MAX;
+		u32 best_delta = ~0U;
 		int k, nearest = -1;
 		bool found = false;
 
