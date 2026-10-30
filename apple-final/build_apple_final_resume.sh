@@ -28,6 +28,7 @@ python3 apple-final/apply_apple_uv_floppy.py
 python3 apple-final/apply_apple_gpu949_default.py
 python3 apple-final/apply_apple_mif_lab.py
 python3 apple-final/apply_apple_mif_v3.py
+python3 apple-final/apply_apple_mif_3672_v4.py
 grep -q 'APPLE FINAL EMS 3x3' src/kernel/sched/ems/cpu_select.c
 grep -q 'apple_final_keep_prev(env, best_cpu)' src/kernel/sched/ems/cpu_select.c
 grep -q 'gpu_unlock' src/drivers/gpu/arm/exynos/frontend/gpex_clock_sysfs.c
@@ -43,6 +44,7 @@ grep -q 'Apple Final: 949 MHz GPU unlock is default' src/drivers/gpu/arm/exynos/
 grep -q 'APPLE FINAL MIF LAB' src/drivers/devfreq/exynos/exynos-devfreq.c
 grep -q 'DEVICE_ATTR(apple_mif_3672' src/drivers/devfreq/exynos/exynos-devfreq.c
 grep -q 'DEVICE_ATTR_RO(apple_mif_cal_opps)' src/drivers/devfreq/exynos/exynos-devfreq.c
+grep -q 'APPLE FINAL V4 EXPERIMENTAL MIF 3672' src/drivers/devfreq/exynos/exynos-devfreq.c
 
 echo "Compiling full Floppy kernel and matched modules, DTB/DTBO, native AnyKernel3"
 export WP="$PWD"
@@ -84,9 +86,9 @@ Linux version: $(make -s -C src kernelversion)
 Apple EMS 3x3 task migration layer: APPLIED
 APPLE 1.4 UV: native Floppy CAL/ACPM margins at boot.
 GPU 949 MHz: enabled at startup only when valid CAL/ASV+DT OPP; DVFS active.
-MIF LAB V3: CAL/ASV voltage/OPP diagnostics. Unsupported 3672 requests rejected before ACPM write.
-MIF 3672 auto-default: BLOCKED until a proven CAL/ASV + Linux OPP + DT/timing point exists.
-Voltage extrapolation is NOT a safe programming value for LPDDR5 VDDQ or VDD2.
+MIF LAB V4: CAL/ASV diagnostics, explicit ACPM request 3672 enabled, ACPM readback and fallback.
+MIF 3672: added as Linux governor max operating point (experimental, firmware-dependent).
+DRAM voltage/PLL/PHY timings are NOT changed; no proof the firmware supports 3672 MHz.
 MIF boot clock and ECT OPPs unchanged, no LPDDR5 timing/training edits.
 Not validated on hardware; kernel's CAL/OPP checks do not establish DRAM/PHY timing safety; rollback TWRP.
 /sys/kernel/gpu/gpu_unlock=0 returns to original Floppy stock max.
@@ -99,7 +101,7 @@ GPU driver: native FloppyKernel, GPU unlock and CAL/ACPM
 Artificial 910-1001 MHz OPPs added: NO
 Old direct-PLL GPU OC patch: NOT APPLIED
 Build variant: Vanilla
-Hardware boot / GPU overclock validation: NOT PERFORMED
+Hardware boot / GPU overclock / MIF 3672 validation: NOT PERFORMED
 Different from old HZA6 5.4.242 ABI: full Image+vendor_boot+DTBO required
 Back up boot, vendor_boot and dtbo before hardware testing.
 EOF
