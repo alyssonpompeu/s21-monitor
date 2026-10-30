@@ -4,6 +4,7 @@
 Runs AFTER apply_apple_mif_lab.py. Does not invent voltage/LPDDR5 timings.
 """
 from pathlib import Path
+import re
 
 p = Path("src/drivers/devfreq/exynos/exynos-devfreq.c")
 s = p.read_text()
@@ -11,10 +12,16 @@ s = p.read_text()
 def sub(old, new):
     global s
     n = s.count(old)
+    if n == 0:
+        # V2 injected sysfs boilerplate with tabs, not spaces.
+        def to_tabs(text):
+            return re.sub(r"(?m)^( {4})+", lambda m: "\\t" * (len(m.group(0)) // 4), text)
+        old, new = to_tabs(old), to_tabs(new)
+        n = s.count(old)
     assert n == 1, (old[:100], n)
     s = s.replace(old, new, 1)
 
-opp_helpers = r"""
+opp_helpers = """
 /* APPLE FINAL V3: CAL/ASV MIF table, with bounds checked BEFORE copying.
  * A frequency alone is not a safe DRAM operating point. Both CAL/ASV and
  * Linux OPP tables must expose the exact rate, and the platform max must
