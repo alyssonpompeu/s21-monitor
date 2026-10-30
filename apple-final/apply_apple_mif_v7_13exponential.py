@@ -105,7 +105,7 @@ for v in ("i","j"):
     old=v+" < data->max_state - (data->devfreq_type == DEVFREQ_MIF ? 12 : 0); "+v+"++"
     assert sec.count(old)==1,old
     sec=sec.replace(old,v+" < data->max_state; "+v+"++")
-for v,n in (("i",2),("j",2)):
+for v,n in (("i",3),("j",3)):
     old="data->opp_list["+v+"].freq"
     assert sec.count(old)==n,(old,sec.count(old))
     sec=sec.replace(old,"(data->devfreq_type == DEVFREQ_MIF ? apple_mif_v7_stock_ect_khz["+v+"] : data->opp_list["+v+"].freq)")
