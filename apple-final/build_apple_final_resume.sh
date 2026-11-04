@@ -32,6 +32,7 @@ python3 apple-final/apply_apple_mif_3672_v4.py
 python3 apple-final/apply_apple_mif_v5_geometric.py
 python3 apple-final/apply_apple_mif_v6_alt_dvfs.py
 python3 apple-final/apply_apple_mif_v7_13exponential.py
+python3 apple-final/apply_apple_v7_gpu_exp4_only.py
 grep -q 'APPLE FINAL EMS 3x3' src/kernel/sched/ems/cpu_select.c
 grep -q 'apple_final_keep_prev(env, best_cpu)' src/kernel/sched/ems/cpu_select.c
 grep -q 'gpu_unlock' src/drivers/gpu/arm/exynos/frontend/gpex_clock_sysfs.c
