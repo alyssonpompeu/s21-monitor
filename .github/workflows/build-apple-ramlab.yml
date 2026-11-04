@@ -37,7 +37,7 @@ jobs:
           gradle-version: '8.7'
       - name: Install Android SDK, NDK, and CMake
         run: |
-          SDK_BIN="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/16.0/bin/sdkmanager"
+          SDK_BIN="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDK_BIN" --licenses >/dev/null || true
           "$SDK_BIN" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;26.3.11579264' 'cmake;3.22.1'
       - name: Compile debug APK
