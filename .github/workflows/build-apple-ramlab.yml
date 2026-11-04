@@ -1,0 +1,53 @@
+name: Build Apple RAM Lab APK
+on:
+  push:
+    branches:
+      - feature/apple-ramlab-benchmark-20261104
+    paths:
+      - 'ramlab-archive/**'
+      - '.github/workflows/build-apple-ramlab.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ramlab-build
+          cat ramlab-archive/part*.txt | base64 -d | tar -xz -C .ramlab-build
+          test -f .ramlab-build/app/build.gradle.kts
+          test -f .ramlab-build/app/src/main/cpp/rambench.cpp
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Install Android SDK, NDK, and CMake
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;26.3.11579264' 'cmake;3.22.1'
+      - name: Compile debug APK
+        working-directory: .ramlab-build
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Verify APK and native library
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .ramlab-build/app/build/outputs/apk/debug/app-debug.apk
+          unzip -l .ramlab-build/app/build/outputs/apk/debug/app-debug.apk | tee .ramlab-build/apk-content.txt
+          grep -q 'lib/arm64-v8a/librambench.so' .ramlab-build/apk-content.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AppleRAMLab-v0.1-debug-apk
+          path: .ramlab-build/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
