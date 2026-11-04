@@ -27,14 +27,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Configure Android SDK on GitHub runner
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          ls -la "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
       - name: Install Android SDK, NDK, and CMake
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;26.3.11579264' 'cmake;3.22.1'
+          SDK_BIN="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/16.0/bin/sdkmanager"
+          yes | "$SDK_BIN" --licenses >/dev/null || true
+          "$SDK_BIN" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;26.3.11579264' 'cmake;3.22.1'
       - name: Compile debug APK
         working-directory: .ramlab-build
         run: gradle --no-daemon --stacktrace :app:assembleDebug
