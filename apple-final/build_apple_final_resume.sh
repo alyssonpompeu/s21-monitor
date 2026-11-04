@@ -40,7 +40,7 @@ grep -q 'gpu_stock_max_clock' src/drivers/gpu/arm/exynos/frontend/gpex_clock.c
 grep -q '^CONFIG_SOC_EXYNOS2100_CL0_UV=9$' src/arch/arm64/configs/exynos2100-unified_defconfig
 grep -q '^CONFIG_SOC_EXYNOS2100_CL1_UV=10$' src/arch/arm64/configs/exynos2100-unified_defconfig
 grep -q '^CONFIG_SOC_EXYNOS2100_CL2_UV=8$' src/arch/arm64/configs/exynos2100-unified_defconfig
-grep -q '^CONFIG_SOC_EXYNOS2100_GPU_UV=7$' src/arch/arm64/configs/exynos2100-unified_defconfig
+grep -q '^CONFIG_SOC_EXYNOS2100_GPU_UV=4$' src/arch/arm64/configs/exynos2100-unified_defconfig
 grep -q '^static int margin_mif = -6;' src/drivers/soc/samsung/cal-if/fvmap.c
 grep -q '^static int margin_dsu = -6;' src/drivers/soc/samsung/cal-if/fvmap.c
 grep -q '^static int margin_int = -6;' src/drivers/soc/samsung/cal-if/fvmap.c
@@ -53,6 +53,7 @@ grep -q 'DEVICE_ATTR_RO(apple_mif_v5_geometric)' src/drivers/devfreq/exynos/exyn
 grep -q 'apple_mif_v7: default ALT-DVFS MIF target_load ceiling' src/drivers/devfreq/exynos/exynos-devfreq.c
 grep -q 'DEVICE_ATTR(apple_mif_v7_geometric' src/drivers/devfreq/exynos/exynos-devfreq.c
 grep -q 'apple_mif_v7: 13 exponential MIF OPPs' src/drivers/devfreq/exynos/exynos-devfreq.c
+grep -q 'APPLE FINAL V7 G3D EXP4' src/drivers/gpu/arm/exynos/backend/gpexbe_clock.c
 
 echo "Compiling full Floppy kernel and matched modules, DTB/DTBO, native AnyKernel3"
 export WP="$PWD"
@@ -109,7 +110,7 @@ DRAM voltage/PLL/PHY timings are NOT changed; no proof firmware supports any new
 MIF ECT stock boot/resume clocks unchanged, no LPDDR5 timing/training edits.
 Not validated on hardware; kernel's CAL/OPP checks do not establish DRAM/PHY timing safety; rollback TWRP.
 /sys/kernel/gpu/gpu_unlock=0 returns to original Floppy stock max.
-CPU A55 -9%; CPU A78 -10%; CPU X1 -8%; GPU G3D -7%.
+CPU A55 -9%; CPU A78 -10%; CPU X1 -8%; GPU G3D exponential -4% max (-1% near 949 MHz).
 MIF -6%; DSU -6%; INT -6%.
 Validated previously via readback on Samsung HZA6; NOT on Floppy 5.4.304.
 Sysfs readback indicates kernel margin request, NOT physical PMIC voltage.
@@ -119,7 +120,7 @@ Artificial 910-1001 MHz OPPs added: NO
 Old direct-PLL GPU OC patch: NOT APPLIED
 Build variant: Vanilla
 Hardware boot / GPU overclock / MIF 4000 validation: NOT PERFORMED
-V7 is an experimental firmware-dependent kernel; retain V6 TWRP and original backups for rollback.
+V7 GPU EXP4 is experimental. Only G3D voltage changes; DSU unchanged; retain original V7 TWRP and partition backups for rollback.
 Different from old HZA6 5.4.242 ABI: full Image+vendor_boot+DTBO required
 Back up boot, vendor_boot and dtbo before hardware testing.
 EOF
