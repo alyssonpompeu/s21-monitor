@@ -1,0 +1,50 @@
+name: Build S9 Kernel v1 (GPU UV etapa 1)
+on:
+  workflow_dispatch:
+  push:
+    branches: [ s9-kernel-gpu-uv-step1 ]
+    paths:
+      - 's9-kernel/**'
+      - '.github/workflows/s9-kernel.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bc bison flex build-essential libssl-dev libelf-dev python3 cpio kmod lz4 zip
+      - name: Validar scripts
+        run: |
+          python3 -m py_compile s9-kernel/*.py
+          bash -n s9-kernel/build_s9_kernel.sh
+          python3 s9-kernel/repack_bootimg.py s9-kernel/boot_original.img <(python3 -c "import struct,sys;d=open('s9-kernel/boot_original.img','rb').read();ks,=struct.unpack('<I',d[8:12]);p,=struct.unpack('<I',d[36:40]);sys.stdout.buffer.write(d[p:p+ks])") /tmp/same.img
+          cmp s9-kernel/boot_original.img /tmp/same.img
+      - name: Compilar
+        shell: bash
+        run: |
+          set -o pipefail
+          WORK=$PWD/s9work bash s9-kernel/build_s9_kernel.sh 2>&1 | tee S9_BUILD.log
+      - name: Enviar log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: S9-KERNEL-V1-LOG
+          path: S9_BUILD.log
+          retention-days: 7
+      - name: Enviar boot.img
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: S9-KERNEL-V1-BOOT
+          path: |
+            s9work/S9_kernel_v1_gpu_uv_step1_boot.img
+            s9work/S9_ROLLBACK_boot_original.img
+            s9work/S9_SHA256SUMS.txt
+            s9-kernel/S9_clocks_etapa1.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

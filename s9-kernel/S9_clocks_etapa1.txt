@@ -1,0 +1,39 @@
+GALAXY S9 SM-G9600 (starqltechn, SDM845 v2) - LISTA DE CLOCKS E TENSAO
+Etapa 1 do undervolt de GPU. Estado: patch criado e aplicado no fonte; NAO compilado, NAO testado.
+Tensao no SDM845 e por "corner" RPMh (decidida pelo firmware); nao ha valor em mV no kernel.
+Origem: device tree do boot.img da ROM (Rev14) + fonte klabit87 lineage-19.0.
+
+GPU - Adreno 630 (rail pm8005_s1, GFX)
+  MHz    corner antes    corner depois
+  710    TURBO_L1        TURBO_L1   (igual)
+  675    TURBO           TURBO      (igual)
+  596    NOM_L1          NOM_L1     (igual)
+  520    NOM             NOM        (igual)
+  414    SVS_L1          SVS        (ALTERADO, 1 corner abaixo)
+  342    SVS             LOW_SVS    (ALTERADO, 1 corner abaixo)
+  257    LOW_SVS         MIN_SVS    (ALTERADO, 1 corner abaixo)
+  180    MIN_SVS         MIN_SVS    (so no clock; sem pwrlevel no device tree)
+
+CPU LITTLE - 4x Cortex-A55 (sem alteracao; tensao por OSM/CPR em firmware, nao consta no kernel)
+  kHz candidatos (modelo de energia): 300000 403200 480000 576000 652800 748800 825600 902400
+  979200 1056000 1132800 1228800 1324800 1420800 1516800 1612800 1689600 1766400
+  MX turbo exigido a partir de 1689600.
+
+CPU big - 4x Cortex-A75 (sem alteracao; tensao por OSM/CPR em firmware)
+  kHz candidatos: 300000 403200 480000 576000 652800 748800 825600 902400 979200 1056000
+  1132800 1209600 1286400 1363200 1459200 1536000 1612800 1689600 1766400 1843200 1920000
+  1996800 2092800 2169600 2246400 2323200 2400000 2476800 2553600 2649600 2745600 2764800
+  2784000 2803200 2841600 2956800
+  A tabela real so existe no aparelho (scaling_available_frequencies) - ainda nao lida.
+
+L3 / DSU (sem alteracao; tensao por OSM/CPR em firmware)
+  MHz: 300 403.2 480 576 652.8 748.8 844.8 940.8 1036.8 1132.8 1209.6 1305.6 1401.6 1593.6
+  MX turbo exigido a partir de 1478.4.
+
+MEMORIA LPDDR4X (sem alteracao; frequencia e tensao decididas pelo firmware)
+  Votos de banda (MBps): 762 1144 1720 2086 2597 2929 3879 4943 5931 6881
+  Frequencia DDR calculada (MHz): 200 300 451 547 681 768 1017 1296 1555 1804
+  Rails fixos: pm8998_s2 1.100 V, s3 1.352 V, s5 1.904-2.040 V, s7 0.900-1.028 V
+  Rails por corner: CX (s9), MX (s6), EBI (s1), LMX (l4), LCX (l27), modem MSS (pm8005_s2)
+
+NPU: o SDM845 nao tem NPU dedicada.
