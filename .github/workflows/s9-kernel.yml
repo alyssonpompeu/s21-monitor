@@ -1,11 +1,15 @@
-name: Build S9 Kernel v1 (GPU UV etapa 1)
+name: Build S9 Kernel v2 (CPU UV+OC, GPU tabela B)
 on:
   workflow_dispatch:
   push:
-    branches: [ s9-kernel-gpu-uv-step1 ]
+    branches: [ s9-kernel-v2 ]
     paths:
       - 's9-kernel/**'
       - '.github/workflows/s9-kernel.yml'
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   build:
@@ -20,36 +24,47 @@ jobs:
       - name: Validar scripts
         run: |
           python3 -m py_compile s9-kernel/*.py
-          bash -n s9-kernel/build_s9_kernel.sh
-          # regressao: o wrapper de compilador do kernel exige Python 2
+          bash -n s9-kernel/build_s9_kernel_v2.sh
+          bash -n s9-kernel/tests/test_installer.sh
+          # regressao: o wrapper de compilador do kernel exige Python 2 e trata aviso como erro
           python2 --version
-          grep -q 'PYTHON=python2' s9-kernel/build_s9_kernel.sh
-          # regressao: compilar sem o wrapper que trata aviso como erro
-          grep -q 'CC=aarch64-linux-android-gcc' s9-kernel/build_s9_kernel.sh
-          python3 s9-kernel/repack_bootimg.py s9-kernel/boot_original.img <(python3 -c "import struct,sys;d=open('s9-kernel/boot_original.img','rb').read();ks,=struct.unpack('<I',d[8:12]);p,=struct.unpack('<I',d[36:40]);sys.stdout.buffer.write(d[p:p+ks])") /tmp/same.img
+          grep -q 'PYTHON=python2' s9-kernel/build_s9_kernel_v2.sh
+          grep -q 'CC=aarch64-linux-android-gcc' s9-kernel/build_s9_kernel_v2.sh
+          # regressao: o empacotador devolve o boot original identico
+          python3 -c "import struct,sys;d=open('s9-kernel/boot_original.img','rb').read();ks,=struct.unpack('<I',d[8:12]);p,=struct.unpack('<I',d[36:40]);open('/tmp/k','wb').write(d[p:p+ks])"
+          python3 s9-kernel/repack_bootimg.py s9-kernel/boot_original.img /tmp/k /tmp/same.img
           cmp s9-kernel/boot_original.img /tmp/same.img
+          # regressao: o verificador do v2 tem de recusar o kernel original
+          if python3 s9-kernel/check_v2_image.py /tmp/k; then echo "check_v2 aceitou o kernel original"; exit 1; fi
+      - name: Baixar kernel v1 (para o pacote de rollback)
+        id: v1
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: S9-KERNEL-V1-BOOT
+          run-id: 43551253649
+          github-token: ${{ github.token }}
+          path: v1
       - name: Compilar
         shell: bash
         run: |
           set -o pipefail
-          WORK=$PWD/s9work bash s9-kernel/build_s9_kernel.sh 2>&1 | tee S9_BUILD.log
+          V1=$(find "$PWD/v1" -name 'S9_kernel_v1_gpu_uv_step1_boot.img' 2>/dev/null | head -n 1 || true)
+          echo "kernel v1 para rollback: ${V1:-nao disponivel}"
+          WORK=$PWD/s9work V1_IMG="$V1" bash s9-kernel/build_s9_kernel_v2.sh 2>&1 | tee S9_BUILD.log
       - name: Enviar log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: S9-KERNEL-V1-LOG
+          name: S9-KERNEL-V2-LOG
           path: S9_BUILD.log
-          retention-days: 7
-      - name: Enviar boot.img
+          retention-days: 30
+      - name: Enviar pacote
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: S9-KERNEL-V1-BOOT
-          path: |
-            s9work/S9_kernel_v1_gpu_uv_step1_boot.img
-            s9work/S9_ROLLBACK_boot_original.img
-            s9work/S9_SHA256SUMS.txt
-            s9-kernel/S9_clocks_etapa1.txt
+          name: S9-KERNEL-V2-PACOTE
+          path: s9work/pacote/
           if-no-files-found: error
           compression-level: 0
-          retention-days: 7
+          retention-days: 30

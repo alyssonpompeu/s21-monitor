@@ -1,0 +1,82 @@
+GALAXY S9 SM-G9600 (starqltechn Rev14, SDM845 v2.1) - KERNEL v2 - LISTA COMPLETA DE CLOCKS E TENSOES
+Estado: valores que o kernel v2 PEDE. Compilado; nao testado no aparelho ate a coleta confirmar.
+CPU: mV = tensao open-loop gravada na LUT do OSM. 'Antes' = medido no aparelho em 14/11/2026.
+GPU e memoria: corner RPMh (nao existe mV no kernel).
+
+CPU big - 4x Cortex-A75
+  kHz antes   kHz v2      mV antes  mV v2   reducao
+  825600      825600      624       612     -12 mV (1.9%)
+  902400      902400      636       620     -16 mV (2.5%)
+  979200      979200      648       632     -16 mV (2.5%)
+  1056000     1056000     656       640     -16 mV (2.4%)
+  1209600     1209600     668       648     -20 mV (3.0%)
+  1286400     1286400     680       656     -24 mV (3.5%)
+  1363200     1363200     696       672     -24 mV (3.4%)
+  1459200     1459200     708       680     -28 mV (4.0%)
+  1536000     1536000     728       696     -32 mV (4.4%)
+  1612800     1612800     744       712     -32 mV (4.3%)
+  1689600     1689600     764       728     -36 mV (4.7%)
+  1766400     1766400     788       748     -40 mV (5.1%)
+  1843200     1843200     808       764     -44 mV (5.4%)
+  1920000     1920000     824       780     -44 mV (5.3%)
+  1996800     1996800     844       796     -48 mV (5.7%)
+  2092800     2092800     880       828     -52 mV (5.9%)
+  2169600     2169600     904       848     -56 mV (6.2%)
+  2246400     2246400     908       848     -60 mV (6.6%)
+  2323200     2323200     932       868     -64 mV (6.9%)
+  2400000     2400000     956       888     -68 mV (7.1%)
+  2476800     2476800     980       908     -72 mV (7.3%)
+  2553600     2553600     1000      924     -76 mV (7.6%)
+  2649600     2649600     1028      948     -80 mV (7.8%)
+  2707200     2707200     1028      948     -80 mV (7.8%)
+  2764800     2764800     1052      968     -84 mV (8.0%)
+  2784000     2784000     1060      972     -88 mV (8.3%)
+  2803200     2899200     1068      980     -88 mV (8.2%)   <- overclock de teste (multiplicador 146 -> 151)
+
+CPU LITTLE - 4x Cortex-A55
+  kHz antes   kHz v2      mV antes  mV v2   reducao
+  300000      300000      592       580     -12 mV (2.0%)
+  403200      403200      592       580     -12 mV (2.0%)
+  480000      480000      592       580     -12 mV (2.0%)
+  576000      576000      592       580     -12 mV (2.0%)
+  652800      652800      592       580     -12 mV (2.0%)
+  748800      748800      592       580     -12 mV (2.0%)
+  825600      825600      604       580     -24 mV (4.0%)
+  902400      902400      616       588     -28 mV (4.5%)
+  979200      979200      620       592     -28 mV (4.5%)
+  1056000     1056000     628       596     -32 mV (5.1%)
+  1132800     1132800     636       604     -32 mV (5.0%)
+  1228800     1228800     652       616     -36 mV (5.5%)
+  1324800     1324800     672       632     -40 mV (6.0%)
+  1420800     1420800     696       652     -44 mV (6.3%)
+  1516800     1516800     724       676     -48 mV (6.6%)
+  1612800     1612800     764       712     -52 mV (6.8%)
+  1689600     1689600     820       760     -60 mV (7.3%)
+  1766400     1843200     844       780     -64 mV (7.6%)   <- overclock de teste (multiplicador 92 -> 96)
+
+L3 / DSU - SEM ALTERACAO
+  MHz: 300 403.2 480 576 652.8 748.8 844.8 940.8 1036.8 1132.8 1209.6 1305.6 1401.6 1478.4
+  Tensao medida no topo (1478.4 MHz): 832 mV. Demais linhas: aguardam a coleta v3.
+
+GPU - Adreno 630 (rail pm8005_s1) - TABELA B, 7 niveis
+  nivel  MHz v2  corner v2     antes (kernel v1)
+  6      257     MIN_SVS       257 MHz MIN_SVS
+  5      322     LOW_SVS       342 MHz LOW_SVS
+  4      404     SVS           414 MHz SVS
+  3      507     SVS_L1        520 MHz NOM
+  2      636     NOM_L1        596 MHz NOM_L1
+  1      798     TURBO_L1      675 MHz TURBO
+  0      1000    TURBO_L1      710 MHz TURBO_L1
+  Gerador de clock: 1000 MHz = oscilador a 2000 MHz, no limite declarado no driver.
+
+MEMORIA LPDDR4X
+  Votos de banda (MBps): 762 1144 1720 2086 2597 2929 3879 4943 5931 6881 + 7980 (novo, especulativo)
+  Frequencia DDR (MHz):  200 300  451  547  681  768  1017 1296 1555 1804 + 2092 (pedido; o bootloader decide)
+  Tensao: corners decididos pelo firmware. Sem alteracao.
+
+GOVERNADORES / ESCALONADOR (so o que a ROM nao regrava no boot)
+  GPU (msm-adreno-tz): janela minima de decisao 5 ms -> 3 ms; janela maxima 50 ms -> 30 ms
+  Escalonador: custo de migracao 0,5 ms -> 1,0 ms (tarefa fica mais tempo no nucleo com cache quente)
+  Nao alterados (a ROM regrava no boot): pontos de subida da CPU, bw_hwmon, mem_latency, upmigrate/downmigrate
+
+NPU: o SDM845 nao tem NPU dedicada.

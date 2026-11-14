@@ -1,0 +1,50 @@
+#!/sbin/sh
+# S9 (starqltechn) - instalador de boot.img pelo TWRP.
+# Grava SOMENTE a particao boot. Confere o arquivo antes e relê a particao depois.
+OUTFD=/proc/self/fd/$2
+ZIP="$3"
+ui_print() { echo "ui_print $1" >> "$OUTFD"; echo "ui_print" >> "$OUTFD"; }
+abort() { ui_print "ERRO: $1"; ui_print "Nada mais foi alterado."; exit 1; }
+
+ui_print "S9 - instalador de kernel (boot.img)"
+TMP=/tmp/s9_flash
+rm -rf "$TMP"; mkdir -p "$TMP" || abort "sem /tmp"
+unzip -o "$ZIP" boot.img boot.sha256 LEIA-ME.txt -d "$TMP" >/dev/null 2>&1 || abort "nao consegui extrair o zip"
+[ -s "$TMP/boot.img" ] || abort "boot.img ausente no zip"
+ui_print "$(cat "$TMP/LEIA-ME.txt" 2>/dev/null)"
+
+EXP=$(cat "$TMP/boot.sha256" 2>/dev/null)
+GOT=$(sha256sum "$TMP/boot.img" | cut -d' ' -f1)
+[ -n "$EXP" ] && [ "$EXP" = "$GOT" ] || abort "arquivo corrompido (SHA-256 nao confere)"
+[ "$(dd if="$TMP/boot.img" bs=8 count=1 2>/dev/null)" = "ANDROID!" ] || abort "boot.img invalido"
+
+DEVS="$(getprop ro.product.device) $(getprop ro.build.product) $(getprop ro.product.name)"
+case "$DEVS" in
+  *starqlte*) ;;
+  *) abort "aparelho nao e um Galaxy S9 Snapdragon (starqlte): $DEVS" ;;
+esac
+
+BOOT="$S9_TEST_BOOT"
+if [ -z "$BOOT" ]; then
+  for p in /dev/block/bootdevice/by-name/boot /dev/block/platform/soc/1d84000.ufshc/by-name/boot /dev/block/by-name/boot; do
+    [ -e "$p" ] && { BOOT="$p"; break; }
+  done
+fi
+[ -n "$BOOT" ] && [ -e "$BOOT" ] || abort "particao boot nao encontrada"
+[ "$(dd if="$BOOT" bs=8 count=1 2>/dev/null)" = "ANDROID!" ] || abort "a particao encontrada nao parece um boot Android"
+
+N=$(wc -c < "$TMP/boot.img")
+PSZ=$(blockdev --getsize64 "$BOOT" 2>/dev/null)
+if [ -n "$PSZ" ] && [ "$PSZ" -lt "$N" ]; then abort "imagem maior que a particao"; fi
+
+ui_print "Gravando em $BOOT ..."
+dd if="$TMP/boot.img" of="$BOOT" bs=4096 conv=notrunc 2>/dev/null || abort "falha ao gravar"
+sync
+# Le de volta exatamente N bytes: a imagem da Samsung termina com 16 bytes de
+# assinatura e nao e multipla de 4096 (bug pego no teste T1 antes da entrega).
+RB=$(dd if="$BOOT" bs=4096 count=$((N / 4096 + 1)) 2>/dev/null | head -c "$N" | sha256sum | cut -d' ' -f1)
+[ "$RB" = "$EXP" ] || abort "verificacao apos gravar FALHOU - grave novamente antes de reiniciar"
+rm -rf "$TMP"
+ui_print "OK: boot gravado e conferido."
+ui_print "Lembrete: reinstale o Magisk antes de reiniciar."
+exit 0
