@@ -21,9 +21,11 @@ echo "toolchain commit: $(git -C tc rev-parse HEAD)"
 
 python3 "$HERE/apply_s9_kernel_v2.py" src "$HERE/tables.inc"
 git -C src diff --stat
-EXPECTED="arch/arm64/boot/dts/qcom/sdm845-v2.dtsi arch/arm64/boot/dts/qcom/sdm845.dtsi drivers/clk/qcom/clk-cpu-osm.c drivers/clk/qcom/gpucc-sdm845.c drivers/devfreq/governor_msm_adreno_tz.c kernel/sched/fair.c "
-[ "$(git -C src diff --name-only | sort | tr '\n' ' ')" = "$EXPECTED" ] \
-  || { echo "ERRO: arquivos alterados diferentes do esperado"; exit 1; }
+# 15 .dts planos do starqlte-chn + 4 fontes; nada alem disso pode mudar
+CHANGED="$(git -C src diff --name-only | sort)"
+EXPECTED="$( { ls src/arch/arm64/boot/dts/samsung/sdm845-sec-starqlte-chn-r*.dts | sed 's#^src/##'; printf '%s\n' drivers/clk/qcom/clk-cpu-osm.c drivers/clk/qcom/gpucc-sdm845.c drivers/devfreq/governor_msm_adreno_tz.c kernel/sched/fair.c; } | sort )"
+[ "$CHANGED" = "$EXPECTED" ] || { echo "ERRO: arquivos alterados diferentes do esperado"; diff <(echo "$CHANGED") <(echo "$EXPECTED") || true; exit 1; }
+[ "$(echo "$CHANGED" | wc -l)" = "19" ] || { echo "ERRO: esperava 19 arquivos alterados"; exit 1; }
 
 echo "--- teste unitario da regravacao da LUT (funcao extraida do fonte ja alterado)"
 mkdir -p ut && cp "$HERE/tests/test_osm_rewrite.c" "$HERE/tests/s9_lut_data.c" ut/

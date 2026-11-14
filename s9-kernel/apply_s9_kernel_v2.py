@@ -12,9 +12,9 @@ Base: klabit87/android_kernel_samsung_sdm845, lineage-19.0, commit 66ad1f12.
    - so regrava se TODAS as linhas lidas baterem com a tabela de fabrica
      medida no aparelho; depois le de volta e registra o resultado.
    - L3 nao e tocado.
-2. GPU (gpucc-sdm845.c + sdm845-v2.dtsi): tabela B, 7 niveis,
+2. GPU (gpucc-sdm845.c + .dts planos do starqlte-chn): tabela B, 7 niveis,
    257 / 322 / 404 / 507 / 636 / 798 / 1000 MHz.
-3. Memoria (sdm845.dtsi): voto extra de 2092 MHz (7980 MBps), especulativo.
+3. Memoria (.dts planos, no llccbw): voto extra de 2092 MHz (7980 MBps), especulativo.
 4. Governadores: janela do governor da GPU (5 -> 3 ms, teto 50 -> 30 ms) e
    custo de migracao do escalonador (0,5 -> 1,0 ms).
 
@@ -177,44 +177,47 @@ def gpucc(text):
 
 edit("drivers/clk/qcom/gpucc-sdm845.c", gpucc)
 
+# Os device trees do S9 neste fonte sao arquivos .dts "planos" (ja expandidos,
+# valores em hexadecimal), um por revisao de placa. Os .dtsi da Qualcomm NAO
+# entram no build (erro do build 43607363051: editar o .dtsi nao mudava nada).
+import glob
+import os
+
+DT_FILES = sorted(glob.glob(ROOT + "/arch/arm64/boot/dts/samsung/sdm845-sec-starqlte-chn-r*.dts"))
+if len(DT_FILES) != 15:
+    sys.exit("ERRO: esperava 15 .dts do starqlte-chn, achei %d" % len(DT_FILES))
 DT_GPU = [(710, 1000), (675, 798), (596, 636), (520, 507), (414, 404), (342, 322)]
+GPU_DT_FINAL = ["0x%x" % (f * 1000000) for f in (1000, 798, 636, 507, 404, 322, 257)] + ["0x0"]
+BW_OLD = "0x2fa 0x478 0x6b8 0x826 0xa25 0xb71 0xf27 0x134f 0x172b 0x1ae1"
+gpu_files = 0
 
 
-def dt_gpu(text):
-    m = re.search(r"&msm_gpu \{.*?\n\};\n", text, re.S)
-    if not m:
-        sys.exit("ERRO: bloco &msm_gpu nao encontrado")
-    blk = m.group(0)
-    new = blk
-    for old, nw in DT_GPU:
-        new = once(new, "qcom,gpu-freq = <%d000000>;" % old,
-                   "qcom,gpu-freq = <%d000000>;" % nw, "nivel %d MHz no DT" % old)
-    if new.count("qcom,gpu-freq = <257000000>;") != 1:
-        sys.exit("ERRO: nivel 257 MHz ausente")
-    freqs = [int(x) for x in re.findall(r"qcom,gpu-freq = <(\d+)>;", new)]
-    if freqs != [1000000000, 798000000, 636000000, 507000000, 404000000, 322000000, 257000000, 0]:
-        sys.exit("ERRO: niveis do DT inesperados: %s" % freqs)
-    return text.replace(blk, new)
+def dt_flat(text):
+    global gpu_files
+    # memoria: so o no llccbw recebe o voto extra (0x1f2c = 7980 MBps = 2092 MHz)
+    pat = re.compile(r"(\n\t\tqcom,llccbw \{\n(?:(?!\n\t\t\};).)*?qcom,bw-tbl = <" + re.escape(BW_OLD) + r")>;", re.S)
+    text, cnt = pat.subn(r"\g<1> 0x1f2c>;", text, count=1)
+    if cnt != 1:
+        sys.exit("ERRO: tabela do llccbw nao encontrada")
+    if text.count(BW_OLD + ">;") != 3 or text.count(BW_OLD + " 0x1f2c>;") != 1:
+        sys.exit("ERRO: tabelas de memoria fora do esperado")
+    # GPU: so os arquivos de chips v2/v2.1 (os que tem o nivel de 710 MHz)
+    if "qcom,gpu-freq = <0x%x>;" % 710000000 in text:
+        for old, nw in DT_GPU:
+            text = once(text, "qcom,gpu-freq = <0x%x>;" % (old * 1000000),
+                        "qcom,gpu-freq = <0x%x>;" % (nw * 1000000), "nivel %d MHz no DT" % old)
+        if re.findall(r"qcom,gpu-freq = <(0x[0-9a-f]+)>;", text) != GPU_DT_FINAL:
+            sys.exit("ERRO: niveis de GPU do DT inesperados")
+        gpu_files += 1
+    return text
 
 
-edit("arch/arm64/boot/dts/qcom/sdm845-v2.dtsi", dt_gpu)
-
-
-# ---------------------------------------------------------------- 3. memoria
-def dt_ddr(text):
-    m = re.search(r"\tllccbw: qcom,llccbw \{.*?\n\t\};\n", text, re.S)
-    if not m:
-        sys.exit("ERRO: no llccbw nao encontrado")
-    blk = m.group(0)
-    new = once(blk,
-               "\t\t\t< MHZ_TO_MBPS(1804, 4) >; /* 6881 MB/s */\n",
-               "\t\t\t< MHZ_TO_MBPS(1804, 4) >, /* 6881 MB/s */\n"
-               "\t\t\t< MHZ_TO_MBPS(2092, 4) >; /* 7980 MB/s - S9 v2: voto especulativo */\n",
-               "ultimo nivel do llccbw")
-    return text.replace(blk, new)
-
-
-edit("arch/arm64/boot/dts/qcom/sdm845.dtsi", dt_ddr)
+for f in DT_FILES:
+    edit(os.path.relpath(f, ROOT), dt_flat)
+if gpu_files != 9:
+    sys.exit("ERRO: esperava 9 .dts com a tabela de GPU v2, alterei %d" % gpu_files)
+if not any(f.endswith("chn-r14_v2.1.dts") for f in DT_FILES):
+    sys.exit("ERRO: .dts do Rev14 v2.1 ausente")
 
 
 # ---------------------------------------------------------------- 4. governadores
@@ -230,4 +233,7 @@ edit("kernel/sched/fair.c",
                     "const_debug unsigned int sysctl_sched_migration_cost = 1000000UL;",
                     "custo de migracao"))
 
-print("OK kernel v2: " + ", ".join(sorted(done)))
+print("OK kernel v2: %d arquivos alterados (%d .dts, %d com GPU)" % (len(done), len(DT_FILES), gpu_files))
+for d in sorted(done):
+    if not d.endswith(".dts"):
+        print("  " + d)

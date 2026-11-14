@@ -43,8 +43,8 @@ for n, d in enumerate(v2):
         if be(f) in d:
             sys.exit("ERRO: DTB v2 %d ainda tem o nivel antigo %d" % (n, f))
 rev14 = [d for d in dtbs if b"Samsung STARQLTE CHN PROJECT Rev14" in d]
-if len(rev14) != 1 or rev14[0] not in v2:
-    sys.exit("ERRO: o device tree do Rev14 nao recebeu a tabela B")
+if len(rev14) != 2 or any(d not in v2 for d in rev14):
+    sys.exit("ERRO: os device trees do Rev14 (v2.0 e v2.1) nao receberam a tabela B")
 seq = b"".join(be(v) for v in (762, 1144, 1720, 2086, 2597, 2929, 3879, 4943, 5931, 6881, 7980))
 for n, d in enumerate(dtbs):
     if seq not in d:
