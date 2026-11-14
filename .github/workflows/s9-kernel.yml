@@ -16,11 +16,14 @@ jobs:
       - name: Dependencias
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y bc bison flex build-essential libssl-dev libelf-dev python3 cpio kmod lz4 zip
+          sudo apt-get install -y bc bison flex build-essential libssl-dev libelf-dev python3 python2 cpio kmod lz4 zip
       - name: Validar scripts
         run: |
           python3 -m py_compile s9-kernel/*.py
           bash -n s9-kernel/build_s9_kernel.sh
+          # regressao: o wrapper de compilador do kernel exige Python 2
+          python2 --version
+          grep -q 'PYTHON=python2' s9-kernel/build_s9_kernel.sh
           python3 s9-kernel/repack_bootimg.py s9-kernel/boot_original.img <(python3 -c "import struct,sys;d=open('s9-kernel/boot_original.img','rb').read();ks,=struct.unpack('<I',d[8:12]);p,=struct.unpack('<I',d[36:40]);sys.stdout.buffer.write(d[p:p+ks])") /tmp/same.img
           cmp s9-kernel/boot_original.img /tmp/same.img
       - name: Compilar

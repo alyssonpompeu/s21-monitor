@@ -29,8 +29,11 @@ rm -rf out && mkdir out
 zcat "$HERE/rom_kernel.config.gz" > out/.config
 export PATH="$WORK/tc/bin:$PATH"
 aarch64-linux-android-gcc --version | head -n 1
+# scripts/gcc-wrapper.py do fonte e Python 2: com Python 3 ele quebra ao repassar
+# qualquer aviso do compilador (falha vista no build 43549560415).
+command -v python2 >/dev/null || { echo "ERRO: python2 ausente (necessario para scripts/gcc-wrapper.py)"; exit 1; }
 MK=(make -C src O="$WORK/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS=-mno-android
-    HOSTCFLAGS="-O2 -fomit-frame-pointer -std=gnu89 -fcommon")
+    PYTHON=python2 HOSTCFLAGS="-O2 -fomit-frame-pointer -std=gnu89 -fcommon")
 "${MK[@]}" olddefconfig
 grep -q '^CONFIG_LOCALVERSION="-klabitV6.5-ZRAM"$' out/.config || { echo "ERRO: LOCALVERSION mudou"; exit 1; }
 echo "--- diferencas de config em relacao ao kernel da ROM:"
