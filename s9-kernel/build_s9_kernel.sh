@@ -33,7 +33,11 @@ aarch64-linux-android-gcc --version | head -n 1
 # qualquer aviso do compilador (falha vista no build 43549560415).
 command -v python2 >/dev/null || { echo "ERRO: python2 ausente (necessario para scripts/gcc-wrapper.py)"; exit 1; }
 MK=(make -C src O="$WORK/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS=-mno-android
-    PYTHON=python2 HOSTCFLAGS="-O2 -fomit-frame-pointer -std=gnu89 -fcommon")
+    PYTHON=python2 HOSTCFLAGS="-O2 -fomit-frame-pointer -std=gnu89 -fcommon"
+    CC=aarch64-linux-android-gcc)
+# CC direto: o gcc-wrapper.py transforma qualquer aviso em erro e parava em
+# fs/proc/cmdline.c:40 (frame de 2064 bytes, codigo original do klabit; build
+# 43550443448). O wrapper so filtra avisos; nao muda o codigo gerado.
 "${MK[@]}" olddefconfig
 grep -q '^CONFIG_LOCALVERSION="-klabitV6.5-ZRAM"$' out/.config || { echo "ERRO: LOCALVERSION mudou"; exit 1; }
 echo "--- diferencas de config em relacao ao kernel da ROM:"
