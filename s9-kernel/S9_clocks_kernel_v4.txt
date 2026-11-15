@@ -1,0 +1,113 @@
+GALAXY S9 SM-G9600 (starqltechn Rev14, SDM845 v2.1) - KERNEL v4 - LISTA DE CLOCKS E ALTERACOES (compilado; nao testado no aparelho)
+Base: kernel v3 (boot ok; GPU 900 MHz travava). CPU igual ao v3. Fonte klabit87 lineage-19.0, GCC 4.9, config da ROM.
+
+=== 1. CPU - frequencias novas, SEM undervolt ===
+Cada linha mantem a tensao de FABRICA que ja tinha; so a frequencia muda (overclock na mesma tensao).
+Frequencias = multiplos de 19,2 MHz, mesmo numero de linhas, reespacadas de cima pra baixo; minimo inalterado.
+Coluna 'fabrica na freq nova': o que a frequencia nova pediria de fabrica (acima do topo original e extrapolado).
+
+CPU big - 4x Cortex-A75 (27 linhas)
+  linha  kHz antes  kHz v4     multiplicador  mV v4 (=fabrica da linha)  fabrica na freq nova  diferenca
+  0      825600     825600     43             624                        624                   0
+  1      902400     902400     47             636                        636                   0
+  2      979200     998400     52             648                        650                   -0.3%
+  3      1056000    1075200    56             656                        658                   -0.3%
+  4      1209600    1248000    65             668                        674                   -0.9%
+  5      1286400    1324800    69             680                        688                   -1.2%
+  6      1363200    1420800    74             696                        703                   -1.0%
+  7      1459200    1516800    79             708                        723                   -2.1%
+  8      1536000    1612800    84             728                        744                   -2.2%
+  9      1612800    1689600    88             744                        764                   -2.6%
+  10     1689600    1766400    92             764                        788                   -3.0%
+  11     1766400    1862400    97             788                        812                   -3.0%
+  12     1843200    1939200    101            808                        829                   -2.5%
+  13     1920000    2035200    106            824                        858                   -4.0%
+  14     1996800    2112000    110            844                        886                   -4.7%
+  15     2092800    2208000    115            880                        906                   -2.9%
+  16     2169600    2304000    120            904                        926                   -2.4%
+  17     2246400    2380800    124            908                        950                   -4.4%
+  18     2323200    2476800    129            932                        980                   -4.9%
+  19     2400000    2553600    133            956                        1000                  -4.4%
+  20     2476800    2630400    137            980                        1022                  -4.1%
+  21     2553600    2726400    142            1000                       1036                  -3.5%
+  22     2649600    2822400    147            1028                       1076                  -4.5%
+  23     2707200    2899200    151            1028                       1108                  -7.2%
+  24     2764800    2956800    154            1052                       1132                  -7.1%
+  25     2784000    2976000    155            1060                       1140                  -7.0%
+  26     2803200    2995200    156            1068                       1148                  -7.0%
+
+CPU LITTLE - 4x Cortex-A55 (18 linhas)
+  linha  kHz antes  kHz v4     multiplicador  mV v4 (=fabrica da linha)  fabrica na freq nova  diferenca
+  0      300000     300000     taxa inicial   592                        592                   0
+  1      403200     422400     22             592                        592                   0
+  2      480000     499200     26             592                        592                   0
+  3      576000     614400     32             592                        592                   0
+  4      652800     710400     37             592                        592                   0
+  5      748800     825600     43             592                        604                   -2.0%
+  6      825600     902400     47             604                        616                   -1.9%
+  7      902400     998400     52             616                        622                   -1.0%
+  8      979200     1094400    57             620                        632                   -1.9%
+  9      1056000    1171200    61             628                        642                   -2.2%
+  10     1132800    1267200    66             636                        660                   -3.6%
+  11     1228800    1382400    72             652                        686                   -5.0%
+  12     1324800    1478400    77             672                        713                   -5.8%
+  13     1420800    1593600    83             696                        756                   -7.9%
+  14     1516800    1708800    89             724                        826                   -12.3%
+  15     1612800    1824000    95             764                        862                   -11.4%
+  16     1689600    1900800    99             820                        886                   -7.4%
+  17     1766400    1996800    104            844                        916                   -7.9%
+
+=== 2. L3 / DSU - SEM ALTERACAO ===
+  300 403.2 480 576 652.8 748.8 844.8 940.8 1036.8 1132.8 1209.6 1305.6 1401.6 1478.4 MHz; topo 832 mV
+
+=== 3. GPU - Adreno 630 (corner RPMh; sem mV no kernel) - tabela B ===
+Os 7 niveis da tabela original foram reescritos (nenhum nivel acrescentado acima).
+  nivel  MHz   corner     situacao
+  0      870   TURBO_L1   novo, em teste (900 e 1000 travaram)
+  1      840   TURBO_L1   novo, em teste
+  2      798   TURBO_L1   passou no benchmark (1.117.200)
+  3      636   NOM_L1     passou no benchmark (1.071.600)
+  4      507   SVS_L1     passou
+  5      404   SVS        passou no benchmark (820.800)
+  6      257   MIN_SVS    em uso desde o v1
+  (322 MHz / LOW_SVS saiu da tabela)
+  Para limitar o topo sem trocar de kernel (root):
+    cd /sys/class/kgsl/kgsl-3d0 ; echo 2 > max_pwrlevel   -> topo 798 MHz
+    echo 1 > max_pwrlevel -> 840 MHz ; echo 0 > max_pwrlevel -> 870 MHz (padrao)
+
+=== 4. MEMORIA LPDDR4X ===
+  Votos de banda (MBps): 762 1144 1720 2086 2597 2929 3879 4943 5931 6881 + 7980 (especulativo, igual ao v3)
+  Frequencia e tensao: decididas pelo firmware/bootloader (sem alteracao possivel no kernel)
+  Mapa CPU -> memoria (memlat; vale quando a CPU espera a memoria):
+    A75  CPU MHz:  300    499,2  806,4  1036,8  1190,4  1574,4
+         antes:    762    1720   2086   2929    3879    4943 (5931 em 1728, 6881 em 1958,4)
+         v4:       1144   1720   2929   3879    4943    6881
+    A55  CPU MHz:  300    748,8  1132,8  1440   1593,6
+         antes:    762    1720   2086    2929   3879
+         v4:       1144   2086   2929    3879   4943
+  L3/DSU: sem alteracao.
+
+=== 5. AUDIO - amplificador MAX98512 ===
+  Alto-falantes: 18 dB mantido (quando a ROM pede 15 dB, o kernel aplica 18 dB). Protecao DSM mantida.
+  NOVO: leitura de /dev/dsm_ctrl_dev corrigida (devolvia 0 bytes). So leitura: serve para medir os
+  parametros do protetor (grave, corte, divisao entre alto-falantes) antes de qualquer afinacao.
+
+=== 6. TELA / TOQUE - igual ao v3 ===
+  Modo luva ligado por padrao; reforco ao tocar A55 1267,2 / A75 1420,8 MHz por 64 ms.
+
+=== 7. GOVERNADORES E SISTEMA ===
+  GPU (msm-adreno-tz): janela 3 ms / teto 30 ms. Escalonador: custo de migracao 1 ms (iguais ao v3).
+  NOVO: escalonador de E/S padrao noop (era cfq). A ROM pode trocar no boot; o coletor mostra o que ficou.
+  NOVO: zram com lz4 por padrao (era lzo). Idem.
+  NOVO: TCP westwood por padrao (era bic).
+  NOVO: sem o despejo de todos os reguladores no log a cada suspensao.
+
+=== 8. DIAGNOSTICO ===
+  CPU: cat /sys/module/clk_cpu_osm/parameters/s9_osm_result
+  Coletor v6: alem do relatorio de 2 min, espera ate 15 min por musica no alto-falante e grava
+  /sdcard/S9_dsm_DATA.txt com os parametros do protetor.
+
+=== 9. PACOTE ===
+  S9_kernel_v4_TWRP.zip + rollbacks instalaveis: original, v1, v2 e v3. Lista de clocks e SHA-256.
+
+NPU: o SDM845 nao tem NPU dedicada.

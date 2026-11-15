@@ -1,8 +1,8 @@
-name: Build S9 Kernel v3 (CPU OC, GPU 900, audio, toque)
+name: Build S9 Kernel v4 (GPU 870, memlat, audio 18 dB + DSM, noop/lz4/westwood)
 on:
   workflow_dispatch:
   push:
-    branches: [ s9-kernel-v3 ]
+    branches: [ s9-kernel-v4 ]
     paths:
       - 's9-kernel/**'
       - '.github/workflows/s9-kernel.yml'
@@ -24,46 +24,51 @@ jobs:
       - name: Validar scripts
         run: |
           python3 -m py_compile s9-kernel/*.py
-          bash -n s9-kernel/build_s9_kernel_v3.sh
+          bash -n s9-kernel/build_s9_kernel_v4.sh
           bash -n s9-kernel/tests/test_installer.sh
           # regressao: o wrapper de compilador do kernel exige Python 2 e trata aviso como erro
           python2 --version
-          grep -q 'PYTHON=python2' s9-kernel/build_s9_kernel_v3.sh
-          grep -q 'CC=aarch64-linux-android-gcc' s9-kernel/build_s9_kernel_v3.sh
+          grep -q 'PYTHON=python2' s9-kernel/build_s9_kernel_v4.sh
+          grep -q 'CC=aarch64-linux-android-gcc' s9-kernel/build_s9_kernel_v4.sh
           # regressao: o empacotador devolve o boot original identico
           python3 -c "import struct,sys;d=open('s9-kernel/boot_original.img','rb').read();ks,=struct.unpack('<I',d[8:12]);p,=struct.unpack('<I',d[36:40]);open('/tmp/k','wb').write(d[p:p+ks])"
           python3 s9-kernel/repack_bootimg.py s9-kernel/boot_original.img /tmp/k /tmp/same.img
           cmp s9-kernel/boot_original.img /tmp/same.img
-          # regressao: o verificador do v2 tem de recusar o kernel original
-          if python3 s9-kernel/check_v3_image.py /tmp/k; then echo "check_v3 aceitou o kernel original"; exit 1; fi
-          # regressao: o build do v2 perdia as linhas do log; o v3 tem de expor o resultado em /sys
-          grep -q 'module_param_string(s9_osm_result' s9-kernel/apply_s9_kernel_v3.py
-      - name: Baixar pacote do kernel v2 (rollbacks v2, v1 e original)
-        continue-on-error: true
+          # regressao: o verificador tem de recusar o kernel original
+          if python3 s9-kernel/check_v4_image.py /tmp/k s9-kernel/boot_original.img; then echo "check_v4 aceitou o kernel original"; exit 1; fi
+          # regressao: o build do v2 perdia as linhas do log; o resultado da CPU fica em /sys
+          grep -q 'module_param_string(s9_osm_result' s9-kernel/apply_s9_kernel_v4.py
+          # regressao: 900 MHz contava 2 vezes no DTB original; o verificador compara com o original
+          grep -q 'o.count(be(f \* 1000000)) + 1' s9-kernel/check_v4_image.py
+          # regressao: leitura do DSM devolvia 0 bytes; o build roda tests/test_dsm_read_v4.c
+          grep -q 'ut/test_dsm' s9-kernel/build_s9_kernel_v4.sh
+          # regressao: rollbacks de todos os kernels anteriores sao obrigatorios
+          grep -q 'for v in v1 v2 v3' s9-kernel/build_s9_kernel_v4.sh
+      - name: Baixar pacote do kernel v3 (rollbacks v3, v2, v1 e original)
         uses: actions/download-artifact@v4
         with:
-          name: S9-KERNEL-V2-PACOTE
-          run-id: 43608181282
+          name: S9-KERNEL-V3-PACOTE
+          run-id: 43749589813
           github-token: ${{ github.token }}
-          path: v2pkg
+          path: v3pkg
       - name: Compilar
         shell: bash
         run: |
           set -o pipefail
-          ls -la v2pkg 2>/dev/null || echo "pacote v2 nao disponivel"
-          WORK=$PWD/s9work V2_PKG="$PWD/v2pkg" bash s9-kernel/build_s9_kernel_v3.sh 2>&1 | tee S9_BUILD.log
+          ls -la v3pkg
+          WORK=$PWD/s9work V3_PKG="$PWD/v3pkg" bash s9-kernel/build_s9_kernel_v4.sh 2>&1 | tee S9_BUILD.log
       - name: Enviar log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: S9-KERNEL-V3-LOG
+          name: S9-KERNEL-V4-LOG
           path: S9_BUILD.log
           retention-days: 30
       - name: Enviar pacote
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: S9-KERNEL-V3-PACOTE
+          name: S9-KERNEL-V4-PACOTE
           path: s9work/pacote/
           if-no-files-found: error
           compression-level: 0
