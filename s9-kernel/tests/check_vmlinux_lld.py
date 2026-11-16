@@ -35,6 +35,12 @@ if "DYN" not in hdr:
 if not re.search(r"\]\s+\.rela\s+RELA", run("llvm-readelf", "-S", vmlinux)):
     fails.append("secao .rela ausente")
 
+# 6. __section("x") com aspas: o clang grava as aspas no nome e o lld joga a
+#    secao fora do lugar (secondary_holding_pen_release caiu no meio do rodata)
+quoted = [l for l in run("llvm-readelf", "-S", "-W", vmlinux).splitlines() if '"' in l]
+if quoted:
+    fails.append("secao com aspas no nome: %s" % quoted)
+
 undef = [l for l in run("llvm-nm", "-u", vmlinux).splitlines() if l.strip()]
 weak_ok = [l for l in undef if l.split()[0] in ("w", "v")]
 strong = [l for l in undef if l not in weak_ok]

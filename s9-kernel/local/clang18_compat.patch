@@ -133,6 +133,19 @@ index aff26bac9..62906b2f2 100644
  	add	\kaddr, \kaddr, \tmp1
  	cmp	\kaddr, \size
  	b.lo	9998b
+diff --git a/arch/arm64/kernel/smp_spin_table.c b/arch/arm64/kernel/smp_spin_table.c
+index 93034651c..cc8a770a5 100644
+--- a/arch/arm64/kernel/smp_spin_table.c
++++ b/arch/arm64/kernel/smp_spin_table.c
+@@ -30,7 +30,7 @@
+ #include <asm/smp_plat.h>
+ 
+ extern void secondary_holding_pen(void);
+-volatile unsigned long __section(".mmuoff.data.read")
++volatile unsigned long __section(.mmuoff.data.read)
+ secondary_holding_pen_release = INVALID_HWID;
+ 
+ static phys_addr_t cpu_release_addr[NR_CPUS];
 diff --git a/arch/arm64/kernel/vdso/gettimeofday.S b/arch/arm64/kernel/vdso/gettimeofday.S
 index a035df8c7..41471050e 100644
 --- a/arch/arm64/kernel/vdso/gettimeofday.S
