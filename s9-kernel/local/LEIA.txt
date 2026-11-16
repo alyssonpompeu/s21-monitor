@@ -1,0 +1,9 @@
+Build local do kernel S9 v5 (sem GitHub)
+1. Fonte: klabit87/android_kernel_samsung_sdm845 (lineage-19.0) no commit 66ad1f12cf57.
+2. python3 apply_s9_kernel_v5.py <fonte> tables_v3.inc
+3. git -C <fonte> apply local/clang18_compat.patch
+4. ln -s /usr/bin/ld.lld ~/tc/bin/aarch64-linux-gnu-ld   (o vdso liga via clang)
+5. .config = config da ROM + CONFIG_CPU_BOOST=y + noop + westwood (ver build_s9_kernel_v4.sh)
+6. local/mk.sh olddefconfig ; local/mk.sh Image.gz-dtb
+7. check_v5_image.py, tests/check_vmlinux_lld.py, repack_bootimg.py, make_twrp_zip.py, tests/test_installer.sh
+Builds seguintes so recompilam o que mudou.

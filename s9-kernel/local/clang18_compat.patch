@@ -1,0 +1,282 @@
+diff --git a/Makefile b/Makefile
+index 0668ab731..0e210f3e4 100644
+--- a/Makefile
++++ b/Makefile
+@@ -530,7 +530,7 @@ KBUILD_CFLAGS += $(call cc-disable-warning, format-invalid-specifier)
+ KBUILD_CFLAGS += $(call cc-disable-warning, gnu)
+ KBUILD_CFLAGS += $(call cc-disable-warning, address-of-packed-member)
+ KBUILD_CFLAGS += $(call cc-disable-warning, duplicate-decl-specifier)
+-KBUILD_CFLAGS += -Wno-undefined-optimized
++KBUILD_CFLAGS += $(call cc-disable-warning, undefined-optimized)
+ KBUILD_CFLAGS += -Wno-tautological-constant-out-of-range-compare
+ 
+ # Quiet clang warning: comparison of unsigned expression < 0 is always false
+@@ -540,7 +540,7 @@ KBUILD_CFLAGS += $(call cc-disable-warning, tautological-compare)
+ # See modpost pattern 2
+ KBUILD_CFLAGS += $(call cc-option, -mno-global-merge,)
+ KBUILD_CFLAGS += $(call cc-option, -fcatch-undefined-behavior)
+-CLANG_FLAGS	+= -no-integrated-as
++CLANG_FLAGS	+= -integrated-as
+ KBUILD_CFLAGS	+= $(CLANG_FLAGS)
+ KBUILD_AFLAGS	+= $(CLANG_FLAGS)
+ else
+diff --git a/arch/arm64/Makefile b/arch/arm64/Makefile
+index d8ac80e60..c2705f6ed 100644
+--- a/arch/arm64/Makefile
++++ b/arch/arm64/Makefile
+@@ -18,7 +18,8 @@ ifeq ($(CONFIG_RELOCATABLE), y)
+ # Pass --no-apply-dynamic-relocs to restore pre-binutils-2.27 behaviour
+ # for relative relocs, since this leads to better Image compression
+ # with the relocation offsets always being zero.
+-LDFLAGS_vmlinux		+= -pie -shared -Bsymbolic \
++# ld.lld recusa -pie junto com -shared; mesma forma do upstream (4.19+)
++LDFLAGS_vmlinux		+= -shared -Bsymbolic -z notext -z norelro \
+ 			$(call ld-option, --no-apply-dynamic-relocs)
+ endif
+ 
+@@ -72,6 +73,8 @@ else
+ KBUILD_CPPFLAGS	+= -mlittle-endian
+ AS		+= -EL
+ LD		+= -EL
++# ld.lld: sem objetos de entrada (built-in.o vazio) precisa da emulacao explicita
++LDFLAGS		+= -maarch64linux
+ UTS_MACHINE	:= aarch64
+ endif
+ 
+diff --git a/arch/arm64/crypto/aes-ce-cipher-core.c b/arch/arm64/crypto/aes-ce-cipher-core.c
+index 9f4191774..3ec77b767 100644
+--- a/arch/arm64/crypto/aes-ce-cipher-core.c
++++ b/arch/arm64/crypto/aes-ce-cipher-core.c
+@@ -131,7 +131,7 @@ static u32 aes_sub(u32 input)
+ 	__asm__("dup	v1.4s, %w[in]		;"
+ 		"movi	v0.16b, #0		;"
+ 		"aese	v0.16b, v1.16b		;"
+-		"umov	%w[out], v0.4s[0]	;"
++		"umov	%w[out], v0.s[0]	;"
+ 
+ 	:	[out]	"=r"(ret)
+ 	:	[in]	"r"(input)
+diff --git a/arch/arm64/crypto/aes-modes.S b/arch/arm64/crypto/aes-modes.S
+index 838dad5c2..3ade78328 100644
+--- a/arch/arm64/crypto/aes-modes.S
++++ b/arch/arm64/crypto/aes-modes.S
+@@ -297,7 +297,7 @@ AES_ENTRY(aes_ctr_encrypt)
+ 	eor		v1.16b, v1.16b, v3.16b
+ 	st1		{v0.16b-v1.16b}, [x0], #32
+ #else
+-	ldr		q8, =0x30000000200000001	/* addends 1,2,3[,0] */
++	ldr		q8, .Lctr_addends		/* addends 1,2,3[,0] */
+ 	dup		v7.4s, w8
+ 	mov		v0.16b, v4.16b
+ 	add		v7.4s, v7.4s, v8.4s
+@@ -364,6 +364,9 @@ AES_ENTRY(aes_ctr_encrypt)
+ 	b		.Lctrcarrydone
+ AES_ENDPROC(aes_ctr_encrypt)
+ 	.ltorg
++	.align	4
++.Lctr_addends:
++	.word	1, 2, 3, 0
+ 
+ 
+ 	/*
+diff --git a/arch/arm64/include/asm/alternative.h b/arch/arm64/include/asm/alternative.h
+index 7e842dcae..05a0e4d46 100644
+--- a/arch/arm64/include/asm/alternative.h
++++ b/arch/arm64/include/asm/alternative.h
+@@ -205,7 +205,7 @@ alternative_endif
+ 
+ .macro user_alt, label, oldinstr, newinstr, cond
+ 9999:	alternative_insn "\oldinstr", "\newinstr", \cond
+-	_ASM_EXTABLE 9999b, \label
++	_asm_extable 9999b, \label
+ .endm
+ 
+ /*
+diff --git a/arch/arm64/include/asm/assembler.h b/arch/arm64/include/asm/assembler.h
+index aff26bac9..62906b2f2 100644
+--- a/arch/arm64/include/asm/assembler.h
++++ b/arch/arm64/include/asm/assembler.h
+@@ -391,21 +391,30 @@ alternative_endif
+  * 	size:		size of the region
+  * 	Corrupts:	kaddr, size, tmp1, tmp2
+  */
++/* clang IAS: ".if (\op == cvau)" nao e expressao valida; usar .ifc (igual ao upstream) */
++	.macro __dcache_op_workaround_clean_cache, op, kaddr
++alternative_if_not ARM64_WORKAROUND_CLEAN_CACHE
++	dc	\op, \kaddr
++alternative_else
++	dc	civac, \kaddr
++alternative_endif
++	.endm
++
+ 	.macro dcache_by_line_op op, domain, kaddr, size, tmp1, tmp2
+ 	dcache_line_size \tmp1, \tmp2
+ 	add	\size, \kaddr, \size
+ 	sub	\tmp2, \tmp1, #1
+ 	bic	\kaddr, \kaddr, \tmp2
+ 9998:
+-	.if	(\op == cvau || \op == cvac)
+-alternative_if_not ARM64_WORKAROUND_CLEAN_CACHE
+-	dc	\op, \kaddr
+-alternative_else
+-	dc	civac, \kaddr
+-alternative_endif
++	.ifc	\op, cvau
++	__dcache_op_workaround_clean_cache \op, \kaddr
++	.else
++	.ifc	\op, cvac
++	__dcache_op_workaround_clean_cache \op, \kaddr
+ 	.else
+ 	dc	\op, \kaddr
+ 	.endif
++	.endif
+ 	add	\kaddr, \kaddr, \tmp1
+ 	cmp	\kaddr, \size
+ 	b.lo	9998b
+diff --git a/arch/arm64/kernel/vdso/gettimeofday.S b/arch/arm64/kernel/vdso/gettimeofday.S
+index a035df8c7..41471050e 100644
+--- a/arch/arm64/kernel/vdso/gettimeofday.S
++++ b/arch/arm64/kernel/vdso/gettimeofday.S
+@@ -229,7 +229,7 @@ realtime:
+ 	get_clock_shifted_nsec res=x15, cycle_last=x10, mult=x11
+ 	get_ts_realtime res_sec=x10, res_nsec=x11, \
+ 		clock_nsec=x15, xtime_sec=x13, xtime_nsec=x14, nsec_to_sec=x9
+-	clock_gettime_return, shift=1
++	clock_gettime_return shift=1
+ 
+ 	ALIGN
+ monotonic:
+@@ -252,7 +252,7 @@ monotonic:
+ 		clock_nsec=x15, xtime_sec=x13, xtime_nsec=x14, nsec_to_sec=x9
+ 
+ 	add_ts sec=x10, nsec=x11, ts_sec=x3, ts_nsec=x4, nsec_to_sec=x9
+-	clock_gettime_return, shift=1
++	clock_gettime_return shift=1
+ 
+ 	ALIGN
+ monotonic_raw:
+@@ -273,7 +273,7 @@ monotonic_raw:
+ 		clock_nsec=x15, nsec_to_sec=x9
+ 
+ 	add_ts sec=x10, nsec=x11, ts_sec=x13, ts_nsec=x14, nsec_to_sec=x9
+-	clock_gettime_return, shift=1
++	clock_gettime_return shift=1
+ 
+ 	ALIGN
+ realtime_coarse:
+diff --git a/arch/arm64/lib/memcpy.S b/arch/arm64/lib/memcpy.S
+index 49c1e317d..bac2b7243 100644
+--- a/arch/arm64/lib/memcpy.S
++++ b/arch/arm64/lib/memcpy.S
+@@ -68,12 +68,11 @@
+ 	stp \ptr, \regB, [\regC], \val
+ 	.endm
+ 
+-	.weak memcpy
+ ENTRY(__memcpy)
+ #ifdef CONFIG_RKP_CFP_JOPP
+ FALLTHROUGH(memcpy)
+ #endif
+-ENTRY(memcpy)
++WEAK(memcpy)	/* clang IAS: .weak + ENTRY (.globl) e erro */
+ #include "copy_template.S"
+ 	ret
+ ENDPIPROC(memcpy)
+diff --git a/arch/arm64/lib/memmove.S b/arch/arm64/lib/memmove.S
+index 9422b3925..42b8207d2 100644
+--- a/arch/arm64/lib/memmove.S
++++ b/arch/arm64/lib/memmove.S
+@@ -57,12 +57,11 @@ C_h	.req	x12
+ D_l	.req	x13
+ D_h	.req	x14
+ 
+-	.weak memmove
+ ENTRY(__memmove)
+ #ifdef CONFIG_RKP_CFP_JOPP
+ FALLTHROUGH(memmove)
+ #endif
+-ENTRY(memmove)
++WEAK(memmove)	/* clang IAS: .weak + ENTRY (.globl) e erro */
+ 	cmp	dstin, src
+ 	b.lo	__memcpy
+ 	add	tmp1, src, count
+diff --git a/arch/arm64/lib/memset.S b/arch/arm64/lib/memset.S
+index 48e2b94af..0058e24fa 100644
+--- a/arch/arm64/lib/memset.S
++++ b/arch/arm64/lib/memset.S
+@@ -54,12 +54,11 @@ dst		.req	x8
+ tmp3w		.req	w9
+ tmp3		.req	x9
+ 
+-	.weak memset
+ ENTRY(__memset)
+ #ifdef CONFIG_RKP_CFP_JOPP
+ FALLTHROUGH(memset)
+ #endif
+-ENTRY(memset)
++WEAK(memset)	/* clang IAS: .weak + ENTRY (.globl) e erro */
+ 	mov	dst, dstin	/* Preserve return value.  */
+ 	and	A_lw, val, #255
+ 	orr	A_lw, A_lw, A_lw, lsl #8
+diff --git a/drivers/net/wireless/broadcom/bcmdhd_100_15/dhd_linux.c b/drivers/net/wireless/broadcom/bcmdhd_100_15/dhd_linux.c
+index 4e23b21be..8706d10a3 100755
+--- a/drivers/net/wireless/broadcom/bcmdhd_100_15/dhd_linux.c
++++ b/drivers/net/wireless/broadcom/bcmdhd_100_15/dhd_linux.c
+@@ -18029,7 +18029,7 @@ dhd_nla_put_sssr_dump_len(void *ndev, uint32 *arr_len)
+ #endif /* DHD_SSSR_DUMP */
+ 
+ uint32
+-dhd_get_time_str_len()
++dhd_get_time_str_len(void)
+ {
+ 	char *ts = NULL, time_str[128];
+ 
+diff --git a/drivers/net/wireless/broadcom/bcmdhd_100_15/dhd_linux_platdev.c b/drivers/net/wireless/broadcom/bcmdhd_100_15/dhd_linux_platdev.c
+index 5bbd13a1d..8bac7fbc0 100755
+--- a/drivers/net/wireless/broadcom/bcmdhd_100_15/dhd_linux_platdev.c
++++ b/drivers/net/wireless/broadcom/bcmdhd_100_15/dhd_linux_platdev.c
+@@ -835,7 +835,7 @@ static int dhd_wifi_platform_load_usb(void)
+ 	return 0;
+ }
+ 
+-static int dhd_wifi_platform_load()
++static int dhd_wifi_platform_load(void)
+ {
+ 	int err = 0;
+ 
+diff --git a/drivers/net/wireless/broadcom/bcmdhd_100_15/wl_cfg_btcoex.c b/drivers/net/wireless/broadcom/bcmdhd_100_15/wl_cfg_btcoex.c
+index 2d59331cc..d4b72f5f5 100755
+--- a/drivers/net/wireless/broadcom/bcmdhd_100_15/wl_cfg_btcoex.c
++++ b/drivers/net/wireless/broadcom/bcmdhd_100_15/wl_cfg_btcoex.c
+@@ -406,7 +406,7 @@ void* wl_cfg80211_btcoex_init(struct net_device *ndev)
+ 	return btco_inf;
+ }
+ 
+-void wl_cfg80211_btcoex_deinit()
++void wl_cfg80211_btcoex_deinit(void)
+ {
+ 	if (!btcoex_info_loc)
+ 		return;
+diff --git a/lib/string.c b/lib/string.c
+index 0a38f8ab4..6d80c5fa3 100644
+--- a/lib/string.c
++++ b/lib/string.c
+@@ -95,6 +95,18 @@ char *strcpy(char *dest, const char *src)
+ EXPORT_SYMBOL(strcpy);
+ #endif
+ 
++/* clang troca sprintf/strcpy+strlen por stpcpy; o 4.9 nao tinha (upstream 5.9) */
++#ifndef __HAVE_ARCH_STPCPY
++char *stpcpy(char *__restrict__ dest, const char *__restrict__ src);
++char *stpcpy(char *__restrict__ dest, const char *__restrict__ src)
++{
++	while ((*dest++ = *src++) != '\0')
++		/* nada */;
++	return --dest;
++}
++EXPORT_SYMBOL(stpcpy);
++#endif
++
+ #ifndef __HAVE_ARCH_STRNCPY
+ /**
+  * strncpy - Copy a length-limited, C-string
